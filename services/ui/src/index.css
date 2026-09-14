@@ -1,97 +1,231 @@
-/* IBM Plex — single import, two weights each */
-@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500&display=swap');
+/* One request, four families, only the weights actually used.
+   Space Grotesk 500/700 — headings and labels
+   IBM Plex Mono 400/500/600 — every number, ID and coordinate
+   IBM Plex Sans 400/500 — running interface text
+   Newsreader 400/500 italic — the analyst narrative, and nothing else */
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&display=swap');
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* ── Reset ─────────────────────────────────────── */
+/* ── Reset ───────────────────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-/* ── Base ───────────────────────────────────────── */
+/* ── Base ────────────────────────────────────────────────────────────── */
 html, body, #root {
   height: 100%;
   width: 100%;
   overflow: hidden;
-  background: #080a0e;
-  color: #d1d5db;
-  font-family: 'IBM Plex Mono', ui-monospace, monospace;
-  font-size: 11px;
-  line-height: 1.5;
+  background: #070b10;
+  color: #c9d1d9;
+  font-family: 'IBM Plex Sans', system-ui, sans-serif;
+  font-size: 12px;
+  line-height: 1.45;
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
-/* ── Scrollbar ──────────────────────────────────── */
-::-webkit-scrollbar { width: 4px; height: 4px; }
-::-webkit-scrollbar-track { background: #080a0e; }
-::-webkit-scrollbar-thumb { background: #1e2530; border-radius: 0; }
-::-webkit-scrollbar-thumb:hover { background: #d97706; }
-
-/* ── Utility classes ────────────────────────────── */
-
-/* Hard-border panel — no blur, no radius */
-.ops-panel {
-  @apply border border-sentinel-border bg-sentinel-panel;
+/* Paper grain. A single 3% opacity noise tile over the ink base — the
+   difference between "black rectangle" and "dark surface" on an OLED panel.
+   Purely textural; it carries no meaning and never sits over data. */
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
+  opacity: 0.03;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 
-/* Inset panel (darker, for nested data) */
-.ops-inset {
-  @apply border border-sentinel-border bg-sentinel-surface;
-}
+/* ── Scrollbar — thin, no radius, warms on hover ─────────────────────── */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: #070b10; }
+::-webkit-scrollbar-thumb { background: #1b2430; }
+::-webkit-scrollbar-thumb:hover { background: #8a5f1c; }
 
-/* Row in a data table */
+/* ── Selection — cyan, because a selection is a measurement of intent ── */
+::selection { background: #2b6d78; color: #eef2f6; }
+
+/* ── Panels ──────────────────────────────────────────────────────────── */
+
+/* Hard-border panel — no blur, no radius, no shadow. */
+.ops-panel { @apply border border-sentinel-border bg-sentinel-panel; }
+
+/* Inset panel for nested data — one step darker, never lighter. */
+.ops-inset { @apply border border-sentinel-border bg-sentinel-surface; }
+
+/* Instrument panel: hairline top rule instead of a full box. Used where a
+   full border would add a fifth competing edge to a dense column. */
+.ops-section {
+  @apply border-t border-sentinel-border bg-sentinel-panel;
+}
+.ops-section:first-child { border-top: none; }
+
+/* ── Rows ────────────────────────────────────────────────────────────── */
 .ops-row {
-  @apply flex items-center justify-between border-b border-sentinel-border px-3 py-1.5;
-  min-height: 28px;
+  @apply flex items-center justify-between border-b border-sentinel-border px-3.5;
+  min-height: 1.75rem;
 }
 .ops-row:last-child { border-bottom: none; }
-.ops-row:hover { background: #0e1117; }
+.ops-row:hover { background: #151d27; }
 
-/* Label / value pair */
-.ops-label {
-  @apply font-mono text-2xs uppercase tracking-wider text-sentinel-muted;
-}
-.ops-value {
-  @apply font-mono text-xs text-sentinel-text tabular-nums;
-}
-.ops-value-hi {
-  @apply font-mono text-xs font-semibold text-sentinel-text-hi tabular-nums;
-}
+/* A row whose value is a measurement gets a left cyan tick, so the eye can
+   find data columns without reading them. */
+.ops-row-data { box-shadow: inset 2px 0 0 0 #2b6d78; }
 
-/* Amber accent text */
-.ops-amber { color: #d97706; }
-.ops-danger { color: #dc2626; }
-.ops-nominal { color: #15803d; }
-.ops-caution { color: #ca8a04; }
+/* ── Label / value ───────────────────────────────────────────────────── */
+.ops-label { @apply font-mono text-2xs uppercase tracking-instrument text-sentinel-muted; }
+.ops-value { @apply font-mono text-xs text-sentinel-text tabular-nums; }
+.ops-value-hi { @apply font-mono text-xs font-semibold text-sentinel-text-hi tabular-nums; }
 
-/* Section header bar */
+/* ── Semantic text — one meaning per colour, no exceptions ───────────── */
+.ops-oil      { color: #e8a33d; }   /* oil. only oil. */
+.ops-data     { color: #5ec8d8; }   /* a measurement */
+.ops-danger   { color: #c8453a; }
+.ops-caution  { color: #c08a2e; }
+.ops-nominal  { color: #4f9d69; }
+/* Legacy aliases — kept so the pre-existing pages keep rendering. */
+.ops-amber    { color: #d97706; }
+
+/* ── Headers ─────────────────────────────────────────────────────────── */
 .ops-header {
-  @apply flex items-center gap-2 border-b border-sentinel-border bg-sentinel-surface px-3 py-2;
+  @apply flex items-center gap-2 border-b border-sentinel-border bg-sentinel-surface px-3.5 py-2;
 }
 .ops-header-label {
-  @apply font-mono text-2xs font-semibold uppercase tracking-[0.15em] text-sentinel-muted-hi;
+  @apply font-display text-2xs font-medium uppercase tracking-instrument text-sentinel-muted-hi;
 }
 
-/* Status dot — NO animation, static squares */
-.status-sq {
-  @apply inline-block h-2 w-2 flex-shrink-0;
+/* Page title — display face, tight, with a hairline rule that stops short of
+   the full width. The short rule is the point: a full-width rule reads as a
+   divider, a partial one reads as a decision. */
+.ops-title {
+  @apply font-display text-lg font-medium tracking-tight text-sentinel-text-hi;
 }
-.status-sq.nominal  { background: #15803d; }
-.status-sq.caution  { background: #ca8a04; }
-.status-sq.danger   { background: #dc2626; }
-.status-sq.offline  { background: #4b5563; }
-.status-sq.active   { background: #d97706; }
-
-/* Confidence bar (thin horizontal fill) */
-.conf-bar-track {
-  @apply h-0.5 w-full bg-sentinel-border;
-}
-.conf-bar-fill {
-  @apply h-0.5;
-  transition: width 0.4s ease;
+.ops-title-rule {
+  @apply mt-1.5 block h-px bg-sentinel-border-hi;
+  width: 4.5rem;
 }
 
-/* Deck.gl tooltip */
+/* ── Status: glyph + letter code, never a coloured pill ──────────────── */
+.ops-status {
+  @apply inline-flex items-center gap-1.5 font-mono text-2xs uppercase tracking-instrument;
+}
+.ops-status-nominal { color: #4f9d69; }
+.ops-status-caution { color: #c08a2e; }
+.ops-status-danger  { color: #c8453a; }
+.ops-status-idle    { color: #5b6673; }
+.ops-status-active  { color: #e8a33d; }
+
+/* Static status squares. Kept for the older pages; prefer .ops-status. */
+.status-sq { @apply inline-block h-2 w-2 flex-shrink-0; }
+.status-sq.nominal  { background: #4f9d69; }
+.status-sq.caution  { background: #c08a2e; }
+.status-sq.danger   { background: #c8453a; }
+.status-sq.offline  { background: #5b6673; }
+.status-sq.active   { background: #e8a33d; }
+
+/* ── Confidence bar ──────────────────────────────────────────────────── */
+.conf-bar-track { @apply h-0.5 w-full bg-sentinel-border; }
+.conf-bar-fill { @apply h-0.5; transition: width 600ms cubic-bezier(0.22, 0.61, 0.36, 1); }
+
+/* ── Provenance strip ────────────────────────────────────────────────── */
+/* A screenshot must label itself. This strip is designed to be legible in a
+   cropped screenshot, so it is a solid band, not a subtle badge. */
+.ops-provenance {
+  @apply flex items-center gap-2 border-y border-sentinel-border bg-sentinel-surface px-3.5 py-1.5
+         font-mono text-3xs uppercase tracking-instrument;
+}
+.ops-provenance-real      { color: #4f9d69; }
+.ops-provenance-synthetic { color: #e8a33d; background: rgba(232, 163, 61, 0.07); }
+.ops-provenance-unavailable { color: #5b6673; }
+.ops-provenance-failed    { color: #c8453a; background: rgba(200, 69, 58, 0.07); }
+
+/* ── Serif narrative ─────────────────────────────────────────────────── */
+/* The one place a serif belongs. Measures capped near 68 characters because
+   a serif line that runs the width of a 27" display is unreadable. */
+.ops-narrative {
+  @apply font-serif text-lede text-sentinel-text;
+  max-width: 68ch;
+  font-feature-settings: 'kern' 1, 'liga' 1;
+}
+.ops-narrative em { font-style: italic; color: #eef2f6; }
+
+/* ── Stencil numerals for case IDs ───────────────────────────────────── */
+.ops-stencil {
+  @apply font-mono font-semibold uppercase tracking-stencil text-sentinel-muted-hi;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Graticule tick ruler ────────────────────────────────────────────── */
+/* Sits along a map edge. Major ticks every 5th position, uneven by design —
+   an evenly spaced ruler reads as a CSS repeating-gradient, a graduated one
+   reads as a surveying instrument. */
+.ops-graticule {
+  display: flex;
+  align-items: flex-end;
+  height: 0.75rem;
+  background: linear-gradient(to right, #1b2430 0 1px, transparent 1px 100%);
+  background-size: 12.5% 100%;
+}
+.ops-graticule-tick {
+  width: 1px;
+  background: #2a3644;
+  height: 0.375rem;
+  margin-right: calc(12.5% - 1px);
+}
+.ops-graticule-tick.major { height: 0.75rem; background: #5b6673; }
+
+/* ── Reticle ─────────────────────────────────────────────────────────── */
+/* Cursor crosshair with a live readout. Only rendered over the map. */
+.ops-reticle {
+  position: absolute;
+  pointer-events: none;
+  z-index: 40;
+  width: 18px;
+  height: 18px;
+  margin: -9px 0 0 -9px;
+}
+.ops-reticle::before,
+.ops-reticle::after {
+  content: '';
+  position: absolute;
+  background: rgba(94, 200, 216, 0.55);
+}
+.ops-reticle::before { left: 50%; top: 0; width: 1px; height: 100%; }
+.ops-reticle::after { top: 50%; left: 0; height: 1px; width: 100%; }
+.ops-reticle-readout {
+  @apply font-mono text-3xs tabular-nums;
+  position: absolute;
+  left: 14px;
+  top: 12px;
+  white-space: nowrap;
+  color: #8fe0ec;
+  text-shadow: 0 1px 2px rgba(7, 11, 16, 0.9);
+}
+
+/* ── Nav rail ────────────────────────────────────────────────────────── */
+.nav-item {
+  @apply flex h-9 w-full items-center gap-2.5 border-l-2 border-transparent px-3.5 text-sentinel-muted;
+  transition: color 120ms cubic-bezier(0.22, 0.61, 0.36, 1),
+              background 120ms cubic-bezier(0.22, 0.61, 0.36, 1),
+              border-color 120ms cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+.nav-item:hover { @apply border-l-sentinel-border-hi bg-sentinel-panel text-sentinel-text-hi; }
+.nav-item.active { @apply border-l-sentinel-oil bg-sentinel-panel text-sentinel-oil; }
+.nav-item-label { @apply font-display text-2xs uppercase tracking-instrument; }
+
+/* ── Drop target ─────────────────────────────────────────────────────── */
+.ops-drop {
+  @apply flex flex-col items-center justify-center border border-dashed border-sentinel-border-hi
+         bg-sentinel-surface px-6 py-8 text-center;
+  transition: border-color 180ms cubic-bezier(0.22, 0.61, 0.36, 1),
+              background 180ms cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+.ops-drop-active { @apply border-sentinel-data bg-sentinel-raised; }
+
+/* ── Tooltip ─────────────────────────────────────────────────────────── */
 .ops-tooltip {
   @apply ops-panel px-3 py-2 font-mono text-xs text-sentinel-text;
   pointer-events: none;
@@ -99,40 +233,18 @@ html, body, #root {
   z-index: 999;
 }
 
-/* Blink cursor for live feeds */
-.cursor-blink::after {
-  content: '▌';
-  color: #d97706;
-  animation: blink 1.2s step-end infinite;
-}
+/* ── Live feed cursor ────────────────────────────────────────────────── */
+.cursor-blink::after { content: '▌'; color: #e8a33d; animation: blink 1.2s step-end infinite; }
 
-/* Scanline overlay — purely decorative, very subtle */
-.scanline-overlay::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: repeating-linear-gradient(
-    to bottom,
-    transparent 0px,
-    transparent 3px,
-    rgba(0, 0, 0, 0.04) 3px,
-    rgba(0, 0, 0, 0.04) 4px
-  );
-  pointer-events: none;
-  z-index: 1;
+/* ── Tables ──────────────────────────────────────────────────────────── */
+.ops-table { @apply w-full border-collapse font-mono text-xs; }
+.ops-table thead th {
+  @apply border-b border-sentinel-border-hi px-3 py-1.5 text-left font-medium uppercase
+         tracking-instrument text-3xs text-sentinel-muted;
 }
+.ops-table tbody td { @apply border-b border-sentinel-border px-3 py-1.5 tabular-nums; }
+.ops-table tbody tr:hover { background: #151d27; }
 
-/* Sidebar nav item */
-.nav-item {
-  @apply flex h-9 w-full items-center gap-2.5 px-3 border-l-2 border-transparent text-sentinel-muted;
-  transition: color 0.12s, background 0.12s, border-color 0.12s;
-}
-.nav-item:hover {
-  @apply bg-sentinel-panel text-sentinel-text-hi border-l-sentinel-border-hi;
-}
-.nav-item.active {
-  @apply bg-sentinel-panel text-sentinel-amber border-l-sentinel-amber;
-}
-.nav-item-label {
-  @apply font-mono text-2xs uppercase tracking-[0.12em];
-}
+/* ── Utilities ───────────────────────────────────────────────────────── */
+.tabular { font-variant-numeric: tabular-nums; }
+.ops-hairline { @apply h-px w-full bg-sentinel-border; }

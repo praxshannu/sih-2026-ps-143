@@ -463,6 +463,115 @@ const axisParams = (b: Bbox) => ({
 const axisQuery = (b: Bbox) =>
   `min_lon=${b[0]}&min_lat=${b[1]}&max_lon=${b[2]}&max_lat=${b[3]}`;
 
+// ── Scene inference types ───────────────────────────────────────────────
+// These mirror `services/detect/app/pipeline.py::InferenceResult.as_dict`.
+// The state union is deliberately explicit: an analyst must be able to tell
+// "nothing here" from "this scene is not usable" from "we could not check",
+// and collapsing them into a boolean is the failure this whole pipeline
+// exists to prevent.
+
+export type SceneState =
+  | 'ok'
+  | 'no_detection'
+  | 'low_confidence'
+  | 'out_of_distribution'
+  | 'missing_forcing_data'
+  | 'invalid_scene';
+
+export interface SceneValidation {
+  valid: boolean;
+  reason: string | null;
+  reason_code: string | null;
+  width: number | null;
+  height: number | null;
+  bands: number | null;
+  crs: string | null;
+  nodata: number | null;
+  pixel_size_m: number | null;
+  valid_fraction: number | null;
+}
+
+export interface SceneConfidence {
+  value?: number;
+  low?: number;
+  high?: number;
+  method?: string;
+  [key: string]: unknown;
+}
+
+export interface SceneDetection {
+  id: string;
+  geometry: GeoJSON.Geometry;
+  area_km2: number;
+  centroid: { longitude: number; latitude: number } | [number, number];
+  length_km: number;
+  width_km: number;
+  orientation_deg: number;
+  perimeter_km?: number;
+  mean_db?: number;
+  contrast_db?: number;
+  scene_contrast_db?: number;
+  age_hours_fay?: number;
+  wind_viability?: string;
+  confidence: SceneConfidence;
+  [key: string]: unknown;
+}
+
+export interface SceneProvenance {
+  source?: string;
+  path?: string;
+  checksum_sha256?: string | null;
+  acquisition_time?: string | null;
+  [key: string]: unknown;
+}
+
+export interface SceneInference {
+  schema: string;
+  state: SceneState;
+  state_reason: string | null;
+  flags: string[];
+  count: number;
+  provenance: SceneProvenance;
+  validation: SceneValidation;
+  scene: Record<string, unknown>;
+  model: { status?: string; trained?: boolean; probabilities?: null; reason?: string; [k: string]: unknown };
+  tiling: Record<string, unknown>;
+  detector: string;
+  confidence: SceneConfidence;
+  detections: SceneDetection[];
+  geojson: GeoJSON.FeatureCollection;
+  explanation: Record<string, unknown>;
+  inference_ms: number;
+  ran_utc: string;
+  result_file?: string | null;
+}
+
+export interface SceneListItem {
+  name: string;
+  path: string;
+  bytes: number;
+  modified_utc: string;
+  has_result: boolean;
+  result_state?: SceneState | 'unreadable';
+  result_count?: number;
+  result_ran_utc?: string;
+}
+
+export interface SceneList {
+  count: number;
+  sar_dir: string;
+  scenes: SceneListItem[];
+}
+
+export interface SceneHealth {
+  ok: boolean;
+  service: string;
+  detector: string;
+  sar_dir: string;
+  scene_count: number;
+  model: { status?: string; trained?: boolean; reason?: string; [k: string]: unknown };
+}
+
 export const api = {
   getCases: () => client.get<Case[]>('/cases').then((r) => r.data),
   getCase: (id: string) => client.get<Case>(`/cases/${id}`).then((r) => r.data),
@@ -625,6 +734,52 @@ export const api = {
   runForecast: (req: ForecastRequest) =>
     client
       .post<ForecastResult>('/drift/forecast', req, { timeout: 600_000 })
+      .then((r) => r.data),
+
+  // ── Scene inference (analyst intake → detect service) ──────────────────
+  getSceneHealth: () => client.get<SceneHealth>('/detect/scene/health').then((r) => r.data),
+  listScenes: () => client.get<SceneList>('/detect/scene/list').then((r) => r.data),
+  /** Read the persisted result without re-running inference (survives restart). */
+  getSceneResult: (path: string) =>
+    client
+      .get<SceneInference>('/detect/scene/result', { params: { path } })
+      .then((r) => r.data),
+  inferScene: (body: { path: string; wind_speed_ms?: number; require_wind?: boolean }) =>
+    client.post<SceneInference>('/detect/scene', body, { timeout: 900_000 }).then((r) => r.data),
+  deleteScene: (name: string) =>
+    client.delete<{ deleted: string; removed_sidecars: string[] }>(`/detect/scene/${name}`).then((r) => r.data),
+  /**
+   * Upload a local GeoTIFF and run the full pipeline.
+   *
+   * The body is the file itself, not multipart: the gateway re-frames it as a
+   * raw stream so a ~1 GB scene never sits in memory on either hop. The
+   * filename travels in a header, and `onProgress` is wired to axios's upload
+   * event so the analyst sees real byte progress rather than a spinner.
+   */
+  uploadScene: (
+    file: File,
+    opts: { wind_speed_ms?: number; require_wind?: boolean; onProgress?: (fraction: number) => void } = {},
+  ) =>
+    client
+      .post<SceneInference>('/detect/scene/upload', file, {
+        timeout: 900_000,
+        // The client default is application/json, and axios would otherwise
+        // try to serialise the File. Pass the bytes through untouched.
+        transformRequest: [(data: unknown) => data],
+        headers: {
+          'content-type': 'application/octet-stream',
+          'x-sentinel-filename': file.name,
+        },
+        params: {
+          ...(opts.wind_speed_ms !== undefined ? { wind_speed_ms: opts.wind_speed_ms } : {}),
+          ...(opts.require_wind !== undefined ? { require_wind: opts.require_wind } : {}),
+        },
+        onUploadProgress: (event) => {
+          if (!opts.onProgress) return;
+          const total = event.total ?? file.size;
+          if (total > 0) opts.onProgress(Math.min(1, event.loaded / total));
+        },
+      })
       .then((r) => r.data),
 };
 
