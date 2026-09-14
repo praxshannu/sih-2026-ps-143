@@ -22,6 +22,7 @@ from fastapi import FastAPI
 from loguru import logger
 
 from app.routers.deterministic import router as deterministic_router
+from app.routers.scene import router as scene_router
 
 # services/detect/app/main_det.py → 4 levels up is the project root.
 DATA_DIR = Path(__file__).resolve().parent.parent.parent.parent / "data"
@@ -64,3 +65,4 @@ async def health() -> dict[str, object]:
 
 
 app.include_router(deterministic_router)
+app.include_router(scene_router)
