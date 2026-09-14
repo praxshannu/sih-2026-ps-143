@@ -15,6 +15,7 @@ import numpy as np
 from fastapi import FastAPI, HTTPException
 from loguru import logger
 
+from .engine.backward_sde import RegimeInputs
 from .schemas import (
     BackwardRequest,
     ConfidenceEllipse,
@@ -49,13 +50,17 @@ def _get_xgb_model():
     return _XGB_MODEL
 
 
-def _build_fields(spill_lon: float, spill_lat: float, req_ocean, now):
+def _build_fields(spill_lon: float, spill_lat: float, req_ocean, now, allow_synthetic: bool = True):
     """Build (u_field, v_field, K_field, lons, lats, times, provider, provenance).
 
     Tries local NetCDF loaders first; on any failure falls back to the
     forcing factory (live CMEMS/ERA5 if credentialed, else GFS + labelled
-    mock) sampled onto a small synthetic grid so the SDE engine always runs
+    mock) sampled onto a small grid so the SDE engine always runs
     and the response always labels its source.
+
+    `provenance` is the full per-field selection record: source, real-vs-
+    synthetic, coverage window and confidence penalty. Anything synthetic is
+    visible here — it is never a silent substitution.
     """
     from .data.forcing_factory import build_forcing_provider
 
@@ -72,6 +77,9 @@ def _build_fields(spill_lon: float, spill_lat: float, req_ocean, now):
             "",
         )
         or None,
+        gfs_path=getattr(req_ocean, "gfs_base", "") or None,
+        window=(req_ocean.time_start, req_ocean.time_end),
+        allow_synthetic=allow_synthetic,
     )
 
     # Try local NetCDF loaders when paths look real.
@@ -108,12 +116,40 @@ def _build_fields(spill_lon: float, spill_lat: float, req_ocean, now):
             lats = ocean_ds["latitude"].values
             times = _numeric_times(ocean_ds["time"].values)
             K_field = np.zeros((u_field.shape[0], u_field.shape[1], u_field.shape[2], 2, 2))
-            provenance = {
-                "forcing_source": "local_files",
-                "current_origin": "local_cmems_file",
-                "wind_origin": "local_era5_file" if era5_base else "not_staged",
-            }
-            return u_field, v_field, K_field, lons, lats, times, provider, provenance
+            provenance = dict(
+                provenance,
+                forcing_source="local_files",
+                current={
+                    "field": "current",
+                    "source": "cmems_local_file",
+                    "provider": "local_netcdf",
+                    "is_real": True,
+                    "status": "real_staged",
+                    "coverage_start_utc": _iso_time(req_ocean.time_start),
+                    "coverage_end_utc": _iso_time(req_ocean.time_end),
+                    "reason": f"Opened local CMEMS NetCDF {cmems_base}",
+                },
+                wind={
+                    "field": "wind",
+                    "source": "era5_local_file" if era5_base else "not_staged",
+                    "provider": "local_netcdf",
+                    "is_real": bool(era5_base),
+                    "status": "real_staged" if era5_base else "unavailable",
+                    "coverage_start_utc": _iso_time(req_ocean.time_start) if era5_base else None,
+                    "coverage_end_utc": _iso_time(req_ocean.time_end) if era5_base else None,
+                    "reason": "Local ERA5 file staged" if era5_base else "No local ERA5 file",
+                },
+            )
+            return (
+                u_field,
+                v_field,
+                K_field,
+                lons,
+                lats,
+                times,
+                provider,
+                _normalise_provenance(provenance),
+            )
     except Exception as e:
         logger.warning("Local NetCDF load failed, using forcing factory: {}", e)
 
@@ -137,7 +173,20 @@ def _build_fields(spill_lon: float, spill_lat: float, req_ocean, now):
         logger.warning("Provider current sampling failed, analytic fallback: {}", e)
         u2 = np.full((9, 9), 0.15)
         v2 = np.full((9, 9), 0.05)
-        provenance = dict(provenance, current_origin="analytic_fallback")
+        # A constant analytic substitute is synthetic data. Say so, per field,
+        # and let the confidence penalty follow.
+        provenance = dict(
+            provenance,
+            current_origin="analytic_fallback",
+            current={
+                "field": "current",
+                "source": "synthetic_mock",
+                "provider": "analytic_constant",
+                "is_real": False,
+                "status": "synthetic_mock",
+                "reason": f"Provider sampling failed ({str(e)[:120]}); constant analytic field substituted",
+            },
+        )
     u_field = np.stack([u2, u2])
     v_field = np.stack([v2, v2])
     K_field = np.zeros((2, 9, 9, 2, 2))
@@ -146,7 +195,64 @@ def _build_fields(spill_lon: float, spill_lat: float, req_ocean, now):
     # Numeric seconds grid: the SDE engine queries interpolators with
     # float seconds-remaining, so datetime64 grids would break argmin.
     times = np.array([0.0, 3600.0])
-    return u_field, v_field, K_field, lon_grid, lat_grid, times, provider, provenance
+    return (
+        u_field,
+        v_field,
+        K_field,
+        lon_grid,
+        lat_grid,
+        times,
+        provider,
+        _normalise_provenance(provenance),
+    )
+
+
+def _iso_time(value: object) -> str | None:
+    """ISO-8601 for a datetime (or numpy datetime64), else None."""
+    if value is None:
+        return None
+    try:
+        return value.isoformat()  # type: ignore[union-attr]
+    except Exception:  # noqa: BLE001 - provenance metadata must never crash a run
+        return str(value)
+
+
+def _as_field(field: str, data: dict) -> dict:
+    """Fill a FieldSelection payload with safe defaults."""
+    return {
+        "field": field,
+        "source": str(data.get("source", "not_staged")),
+        "provider": str(data.get("provider", "")),
+        "is_real": bool(data.get("is_real", False)),
+        "status": str(data.get("status", "unavailable")),
+        "reason": str(data.get("reason", "")),
+        "dataset_id": data.get("dataset_id"),
+        "coverage_start_utc": data.get("coverage_start_utc"),
+        "coverage_end_utc": data.get("coverage_end_utc"),
+    }
+
+
+def _normalise_provenance(prov: dict, extra_notes: list[str] | None = None) -> dict:
+    """Rebuild the provenance record through ForcingSelection.
+
+    Guarantees that `any_synthetic`, `synthetic_fields`, `confidence_penalty`
+    and the literal ``SYNTHETIC FORCING`` warning are always consistent with
+    the per-field `is_real` flags — including when a code path only knew how
+    to patch `current_origin`.
+    """
+    from .data.forcing_selection import FieldSelection, ForcingSelection
+
+    notes = [n for n in (prov.get("warnings") or []) if not n.startswith("SYNTHETIC FORCING")]
+    notes.extend(extra_notes or [])
+    selection = ForcingSelection(
+        wind=FieldSelection(**_as_field("wind", prov.get("wind") or {})),
+        current=FieldSelection(**_as_field("current", prov.get("current") or {})),
+        forcing_source=str(prov.get("forcing_source", "synthetic_mock")),
+        extra_notes=notes,
+    )
+    out = selection.to_dict()
+    out["forcing_detail"] = dict(prov)
+    return out
 
 
 def _numeric_times(times: np.ndarray) -> np.ndarray:
@@ -260,10 +366,14 @@ async def drift_backward(req: BackwardRequest):
 
         # Load ocean data (local NetCDF if present, else forcing factory).
         u_field, v_field, K_field, lons, lats, times, provider, provenance = _build_fields(
-            req.spill_lon, req.spill_lat, req.ocean_data, _dt.now()
+            req.spill_lon,
+            req.spill_lat,
+            req.ocean_data,
+            _dt.now(),
+            allow_synthetic=req.allow_synthetic,
         )
 
-        from .engine.ensemble import make_interpolators
+        from .engine.ensemble import make_interpolators, run_backward_ensemble
 
         u_interp, v_interp, K_interp = make_interpolators(
             u_field,
@@ -274,8 +384,27 @@ async def drift_backward(req: BackwardRequest):
             times,
         )
 
-        # Run backward integration
-        origin_lons, origin_lats, regime = integrate_backward(
+        # Regime inputs: latitude and the sampled current speed are all this
+        # endpoint can honestly supply; bathymetry and coast distance are
+        # unknown, so the classifier reports the regime as undetermined
+        # rather than being handed a guess.
+        try:
+            _u0, _v0 = provider.get_current_vectors(
+                np.array([req.spill_lon]), np.array([req.spill_lat]), req.ocean_data.time_start
+            )
+            _speed = np.array([float(np.hypot(float(_u0[0]), float(_v0[0])))])
+        except Exception:  # noqa: BLE001 - regime input, not a hard failure
+            _speed = None
+
+        regime_inputs = RegimeInputs(
+            depth_m=None,
+            distance_to_coast_km=None,
+            current_speed=_speed,
+            lat=np.array([req.spill_lat]),
+        )
+
+        # Run the backward ensemble (regime selected first, WMC inside).
+        drift = run_backward_ensemble(
             req.spill_lon,
             req.spill_lat,
             req.spill_age_hours,
@@ -284,35 +413,41 @@ async def drift_backward(req: BackwardRequest):
             K_interp,
             n_particles=req.n_particles,
             random_seed=req.random_seed,
+            regime_inputs=regime_inputs,
+            k_field=K_field,
+            grid_lons=np.asarray(lons),
+            grid_lats=np.asarray(lats),
+            forcing=provenance,
+            detection_time=req.ocean_data.time_end,
         )
-
-        # Compute confidence ellipse
-        ellipse = compute_confidence_ellipse(origin_lons, origin_lats, confidence=0.95)
 
         # XGBoost physics residual post-hoc correction (never skips WMC).
-        ellipse, xgb_applied, xgb_corr = _apply_xgb_correction(ellipse, provider, req, provenance)
-
-        # Mean dispersion
-        km_per_deg = 111.0 * np.cos(np.radians(np.clip(req.spill_lat, -89, 89)))
-        dispersion_km = float(
-            np.sqrt(
-                ((origin_lons - origin_lons.mean()) * km_per_deg) ** 2
-                + ((origin_lats - origin_lats.mean()) * 111.0) ** 2
-            ).mean()
+        ellipse, xgb_applied, xgb_corr = _apply_xgb_correction(
+            drift.origin_ellipse, provider, req, provenance
+        )
+        drift.origin_ellipse = ellipse
+        drift.origin_distribution = dict(
+            drift.origin_distribution,
+            center_lon=ellipse.center_lon,
+            center_lat=ellipse.center_lat,
         )
 
-        result = DriftResult(
-            origin_ellipse=ellipse,
-            particle_count=req.n_particles,
-            regime=regime.value,
-            origin_points_lon=origin_lons.tolist(),
-            origin_points_lat=origin_lats.tolist(),
-            mean_dispersion_km=dispersion_km,
-            forcing_source=str(provenance.get("forcing_source", "synthetic_mock")),
-            forcing_detail=dict(provenance),
-            xgb_residual_applied=bool(xgb_applied),
-            xgb_correction_m=dict(xgb_corr),
+        from .schemas import ForcingReport
+
+        drift.forcing_source = str(provenance.get("forcing_source", "synthetic_mock"))
+        drift.forcing_detail = dict(provenance)
+        drift.forcing = ForcingReport(
+            wind=provenance["wind"],
+            current=provenance["current"],
+            forcing_source=drift.forcing_source,
+            any_synthetic=bool(provenance.get("any_synthetic", True)),
+            synthetic_fields=list(provenance.get("synthetic_fields") or []),
+            confidence_penalty=float(provenance.get("confidence_penalty", 0.0)),
+            warnings=list(provenance.get("warnings") or []),
         )
+        drift.xgb_residual_applied = bool(xgb_applied)
+        drift.xgb_correction_m = dict(xgb_corr)
+        result = drift
 
         elapsed = time.time() - t0
         logger.info("Backward drift completed in {:.2f}s", elapsed)

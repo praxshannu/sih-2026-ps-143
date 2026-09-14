@@ -1,13 +1,22 @@
-"""72-hour forward Lagrangian simulation with particle releases.
+"""Forward Lagrangian forecast: spread/cone (p10/p50/p95) over time.
 
-Releases particles from origin ellipse and integrates forward using
-the same SDE formulation. Returns trajectory paths with probability quantiles.
+This module is the FORWARD half of the drift engine and shares no output
+plumbing with `backward_sde` (that one answers "where did it come from",
+this one answers "where is it going"). They are exercised by separate tests
+so a regression in one can never be masked by the other.
+
+Both call `wmc_correction.wmc_divergence` for the ∇·K term, so the two
+directions can never disagree about what the Well-Mixed Criterion did.
 """
 
 from __future__ import annotations
 
+from typing import Any
+
 import numpy as np
 from loguru import logger
+
+from .wmc_correction import wmc_divergence
 
 
 def rk4_step_forward(
@@ -89,6 +98,7 @@ def integrate_forward(
     dt = total_seconds / n_steps
 
     n_particles = len(origin_lons)
+    wmc_steps: list[dict[str, Any]] = []
 
     logger.info(
         "Forward integration: {} particles, {} steps of {:.0f}s, {}hr forecast",
@@ -118,27 +128,20 @@ def integrate_forward(
         v = v_interp(t_sec, x, y)
         K = K_interp(t_sec, x, y)
 
-        # WMC divergence (approximate)
-        div_K_x = np.zeros(n_particles)
-        div_K_y = np.zeros(n_particles)
-        if n_particles > 1:
-            dk_dx = (
-                np.gradient(K[:, 0, 0], axis=0) / max(np.abs(x.max() - x.min()), 1e-6) * 111000.0
-            )
-            dk_dy = (
-                np.gradient(K[:, 1, 1], axis=0) / max(np.abs(y.max() - y.min()), 1e-6) * 111000.0
-            )
-            div_K_x = dk_dx
-            div_K_y = dk_dy
+        # WMC ∇·K — same ladder as the backward integrator (grid -> constant-K
+        # no-op -> scattered fit -> explicitly unavailable). The old version
+        # differentiated along the particle *index*, which is not a direction.
+        div_K, wmc_step = wmc_divergence(K, x, y)
+        wmc_steps.append(wmc_step)
 
         # Units: u/v are m/s but x/y are degrees — convert to deg/s first.
         cos_lat = np.cos(np.radians(np.clip(y, -89.0, 89.0)))
         cos_lat = np.maximum(cos_lat, 0.1)
-        u_deg = (u - div_K_x) / (111320.0 * cos_lat)
-        v_deg = (v - div_K_y) / 110540.0
+        u_deg = (u - div_K[:, 0]) / (111320.0 * cos_lat)
+        v_deg = (v - div_K[:, 1]) / 110540.0
 
-        # RK4 step (zero div: already folded into u_deg/v_deg)
-        x, y = rk4_step_forward(x, y, u_deg, v_deg, K, np.zeros((n_particles, 2)), dt)
+        # RK4 step (divergence already folded into u_deg/v_deg)
+        x, y = rk4_step_forward(x, y, u_deg, v_deg, K, div_K, dt)
 
         # Diffusion noise
         from .backward_sde import wiener_increment
@@ -167,7 +170,75 @@ def integrate_forward(
         lats[:, -1].mean(),
     )
 
-    return {"lons": lons, "lats": lats, "times": times}
+    return {
+        "lons": lons,
+        "lats": lats,
+        "times": times,
+        "wmc": wmc_steps[-1] if wmc_steps else {},
+    }
+
+
+def compute_forecast_spread(
+    lons: np.ndarray,
+    lats: np.ndarray,
+    times: np.ndarray,
+    *,
+    center_lon: float | None = None,
+    center_lat: float | None = None,
+) -> list[dict[str, Any]]:
+    """Per-timestep spread cone: p10 / p50 / p95 radius around the centroid.
+
+    A trajectory bundle is not a forecast unless the spread is quantified, so
+    each step reports three radial percentiles (km) plus how many particles
+    were still in play. Steps where every particle has been deactivated keep
+    the previous finite centre and report zero radii rather than being
+    dropped — a collapsed cone must not masquerade as a short run.
+    """
+    lons = np.asarray(lons, dtype=np.float64)
+    lats = np.asarray(lats, dtype=np.float64)
+    n_particles, n_steps = lons.shape
+
+    km_per_deg_lat = 111.0
+    last_cx = float(center_lon if center_lon is not None else lons[:, 0].mean())
+    last_cy = float(center_lat if center_lat is not None else lats[:, 0].mean())
+
+    steps: list[dict[str, Any]] = []
+    for i in range(n_steps):
+        L, A = lons[:, i], lats[:, i]
+        ok = np.isfinite(L) & np.isfinite(A)
+        n_active = int(ok.sum())
+        if n_active:
+            cx = float(np.nanmean(L[ok])) if center_lon is None else float(center_lon)
+            cy = float(np.nanmean(A[ok])) if center_lat is None else float(center_lat)
+            last_cx, last_cy = cx, cy
+            km_per_deg_lon = km_per_deg_lat * float(
+                np.cos(np.radians(np.clip(cy, -89.0, 89.0)))
+            )
+            dx = (L[ok] - cx) * km_per_deg_lon
+            dy = (A[ok] - cy) * km_per_deg_lat
+            radii = np.sqrt(dx * dx + dy * dy)
+            p10, p50, p95 = (
+                float(np.percentile(radii, 10)),
+                float(np.percentile(radii, 50)),
+                float(np.percentile(radii, 95)),
+            )
+        else:
+            cx, cy = last_cx, last_cy
+            p10 = p50 = p95 = 0.0
+
+        steps.append(
+            {
+                "hours_ahead": round(float(times[i]), 3),
+                "center_lon": round(cx, 6),
+                "center_lat": round(cy, 6),
+                "p10_radius_km": round(p10, 3),
+                "p50_radius_km": round(p50, 3),
+                "p95_radius_km": round(p95, 3),
+                "n_active": n_active,
+                "n_particles": int(n_particles),
+            }
+        )
+    return steps
 
 
 def compute_trajectory_quantiles(

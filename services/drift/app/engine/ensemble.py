@@ -12,21 +12,76 @@ from __future__ import annotations
 import numpy as np
 from loguru import logger
 
+from ..data.forcing_selection import apply_confidence_penalty
 from ..schemas import (
     DriftResult,
+    ForecastConeStep,
     ForwardResult,
     FullPipelineResult,
+    OriginTimeInterval,
     ShorelineRisk,
     TrajectoryEnsemble,
     TrajectoryPoint,
+    UncertaintyMetrics,
 )
-from .backward_sde import compute_confidence_ellipse, integrate_backward
+from .backward_sde import (
+    RegimeInputs,
+    compute_confidence_ellipse,
+    integrate_backward,
+    origin_distribution,
+)
 from .forward_forecast import (
+    compute_forecast_spread,
     compute_shoreline_risk,
     compute_trajectory_quantiles,
     integrate_forward,
 )
-from .regime_classifier import OceanRegime
+
+
+def base_confidence_for_ensemble(n_particles: int) -> float:
+    """Confidence before any forcing penalty, from ensemble size alone.
+
+    An ellipse fitted to 3 particles is not an ellipse, it is an artefact —
+    so the score has to say so. Thresholds follow the UI's weak-ensemble
+    warning (<16 members).
+    """
+    if n_particles >= 64:
+        return 0.85
+    if n_particles >= 16:
+        return 0.70
+    return 0.50
+
+
+def build_origin_time_interval(
+    detection_time: Any,
+    backtrack_hours: float,
+    *,
+    uncertainty_hours: float | None = None,
+) -> OriginTimeInterval:
+    """Origin TIME INTERVAL — a spill starts over a window, not at an instant.
+
+    SAR fixes the *acquisition* time exactly; it says nothing about when the
+    oil left the ship. The most likely release is `detection - backtrack`, and
+    the half-width defaults to 10 % of the backtrack (clamped to 0.5–12 h),
+    which is the honest size of the age uncertainty for a Fay-style estimate.
+    """
+    from datetime import timedelta
+
+    if uncertainty_hours is None:
+        uncertainty_hours = min(max(0.10 * float(backtrack_hours), 0.5), 12.0)
+    mid = detection_time - timedelta(hours=float(backtrack_hours))
+    half = timedelta(hours=float(uncertainty_hours))
+    return OriginTimeInterval(
+        earliest_utc=(mid - half).isoformat(),
+        most_likely_utc=mid.isoformat(),
+        latest_utc=(mid + half).isoformat(),
+        uncertainty_hours=round(float(uncertainty_hours), 3),
+        basis=(
+            f"detection_time minus {backtrack_hours:g} h backtrack, widened by "
+            f"{uncertainty_hours:g} h (±{10.0:g}% of the backtrack, clamped to "
+            "0.5–12 h). SAR gives an acquisition instant, not a release instant."
+        ),
+    )
 
 
 def make_interpolators(
@@ -79,10 +134,19 @@ def run_backward_ensemble(
     *,
     n_particles: int = 1000,
     random_seed: int | None = None,
+    regime_inputs: RegimeInputs | None = None,
+    k_field: np.ndarray | None = None,
+    grid_lons: np.ndarray | None = None,
+    grid_lats: np.ndarray | None = None,
+    forcing: dict | None = None,
+    detection_time: Any = None,
+    origin_uncertainty_hours: float | None = None,
 ) -> DriftResult:
     """Run backward ensemble to find origin.
 
-    Returns DriftResult with origin ellipse and particle distribution.
+    Returns DriftResult carrying the origin DISTRIBUTION (ellipse + percentile
+    radii), the selected K_ij regime (or None), the WMC bookkeeping, the
+    origin TIME INTERVAL and uncertainty metrics.
     """
     logger.info(
         "Running backward ensemble: {} particles from ({:.4f}, {:.4f}), age={}h",
@@ -92,7 +156,7 @@ def run_backward_ensemble(
         spill_age_hours,
     )
 
-    origin_lons, origin_lats, regime = integrate_backward(
+    backward = integrate_backward(
         spill_lon,
         spill_lat,
         spill_age_hours,
@@ -101,10 +165,16 @@ def run_backward_ensemble(
         K_interp,
         n_particles=n_particles,
         random_seed=random_seed,
+        regime_inputs=regime_inputs,
+        k_field=k_field,
+        grid_lons=grid_lons,
+        grid_lats=grid_lats,
     )
+    origin_lons, origin_lats = backward.origin_lons, backward.origin_lats
 
-    # Compute 95% confidence ellipse
+    # 95% confidence ellipse + non-parametric percentile radii.
     ellipse = compute_confidence_ellipse(origin_lons, origin_lats, confidence=0.95)
+    distribution = origin_distribution(origin_lons, origin_lats, confidence=0.95)
 
     # Mean dispersion distance from centroid
     km_per_deg = 111.0 * np.cos(np.radians(np.clip(spill_lat, -89, 89)))
@@ -115,13 +185,52 @@ def run_backward_ensemble(
         ).mean()
     )
 
+    n_kept = int(np.isfinite(origin_lons).sum())
+    confidence, basis = apply_confidence_penalty(
+        base_confidence_for_ensemble(n_particles), forcing or {}
+    )
+    warnings: list[str] = list((forcing or {}).get("warnings") or [])
+    if n_particles < 16:
+        warnings.append(
+            f"Weak ensemble: {n_particles} particles — the ellipse is indicative only."
+        )
+    if backward.regime is None:
+        warnings.append(
+            "K_ij regime undetermined: " + str(backward.regime_selection.get("reason"))
+        )
+
+    interval = (
+        build_origin_time_interval(
+            detection_time, spill_age_hours, uncertainty_hours=origin_uncertainty_hours
+        )
+        if detection_time is not None
+        else None
+    )
+
     return DriftResult(
         origin_ellipse=ellipse,
         particle_count=n_particles,
-        regime=regime.value,
+        regime=backward.regime_label,
         origin_points_lon=origin_lons.tolist(),
         origin_points_lat=origin_lats.tolist(),
         mean_dispersion_km=dispersion_km,
+        origin_distribution=distribution,
+        origin_time_interval=interval,
+        uncertainty=UncertaintyMetrics(
+            ensemble_size=int(n_particles),
+            surviving_particles=n_kept,
+            survival_fraction=round(n_kept / max(n_particles, 1), 4),
+            origin_p50_radius_km=distribution["percentile_radii_km"]["p50"],
+            origin_p95_radius_km=distribution["percentile_radii_km"]["p95"],
+            ellipse_area_km2=distribution["covariance_ellipse"]["area_km2"],
+            mean_dispersion_km=dispersion_km,
+            confidence=confidence,
+            confidence_basis=basis,
+        ),
+        regime_detail=backward.regime_selection,
+        wmc=backward.wmc,
+        warnings=warnings,
+        confidence=confidence,
     )
 
 
@@ -135,10 +244,12 @@ def run_forward_ensemble(
     *,
     n_particles: int = 1000,
     random_seed: int | None = None,
+    forcing: dict | None = None,
 ) -> ForwardResult:
     """Run forward ensemble from origin distribution.
 
-    Returns ForwardResult with trajectory paths and quantiles.
+    Returns ForwardResult with trajectory paths, per-quantile envelopes, and
+    the p10/p50/p95 spread cone.
     """
     logger.info(
         "Running forward ensemble: {} particles, {}hr forecast",
@@ -168,10 +279,22 @@ def run_forward_ensemble(
         all_paths_lat=traj["all_paths_lat"],
     )
 
+    spread = compute_forecast_spread(result["lons"], result["lats"], result["times"])
+    confidence, _basis = apply_confidence_penalty(
+        base_confidence_for_ensemble(int(np.asarray(origin_lons).size)), forcing or {}
+    )
+    warnings = list((forcing or {}).get("warnings") or [])
+
     return ForwardResult(
         trajectories=trajectories,
-        regime=OceanRegime.MARKOV1.value,
+        # The forward path does not classify a regime — it inherits whatever
+        # K field the caller supplies. None, not a guess.
+        regime=None,
         forecast_hours=forecast_hours,
+        spread=[ForecastConeStep(**s) for s in spread],
+        wmc=dict(result.get("wmc") or {}),
+        warnings=warnings,
+        confidence=confidence,
     )
 
 
