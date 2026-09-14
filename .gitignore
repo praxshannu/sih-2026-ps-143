@@ -39,7 +39,17 @@ env/
 docker-compose.override.yml
 
 # Data files
-data/
+#
+# ANCHORED to the repo root on purpose. A bare `data/` matches at ANY depth,
+# which silently swallowed `services/drift/app/data/` — 11 source modules the
+# drift service imports at runtime (forcing_factory, cmems_provider, era5_loader,
+# gfs_provider, mock_forcing, ...). They were never committed, so a fresh clone
+# could not import the forcing layer at all and `pytest` died during collection
+# with ModuleNotFoundError. Runtime data lives at the root; source code does not.
+/data/
+/services/data/
+# The extension rules below still catch stray data files anywhere in the tree,
+# which is what actually keeps large binaries out of the history.
 *.csv
 *.geojson
 *.shp
