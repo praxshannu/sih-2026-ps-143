@@ -95,7 +95,11 @@ class Measurement:
             "width_km": self.width_m / 1000.0,
             "orientation_deg": self.orientation_deg,
             "centroid": [self.centroid_lon, self.centroid_lat],
-            "elongation": self.elongation,
+            # Public key stays `elongation`; the field name records *how* it
+            # was measured (rotated-rect aspect), which matters because the
+            # elongation gate is applied on this number and a different
+            # definition would move the threshold.
+            "elongation": self.elongation_rotated_rect,
             "method": self.method,
         }
 
@@ -200,7 +204,7 @@ class SceneGeometry:
             orientation_deg=orientation_deg,
             centroid_lon=c_lon,
             centroid_lat=c_lat,
-            elongation=elongation,
+            elongation_rotated_rect=elongation,
             method="geodesic_area_wgs84+aeqd_shape",
         )
 
