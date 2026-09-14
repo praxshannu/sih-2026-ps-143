@@ -1,0 +1,21 @@
+# SENTINEL
+
+> Autonomous Maritime Oil Spill Intelligence Platform
+
+SENTINEL is an end-to-end system for detecting, attributing, and investigating maritime oil spills using SAR satellite imagery, AIS vessel tracking, ocean drift modeling, and LLM-generated case narratives.
+
+## Pages
+
+- [Watch Room](https://sentinel.maritime.ai/): Real-time maritime surveillance globe with live oil spill detection, vessel tracking, and case monitoring.
+- [Investigation](https://sentinel.maritime.ai/investigate/): Case investigation view with suspect vessel attribution, evidence mapping, and drift analysis.
+- [Timeline](https://sentinel.maritime.ai/timeline/): Forensic timeline of spill events, AIS gaps, and vessel sightings with severity filtering.
+- [Vessel Profile](https://sentinel.maritime.ai/vessel/): Detailed vessel intelligence including AIS history, sanctions status, and risk assessment.
+- [Case File](https://sentinel.maritime.ai/casefile/): Complete investigation case file with evidence chain, LLM-generated narratives, and export options.
+
+## Technology
+
+- UNet++ SCSE for oil spill segmentation from Sentinel-1 SAR imagery
+- Lagrangian particle drift modeling with WMC ∇·K correction
+- K_ij attribution tensor with fuzzy scoring and Wilson 95% CI
+- LSTM autoencoder for AIS behavioral anomaly detection
+- LLM-powered case narrative generation

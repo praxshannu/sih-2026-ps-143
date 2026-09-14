@@ -1,0 +1,40 @@
+# Prometheus scrape configuration for SENTINEL services
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: "sentinel-api"
+    static_configs:
+      - targets: ["sentinel-api:8000"]
+    metrics_path: /metrics
+
+  - job_name: "sentinel-ingest"
+    static_configs:
+      - targets: ["sentinel-ingest:8001"]
+    metrics_path: /metrics
+
+  - job_name: "sentinel-detect"
+    static_configs:
+      - targets: ["sentinel-detect:8002"]
+    metrics_path: /metrics
+
+  - job_name: "sentinel-drift"
+    static_configs:
+      - targets: ["sentinel-drift:8003"]
+    metrics_path: /metrics
+
+  - job_name: "sentinel-attribute"
+    static_configs:
+      - targets: ["sentinel-attribute:8004"]
+    metrics_path: /metrics
+
+  - job_name: "sentinel-intel"
+    static_configs:
+      - targets: ["sentinel-intel:8005"]
+    metrics_path: /metrics
+
+  - job_name: "sentinel-worker"
+    static_configs:
+      - targets: ["sentinel-worker:8000"]
+    metrics_path: /metrics

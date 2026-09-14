@@ -1,0 +1,90 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+eggs/
+*.egg
+.eggs/
+*.whl
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.workbuddy-ai/
+.pytest_cache/
+.ruff_cache/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Environment
+.env
+.env.local
+.env.production
+
+# Docker
+docker-compose.override.yml
+
+# Data files
+data/
+*.csv
+*.geojson
+*.shp
+*.shx
+*.dbf
+*.prj
+*.tif
+*.tiff
+*.nc
+*.hdf5
+*.h5
+
+# Model weights
+*.pth
+*.pt
+*.ckpt
+*.onnx
+*.pb
+checkpoints/
+wandb/
+mlruns/
+runs/
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Node
+node_modules/
+.next/
+dist/
+.nuxt/
+
+# Build artifacts
+*.tar.gz
+*.zip
+*.tar
+*.rar
+
+# Temporary
+tmp/
+temp/
+*.tmp
+*.bak

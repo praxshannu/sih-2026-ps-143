@@ -1,0 +1,138 @@
+/* IBM Plex — single import, two weights each */
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Reset ─────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+/* ── Base ───────────────────────────────────────── */
+html, body, #root {
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  background: #080a0e;
+  color: #d1d5db;
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  font-size: 11px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Scrollbar ──────────────────────────────────── */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: #080a0e; }
+::-webkit-scrollbar-thumb { background: #1e2530; border-radius: 0; }
+::-webkit-scrollbar-thumb:hover { background: #d97706; }
+
+/* ── Utility classes ────────────────────────────── */
+
+/* Hard-border panel — no blur, no radius */
+.ops-panel {
+  @apply border border-sentinel-border bg-sentinel-panel;
+}
+
+/* Inset panel (darker, for nested data) */
+.ops-inset {
+  @apply border border-sentinel-border bg-sentinel-surface;
+}
+
+/* Row in a data table */
+.ops-row {
+  @apply flex items-center justify-between border-b border-sentinel-border px-3 py-1.5;
+  min-height: 28px;
+}
+.ops-row:last-child { border-bottom: none; }
+.ops-row:hover { background: #0e1117; }
+
+/* Label / value pair */
+.ops-label {
+  @apply font-mono text-2xs uppercase tracking-wider text-sentinel-muted;
+}
+.ops-value {
+  @apply font-mono text-xs text-sentinel-text tabular-nums;
+}
+.ops-value-hi {
+  @apply font-mono text-xs font-semibold text-sentinel-text-hi tabular-nums;
+}
+
+/* Amber accent text */
+.ops-amber { color: #d97706; }
+.ops-danger { color: #dc2626; }
+.ops-nominal { color: #15803d; }
+.ops-caution { color: #ca8a04; }
+
+/* Section header bar */
+.ops-header {
+  @apply flex items-center gap-2 border-b border-sentinel-border bg-sentinel-surface px-3 py-2;
+}
+.ops-header-label {
+  @apply font-mono text-2xs font-semibold uppercase tracking-[0.15em] text-sentinel-muted-hi;
+}
+
+/* Status dot — NO animation, static squares */
+.status-sq {
+  @apply inline-block h-2 w-2 flex-shrink-0;
+}
+.status-sq.nominal  { background: #15803d; }
+.status-sq.caution  { background: #ca8a04; }
+.status-sq.danger   { background: #dc2626; }
+.status-sq.offline  { background: #4b5563; }
+.status-sq.active   { background: #d97706; }
+
+/* Confidence bar (thin horizontal fill) */
+.conf-bar-track {
+  @apply h-0.5 w-full bg-sentinel-border;
+}
+.conf-bar-fill {
+  @apply h-0.5;
+  transition: width 0.4s ease;
+}
+
+/* Deck.gl tooltip */
+.ops-tooltip {
+  @apply ops-panel px-3 py-2 font-mono text-xs text-sentinel-text;
+  pointer-events: none;
+  position: fixed;
+  z-index: 999;
+}
+
+/* Blink cursor for live feeds */
+.cursor-blink::after {
+  content: '▌';
+  color: #d97706;
+  animation: blink 1.2s step-end infinite;
+}
+
+/* Scanline overlay — purely decorative, very subtle */
+.scanline-overlay::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    to bottom,
+    transparent 0px,
+    transparent 3px,
+    rgba(0, 0, 0, 0.04) 3px,
+    rgba(0, 0, 0, 0.04) 4px
+  );
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* Sidebar nav item */
+.nav-item {
+  @apply flex h-9 w-full items-center gap-2.5 px-3 border-l-2 border-transparent text-sentinel-muted;
+  transition: color 0.12s, background 0.12s, border-color 0.12s;
+}
+.nav-item:hover {
+  @apply bg-sentinel-panel text-sentinel-text-hi border-l-sentinel-border-hi;
+}
+.nav-item.active {
+  @apply bg-sentinel-panel text-sentinel-amber border-l-sentinel-amber;
+}
+.nav-item-label {
+  @apply font-mono text-2xs uppercase tracking-[0.12em];
+}

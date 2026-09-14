@@ -1,0 +1,183 @@
+services:
+  db:
+    image: postgis/postgis:15-3.4
+    container_name: sentinel-db
+    environment:
+      POSTGRES_DB: sentinel
+      POSTGRES_USER: ${DB_USER:-sentinel}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-sentinel_secret}
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./database/init:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-sentinel} -d sentinel"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: sentinel-redis
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  sentinel-ingest:
+    build:
+      context: ./services/ingest
+      dockerfile: Dockerfile
+    container_name: sentinel-ingest
+    env_file: .env
+    ports:
+      - "8001:8001"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./data:/app/data
+
+  sentinel-detect:
+    build:
+      context: ./services/detect
+      dockerfile: Dockerfile
+    container_name: sentinel-detect
+    env_file: .env
+    ports:
+      - "8002:8002"
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./data:/app/data
+      - ./services/detect/app/models/weights:/app/app/models/weights
+
+  sentinel-drift:
+    build:
+      context: ./services/drift
+      dockerfile: Dockerfile
+    container_name: sentinel-drift
+    env_file: .env
+    ports:
+      - "8003:8003"
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      db:
+        condition: service_healthy
+
+  sentinel-attribute:
+    build:
+      context: ./services/attribute
+      dockerfile: Dockerfile
+    container_name: sentinel-attribute
+    env_file: .env
+    ports:
+      - "8004:8004"
+    volumes:
+      - ./data:/app/data:ro
+    depends_on:
+      db:
+        condition: service_healthy
+
+  sentinel-intel:
+    build:
+      context: ./services/intel
+      dockerfile: Dockerfile
+    container_name: sentinel-intel
+    env_file: .env
+    ports:
+      - "8005:8005"
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  sentinel-api:
+    build:
+      context: ./services/api
+      dockerfile: Dockerfile
+    container_name: sentinel-api
+    env_file: .env
+    ports:
+      - "${API_PORT:-8000}:8000"
+    volumes:
+      - ./scripts:/app/scripts:ro
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      sentinel-detect:
+        condition: service_started
+      sentinel-drift:
+        condition: service_started
+      sentinel-attribute:
+        condition: service_started
+      sentinel-intel:
+        condition: service_started
+
+  sentinel-worker:
+    build:
+      context: ./services/api
+      dockerfile: Dockerfile
+    container_name: sentinel-worker
+    env_file: .env
+    command: celery -A app.celery_app worker -l info -c 4 -Q celery,pipeline,detect,drift,attribute,intel
+    volumes:
+      - ./services/api/app:/app/app
+      - ./scripts:/app/scripts:ro
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      sentinel-detect:
+        condition: service_started
+      sentinel-drift:
+        condition: service_started
+      sentinel-attribute:
+        condition: service_started
+      sentinel-intel:
+        condition: service_started
+
+  sentinel-ui:
+    build:
+      context: ./services/ui
+      dockerfile: Dockerfile
+    container_name: sentinel-ui
+    ports:
+      - "${UI_PORT:-3000}:3000"
+    depends_on:
+      - sentinel-api
+
+  prometheus:
+    image: prom/prometheus:v2.52.0
+    container_name: sentinel-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+
+  grafana:
+    image: grafana/grafana:10.4.2
+    container_name: sentinel-grafana
+    ports:
+      - "3001:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+    volumes:
+      - ./infra/grafana/dashboards:/etc/grafana/provisioning/dashboards
+
+volumes:
+  pgdata:
