@@ -7,6 +7,7 @@ case: `sentinel:result:{case_id}` -> JSON {stage: payload}.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 from typing import Any
@@ -47,10 +48,8 @@ async def save_stage(case_id: str, stage: str, payload: Any) -> None:
     except Exception as e:
         logger.warning("Result cache write failed, memory-only: {}", e)
     finally:
-        try:
+        with contextlib.suppress(Exception):
             await client.aclose()
-        except Exception:
-            pass
 
 
 async def get_results(case_id: str) -> dict[str, Any]:
@@ -64,10 +63,8 @@ async def get_results(case_id: str) -> dict[str, Any]:
         except Exception as e:
             logger.warning("Result cache read failed, memory fallback: {}", e)
         finally:
-            try:
+            with contextlib.suppress(Exception):
                 await client.aclose()
-            except Exception:
-                pass
     return dict(_memory.get(case_id, {}))
 
 

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from enum import Enum
+from enum import StrEnum
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 # ---------- Enums ----------
 
 
-class CaseStatus(str, Enum):
+class CaseStatus(StrEnum):
     NEW = "new"
     DETECTED = "detected"
     DRIFT_ANALYZING = "drift_analyzing"
@@ -19,7 +19,7 @@ class CaseStatus(str, Enum):
     CLOSED = "closed"
 
 
-class AlertType(str, Enum):
+class AlertType(StrEnum):
     SPILL_DETECTED = "spill_detected"
     SUSPECT_IDENTIFIED = "suspect_identified"
     CASE_FILE_READY = "case_file_ready"
@@ -27,7 +27,7 @@ class AlertType(str, Enum):
     MANUAL = "manual"
 
 
-class AlertPriority(str, Enum):
+class AlertPriority(StrEnum):
     LOW = "low"
     MEDIUM = "medium"
     HIGH = "high"
@@ -238,7 +238,7 @@ class WebhookTargetResponse(BaseModel):
 # ---------- WebSocket ----------
 
 
-class WSEventType(str, Enum):
+class WSEventType(StrEnum):
     SPILL_DETECTED = "SPILL_DETECTED"
     DRIFT_COMPLETE = "DRIFT_COMPLETE"
     SUSPECT_RANKED = "SUSPECT_RANKED"

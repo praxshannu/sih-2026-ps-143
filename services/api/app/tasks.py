@@ -12,6 +12,7 @@ keys fall back to the Wakashio-demo defaults below.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 from datetime import UTC, datetime, timedelta
@@ -69,10 +70,8 @@ def _publish(case_id: str, event_type: str, payload: dict) -> None:
             body = {"type": event_type, "payload": {"case_id": case_id, **payload}}
             client.publish(f"sentinel:ws:{case_id}", json.dumps(body, default=str))
         finally:
-            try:
+            with contextlib.suppress(Exception):
                 client.close()
-            except Exception:
-                pass
     except Exception as e:
         logger.warning("WS publish failed for {}: {}", case_id, e)
 
@@ -90,10 +89,8 @@ def _save_stage(case_id: str, stage: str, data: Any) -> None:
             all_data[stage] = data
             client.setex(key, 86400, json.dumps(all_data, default=str))
         finally:
-            try:
+            with contextlib.suppress(Exception):
                 client.close()
-            except Exception:
-                pass
     except Exception as e:
         logger.warning("Result cache write failed for {}: {}", case_id, e)
 

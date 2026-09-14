@@ -10,6 +10,7 @@ in-process-only when Redis is unreachable.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import os
 from collections import defaultdict
@@ -105,10 +106,8 @@ class ConnectionManager:
             try:
                 await client.publish(_channel(case_id), message)
             finally:
-                try:
+                with contextlib.suppress(Exception):
                     await client.aclose()
-                except Exception:
-                    pass
         except Exception as e:
             logger.warning("WS Redis publish failed, local-only broadcast: {}", e)
         await self._send_local(case_id, message)

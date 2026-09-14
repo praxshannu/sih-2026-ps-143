@@ -29,7 +29,9 @@ async def get_case_suspects(case_id: str):
     if not suspects:
         raise HTTPException(
             status_code=404,
-            detail=f"No suspects cached for case {case_id}; run POST /api/v1/pipeline/trigger first",
+            detail=(
+                f"No suspects cached for case {case_id}; run POST /api/v1/pipeline/trigger first"
+            ),
         )
     attr = results.get("attribute") or {}
     return {
@@ -47,7 +49,10 @@ async def get_drift_forecast(case_id: str):
     if not drift:
         raise HTTPException(
             status_code=404,
-            detail=f"No drift results cached for case {case_id}; run POST /api/v1/pipeline/trigger first",
+            detail=(
+                f"No drift results cached for case {case_id}; "
+                "run POST /api/v1/pipeline/trigger first"
+            ),
         )
     return {"case_id": case_id, **drift}
 

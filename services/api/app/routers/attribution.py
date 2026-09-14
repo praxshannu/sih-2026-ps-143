@@ -82,7 +82,9 @@ class AttributionRequest(BaseModel):
     forcing: str = Field("auto", description="Wind source: auto | era5 | gfs")
     bbox: tuple[float, float, float, float] | None = Field(
         default=None,
-        description="(W,S,E,N) override for the forcing bbox; default = a 5° box around the detection",
+        description=(
+            "(W,S,E,N) override for the forcing bbox; default = a 5° box around the detection"
+        ),
     )
 
     n_members: int = Field(64, ge=16, le=2048)

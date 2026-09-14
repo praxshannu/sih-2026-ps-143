@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import time
 from typing import Any
 
 from fastapi import Depends, HTTPException, status
@@ -62,6 +63,3 @@ def create_access_token(data: dict[str, Any], expires_delta: int | None = None) 
     expire = int(time.time()) + (expires_delta or ACCESS_TOKEN_EXPIRE_SECONDS)
     to_encode.update({"exp": expire, "iat": int(time.time())})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
-
-
-import time

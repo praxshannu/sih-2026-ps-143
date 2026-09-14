@@ -28,6 +28,10 @@ _UPSTREAM_ERROR = (
     "CDSE_CLIENT_ID / CDSE_CLIENT_SECRET set?"
 )
 
+#: Scalar query-parameter values forwarded upstream. `None` means "omit", never
+#: "send empty" — httpx renders None as a bare `key=`, which upstream rejects.
+_QueryValue = str | int | float | bool | None
+
 
 class IngestRequest(BaseModel):
     min_lon: float | None = None
@@ -50,7 +54,7 @@ def _bbox_params(
     max_lon: float | None,
     max_lat: float | None,
     bbox: str | None,
-) -> dict[str, object]:
+) -> dict[str, _QueryValue]:
     """Forward an AOI using named axes whenever the caller supplied them.
 
     The positional ``west,south,east,north`` string is ambiguous — a lat-first
@@ -68,7 +72,7 @@ def _bbox_params(
     return {"bbox": bbox}
 
 
-async def _proxy_get(path: str, params: dict[str, object]) -> Response:
+async def _proxy_get(path: str, params: dict[str, _QueryValue]) -> Response:
     url = f"{INGEST_SERVICE_URL}/archive/{path}"
     # httpx renders None as a bare `key=`, which upstream then fails to parse
     # as a float/bool. Absent must mean absent, not "empty string".

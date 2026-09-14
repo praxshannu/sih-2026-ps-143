@@ -31,9 +31,7 @@ class _CircuitState:
     def allow(self, service: str) -> bool:
         import time
 
-        if service in self.open_until and time.time() < self.open_until[service]:
-            return False
-        return True
+        return not (service in self.open_until and time.time() < self.open_until[service])
 
     def record_success(self, service: str) -> None:
         self.failures.pop(service, None)
