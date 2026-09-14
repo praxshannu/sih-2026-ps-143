@@ -13,22 +13,22 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import sys
 from pathlib import Path
-from typing import Optional
 
 import numpy as np
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, TensorDataset
 
-
 # ---------------------------------------------------------------------------
 # Model
 # ---------------------------------------------------------------------------
 
+
 class LSTMEncoder(nn.Module):
-    def __init__(self, input_dim: int, hidden_dim: int, num_layers: int = 2, dropout: float = 0.2) -> None:
+    def __init__(
+        self, input_dim: int, hidden_dim: int, num_layers: int = 2, dropout: float = 0.2
+    ) -> None:
         super().__init__()
         self.lstm = nn.LSTM(
             input_size=input_dim,
@@ -46,7 +46,14 @@ class LSTMEncoder(nn.Module):
 
 
 class LSTMDecoder(nn.Module):
-    def __init__(self, input_dim: int, hidden_dim: int, seq_len: int, num_layers: int = 2, dropout: float = 0.2) -> None:
+    def __init__(
+        self,
+        input_dim: int,
+        hidden_dim: int,
+        seq_len: int,
+        num_layers: int = 2,
+        dropout: float = 0.2,
+    ) -> None:
         super().__init__()
         self.seq_len = seq_len
         self.hidden_dim = hidden_dim
@@ -59,7 +66,9 @@ class LSTMDecoder(nn.Module):
         )
         self.output_proj = nn.Linear(hidden_dim, input_dim)
 
-    def forward(self, encoder_output: torch.Tensor, h_n: torch.Tensor, c_n: torch.Tensor) -> torch.Tensor:
+    def forward(
+        self, encoder_output: torch.Tensor, h_n: torch.Tensor, c_n: torch.Tensor
+    ) -> torch.Tensor:
         batch_size = encoder_output.size(0)
         decoder_input = encoder_output[:, -1:, :].repeat(1, self.seq_len, 1)
         output, _ = self.lstm(decoder_input, (h_n, c_n))
@@ -98,6 +107,7 @@ class LSTMAutoencoder(nn.Module):
 # Dataset
 # ---------------------------------------------------------------------------
 
+
 def load_ais_sequences(data_dir: str, seq_len: int = 48, stride: int = 6) -> np.ndarray:
     data_path = Path(data_dir)
     sequences = []
@@ -112,24 +122,27 @@ def load_ais_sequences(data_dir: str, seq_len: int = 48, stride: int = 6) -> np.
         if f.suffix == ".npy":
             data = np.load(f)
             for i in range(0, len(data) - seq_len, stride):
-                sequences.append(data[i:i + seq_len])
+                sequences.append(data[i : i + seq_len])
         else:
             import csv
+
             with open(f) as fh:
                 reader = csv.DictReader(fh)
                 rows = []
                 for row in reader:
                     try:
-                        rows.append([
-                            float(row.get("sog", 0)),
-                            float(row.get("cog", 0)) / 360.0,
-                            float(row.get("heading", 0)) / 360.0,
-                        ])
+                        rows.append(
+                            [
+                                float(row.get("sog", 0)),
+                                float(row.get("cog", 0)) / 360.0,
+                                float(row.get("heading", 0)) / 360.0,
+                            ]
+                        )
                     except (ValueError, TypeError):
                         continue
                 arr = np.array(rows, dtype=np.float32)
                 for i in range(0, len(arr) - seq_len, stride):
-                    seq = arr[i:i + seq_len]
+                    seq = arr[i : i + seq_len]
                     if np.std(seq) > 0.01:
                         sequences.append(seq)
 
@@ -162,6 +175,7 @@ def _generate_synthetic_normal(n_vessels: int = 200, seq_len: int = 48) -> list[
 # Training
 # ---------------------------------------------------------------------------
 
+
 def train_one_epoch(
     model: LSTMAutoencoder,
     loader: DataLoader,
@@ -186,7 +200,9 @@ def train_one_epoch(
 
 
 @torch.no_grad()
-def compute_threshold(model: LSTMAutoencoder, loader: DataLoader, device: torch.device, percentile: float = 95.0) -> float:
+def compute_threshold(
+    model: LSTMAutoencoder, loader: DataLoader, device: torch.device, percentile: float = 95.0
+) -> float:
     model.eval()
     all_errors = []
     for batch in loader:
@@ -234,7 +250,9 @@ def main() -> None:
     train_tensor = torch.from_numpy(train_seqs)
     val_tensor = torch.from_numpy(val_seqs)
 
-    train_loader = DataLoader(TensorDataset(train_tensor), batch_size=args.batch_size, shuffle=True, drop_last=True)
+    train_loader = DataLoader(
+        TensorDataset(train_tensor), batch_size=args.batch_size, shuffle=True, drop_last=True
+    )
     val_loader = DataLoader(TensorDataset(val_tensor), batch_size=args.batch_size, shuffle=False)
 
     model = LSTMAutoencoder(
@@ -250,7 +268,9 @@ def main() -> None:
 
     criterion = nn.MSELoss()
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1e-5)
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.epochs, eta_min=1e-6)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+        optimizer, T_max=args.epochs, eta_min=1e-6
+    )
 
     best_val_loss = float("inf")
 
@@ -269,16 +289,21 @@ def main() -> None:
                 n += x.size(0)
         val_loss /= n
 
-        print(f"Epoch {epoch+1}/{args.epochs} train_loss={train_loss:.6f} val_loss={val_loss:.6f}")
+        print(
+            f"Epoch {epoch + 1}/{args.epochs} train_loss={train_loss:.6f} val_loss={val_loss:.6f}"
+        )
 
         if val_loss < best_val_loss:
             best_val_loss = val_loss
-            torch.save({
-                "epoch": epoch,
-                "model_state_dict": model.state_dict(),
-                "val_loss": val_loss,
-                "args": vars(args),
-            }, os.path.join(args.output_dir, "lstm_autoencoder_best.pth"))
+            torch.save(
+                {
+                    "epoch": epoch,
+                    "model_state_dict": model.state_dict(),
+                    "val_loss": val_loss,
+                    "args": vars(args),
+                },
+                os.path.join(args.output_dir, "lstm_autoencoder_best.pth"),
+            )
 
     threshold = compute_threshold(model, val_loader, device, percentile=args.threshold_percentile)
     print(f"[anomaly] Anomaly threshold ({args.threshold_percentile}th pct): {threshold:.6f}")

@@ -97,9 +97,7 @@ def _build_user_prompt(
                 f"gap={s.get('ais_gap_minutes', 0):.0f}min"
                 f"{', DARK VESSEL' if s.get('is_dark_vessel') else ''}"
             )
-        parts.append(
-            f"\nSUSPECT VESSELS (top {len(suspects)}):\n" + "\n".join(suspect_lines)
-        )
+        parts.append(f"\nSUSPECT VESSELS (top {len(suspects)}):\n" + "\n".join(suspect_lines))
 
     # Evidence hash
     parts.append(f"\nEVIDENCE PACKAGE HASH: {evidence_hash}")
@@ -195,9 +193,13 @@ async def generate_narrative(
     last_error = ""
     for attempt in range(1, LLM_MAX_RETRIES + 1):
         try:
-            prompt = user_prompt if attempt == 1 else (
-                f"{user_prompt}\n\nPREVIOUS OUTPUT FAILED VALIDATION: {last_error}\n"
-                "Return ONLY valid JSON matching the required schema."
+            prompt = (
+                user_prompt
+                if attempt == 1
+                else (
+                    f"{user_prompt}\n\nPREVIOUS OUTPUT FAILED VALIDATION: {last_error}\n"
+                    "Return ONLY valid JSON matching the required schema."
+                )
             )
             if LLM_PROVIDER == "ollama":
                 result = await _call_ollama(prompt, evidence_hash)
@@ -214,7 +216,9 @@ async def generate_narrative(
             return result
         except Exception as e:
             last_error = str(e)[:500]
-            logger.warning("Narrative attempt {}/{} failed: {}", attempt, LLM_MAX_RETRIES, last_error)
+            logger.warning(
+                "Narrative attempt {}/{} failed: {}", attempt, LLM_MAX_RETRIES, last_error
+            )
 
     logger.warning("All LLM attempts failed, using offline template")
     result = offline_narrative(detection, drift, suspects or [], evidence_hash)
@@ -262,7 +266,9 @@ def offline_narrative(
         "summary": summary,
         "key_finding": (
             f"Primary suspect {top.get('vessel_name', 'UNKNOWN')} scores "
-            f"{float(top.get('composite_score', 0.0)):.3f}." if top else "No suspects ranked."
+            f"{float(top.get('composite_score', 0.0)):.3f}."
+            if top
+            else "No suspects ranked."
         ),
         "evidentiary_gaps": gaps,
         "legal_basis": "MARPOL Annex I — discharge of oil prohibited; flag/port state jurisdiction applies.",

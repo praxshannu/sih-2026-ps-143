@@ -8,14 +8,14 @@ from __future__ import annotations
 
 import io
 import os
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 import qrcode
-from weasyprint import HTML
 from jinja2 import Template
 from loguru import logger
+from weasyprint import HTML
 
 CASE_FILE_OUTPUT_DIR = os.getenv("CASE_FILE_OUTPUT_DIR", "/app/data/case_files")
 
@@ -295,6 +295,7 @@ def _generate_qr_code(data: str) -> str:
     buf = io.BytesIO()
     img.save(buf, format="PNG")
     import base64
+
     return base64.b64encode(buf.getvalue()).decode("utf-8")
 
 
@@ -339,7 +340,7 @@ def generate_case_file(
 
     # Prepare suspect dicts for template
     suspect_dicts = []
-    for s in (suspects or []):
+    for s in suspects or []:
         if hasattr(s, "model_dump"):
             suspect_dicts.append(s.model_dump())
         elif isinstance(s, dict):
@@ -359,7 +360,7 @@ def generate_case_file(
 
     # Prepare chain of custody
     custody_dicts = []
-    for c in (chain_of_custody or []):
+    for c in chain_of_custody or []:
         if hasattr(c, "model_dump"):
             custody_dicts.append(c.model_dump())
         elif isinstance(c, dict):
@@ -373,7 +374,7 @@ def generate_case_file(
     ctx = {
         "case_id": case_id,
         "spill_id": detection.get("spill_id", ""),
-        "generated_utc": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),
+        "generated_utc": datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S UTC"),
         "evidence_hash": evidence_hash,
         "centroid_lat": detection.get("centroid_lat", 0),
         "centroid_lon": detection.get("centroid_lon", 0),

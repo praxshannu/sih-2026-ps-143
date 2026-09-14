@@ -18,7 +18,7 @@ from loguru import logger
 
 from app.alerter import dispatch_alert
 from app.case_file import generate_case_file
-from app.hasher import build_custody_chain, compute_evidence_hash, create_custody_entry
+from app.hasher import compute_evidence_hash, create_custody_entry
 from app.narrative import check_llm_availability, generate_narrative, llm_status
 from app.schemas import (
     AlertRequest,
@@ -57,6 +57,7 @@ logger.add(
 # Lifespan
 # ---------------------------------------------------------------------------
 
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup/shutdown lifecycle."""
@@ -85,6 +86,7 @@ app = FastAPI(
 # ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
+
 
 @app.get("/health", response_model=HealthResponse)
 async def health_check():
@@ -117,7 +119,8 @@ async def create_narrative(req: NarrativeRequest):
     t0 = time.monotonic()
     logger.info(
         "[INTEL] Narrative request for case {} (spill={})",
-        req.detection.case_id, req.detection.spill_id,
+        req.detection.case_id,
+        req.detection.spill_id,
     )
 
     try:
@@ -143,7 +146,8 @@ async def create_narrative(req: NarrativeRequest):
         elapsed_ms = (time.monotonic() - t0) * 1000
         logger.info(
             "[INTEL] Narrative generated in {:.1f}ms: priority={}",
-            elapsed_ms, result.get("alert_priority"),
+            elapsed_ms,
+            result.get("alert_priority"),
         )
 
         return NarrativeResult(
@@ -233,12 +237,14 @@ async def create_case_file(req: CaseFileRequest):
                     custody_entries.append(c)
         else:
             # Create minimal chain from intel stage
-            custody_entries.append(create_custody_entry(
-                stage="intel-packaging",
-                input_data=req.detection.model_dump(),
-                output_data={"evidence_hash": evidence_hash},
-                previous_hash="",
-            ))
+            custody_entries.append(
+                create_custody_entry(
+                    stage="intel-packaging",
+                    input_data=req.detection.model_dump(),
+                    output_data={"evidence_hash": evidence_hash},
+                    previous_hash="",
+                )
+            )
 
         # Generate PDF
         pdf_path = generate_case_file(
@@ -255,7 +261,8 @@ async def create_case_file(req: CaseFileRequest):
         elapsed_ms = (time.monotonic() - t0) * 1000
         logger.info(
             "[INTEL] Case file generated in {:.1f}ms: {}",
-            elapsed_ms, pdf_path,
+            elapsed_ms,
+            pdf_path,
         )
 
         return CaseFileResult(
@@ -288,20 +295,24 @@ async def compute_hash(req: HashRequest):
         # Chain with previous
         if req.previous_hash:
             import hashlib
-            combined = f"{req.previous_hash}{output_hash}".encode("utf-8")
+
+            combined = f"{req.previous_hash}{output_hash}".encode()
             chain_hash = hashlib.sha256(combined).hexdigest()
         else:
             chain_hash = output_hash
 
         logger.info(
             "[INTEL] Hash computed for stage '{}': chain={}",
-            req.stage, chain_hash[:16],
+            req.stage,
+            chain_hash[:16],
         )
 
         return HashResult(
             case_id=req.case_id,
             stage=req.stage,
-            input_hash=compute_evidence_hash(case_id=req.case_id, spill_id="", detection_data=req.data),
+            input_hash=compute_evidence_hash(
+                case_id=req.case_id, spill_id="", detection_data=req.data
+            ),
             output_hash=output_hash,
             chain_hash=chain_hash,
         )

@@ -31,7 +31,7 @@ from __future__ import annotations
 import math
 import random
 from dataclasses import asdict, dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 # Regions where no free real AIS coverage exists. Synthetic data may be used
@@ -46,14 +46,14 @@ NO_REAL_COVERAGE_BOXES: tuple[tuple[float, float, float, float], ...] = (
 # have real terrestrial receivers. If an AOI touches one of these we must use
 # the live feed, never synthetic — otherwise we would be hiding real data.
 KNOWN_COASTAL_COVERAGE_BOXES: tuple[tuple[float, float, float, float], ...] = (
-    (72.60, 18.80, 73.10, 19.30),   # Mumbai / JNPT approaches
-    (80.10, 12.90, 80.45, 13.25),   # Chennai
-    (56.00, 26.40, 56.90, 27.10),   # Strait of Hormuz
-    (43.20, 12.40, 45.10, 13.20),   # Gulf of Aden / Bab-el-Mandeb
-    (79.70, 6.80, 80.00, 7.10),     # Colombo
-    (67.90, 24.70, 68.20, 25.10),   # Karachi
-    (88.00, 21.60, 88.40, 22.10),   # Kolkata / Haldia approaches
-    (103.50, 1.10, 104.30, 1.50),   # Singapore Strait (eastern edge)
+    (72.60, 18.80, 73.10, 19.30),  # Mumbai / JNPT approaches
+    (80.10, 12.90, 80.45, 13.25),  # Chennai
+    (56.00, 26.40, 56.90, 27.10),  # Strait of Hormuz
+    (43.20, 12.40, 45.10, 13.20),  # Gulf of Aden / Bab-el-Mandeb
+    (79.70, 6.80, 80.00, 7.10),  # Colombo
+    (67.90, 24.70, 68.20, 25.10),  # Karachi
+    (88.00, 21.60, 88.40, 22.10),  # Kolkata / Haldia approaches
+    (103.50, 1.10, 104.30, 1.50),  # Singapore Strait (eastern edge)
 )
 
 SYNTHETIC_NOTICE = (
@@ -65,9 +65,7 @@ SYNTHETIC_NOTICE = (
 PROVENANCE = "synthetic_mock"
 
 
-def _overlaps(
-    a: tuple[float, float, float, float], b: tuple[float, float, float, float]
-) -> bool:
+def _overlaps(a: tuple[float, float, float, float], b: tuple[float, float, float, float]) -> bool:
     """True when two (w, s, e, n) boxes share any area."""
     aw, as_, ae, an = a
     bw, bs, be, bn = b
@@ -97,9 +95,7 @@ def coverage_verdict(bbox: tuple[float, float, float, float]) -> dict[str, Any]:
     """
     w, s, e, n = bbox
     in_open = any(_overlaps(bbox, b) for b in NO_REAL_COVERAGE_BOXES)
-    coastal_hits = [
-        list(b) for b in KNOWN_COASTAL_COVERAGE_BOXES if _overlaps(bbox, b)
-    ]
+    coastal_hits = [list(b) for b in KNOWN_COASTAL_COVERAGE_BOXES if _overlaps(bbox, b)]
     synthetic = in_open and not coastal_hits
 
     if synthetic:
@@ -230,9 +226,7 @@ def generate_synthetic_ais(
             dark_until = start + timedelta(seconds=span * 0.62)
 
         while t <= end:
-            in_gap = (
-                dark_from is not None and dark_from <= t <= dark_until
-            )
+            in_gap = dark_from is not None and dark_from <= t <= dark_until
             if in_gap:
                 if not gaps or gaps[-1].get("end") is not None:
                     gaps.append(
@@ -302,7 +296,7 @@ def generate_synthetic_ais(
         ],
         "count": len(vessels),
         "vessels": vessels,
-        "generated_utc": datetime.now(timezone.utc).isoformat(),
+        "generated_utc": datetime.now(UTC).isoformat(),
     }
 
 

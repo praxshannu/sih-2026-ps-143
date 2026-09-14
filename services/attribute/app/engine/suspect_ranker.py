@@ -10,15 +10,14 @@ import time
 from dataclasses import dataclass, field
 from typing import Any
 
-import numpy as np
 from loguru import logger
 
 from app.engine.fuzzy_scorer import SuspectFeatures, score_suspect
 
-
 # ---------------------------------------------------------------------------
 # Data structures
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class RankedSuspect:
@@ -55,6 +54,7 @@ class RankResult:
 # Ranker
 # ---------------------------------------------------------------------------
 
+
 class SuspectRanker:
     """Weighted composite ranker.
 
@@ -85,22 +85,24 @@ class SuspectRanker:
 
         for feat in suspect_features:
             scores = score_suspect(feat)
-            ranked.append(RankedSuspect(
-                rank=0,  # assigned below
-                mmsi=feat.mmsi,
-                vessel_name=feat.vessel_name,
-                composite_score=scores["composite_score"],
-                confidence_lower=scores["confidence_lower"],
-                confidence_upper=scores["confidence_upper"],
-                score_proximity=scores["score_proximity"],
-                score_temporal=scores["score_temporal"],
-                score_trajectory=scores["score_trajectory"],
-                score_anomaly=scores["score_anomaly"],
-                score_vessel_type=scores["score_vessel_type"],
-                score_history=min(feat.historical_violations / 3.0, 1.0),
-                ais_gap_minutes=scores["ais_gap_minutes"],
-                is_dark_vessel=scores["is_dark_vessel"],
-            ))
+            ranked.append(
+                RankedSuspect(
+                    rank=0,  # assigned below
+                    mmsi=feat.mmsi,
+                    vessel_name=feat.vessel_name,
+                    composite_score=scores["composite_score"],
+                    confidence_lower=scores["confidence_lower"],
+                    confidence_upper=scores["confidence_upper"],
+                    score_proximity=scores["score_proximity"],
+                    score_temporal=scores["score_temporal"],
+                    score_trajectory=scores["score_trajectory"],
+                    score_anomaly=scores["score_anomaly"],
+                    score_vessel_type=scores["score_vessel_type"],
+                    score_history=min(feat.historical_violations / 3.0, 1.0),
+                    ais_gap_minutes=scores["ais_gap_minutes"],
+                    is_dark_vessel=scores["is_dark_vessel"],
+                )
+            )
 
         # Sort descending by composite_score
         ranked.sort(key=lambda s: s.composite_score, reverse=True)
@@ -146,9 +148,7 @@ class SuspectRanker:
                 vessel_name=s.get("vessel_name", "UNKNOWN"),
                 min_distance_nm=s.get("min_distance_nm", 50.0),
                 time_delta_minutes=s.get("time_delta_minutes", 180.0),
-                trajectory_intersection_score=s.get(
-                    "trajectory_intersection_score", 0.0
-                ),
+                trajectory_intersection_score=s.get("trajectory_intersection_score", 0.0),
                 ais_gap_minutes=s.get("ais_gap_minutes", 0.0),
                 speed_anomaly_sigma=s.get("speed_anomaly_sigma", 0.0),
                 course_anomaly_sigma=s.get("course_anomaly_sigma", 0.0),
@@ -191,20 +191,20 @@ class SuspectRanker:
             ais = ais_scores.get(mmsi, {})
             anom = anomaly_scores.get(mmsi, {})
 
-            features.append(SuspectFeatures(
-                mmsi=mmsi,
-                vessel_name=ais.get("vessel_name", "UNKNOWN"),
-                min_distance_nm=ais.get("min_distance_nm", 50.0),
-                time_delta_minutes=ais.get("time_delta_minutes", 180.0),
-                trajectory_intersection_score=ais.get(
-                    "trajectory_intersection_score", 0.0
-                ),
-                ais_gap_minutes=ais.get("ais_gap_minutes", 0.0),
-                speed_anomaly_sigma=anom.get("speed_anomaly_sigma", 0.0),
-                course_anomaly_sigma=anom.get("course_anomaly_sigma", 0.0),
-                vessel_type_risk=vessel_type_risk.get(mmsi, 0.0),
-                historical_violations=historical_violations.get(mmsi, 0),
-                is_dark_sar_target=mmsi in dark_mmsis,
-            ))
+            features.append(
+                SuspectFeatures(
+                    mmsi=mmsi,
+                    vessel_name=ais.get("vessel_name", "UNKNOWN"),
+                    min_distance_nm=ais.get("min_distance_nm", 50.0),
+                    time_delta_minutes=ais.get("time_delta_minutes", 180.0),
+                    trajectory_intersection_score=ais.get("trajectory_intersection_score", 0.0),
+                    ais_gap_minutes=ais.get("ais_gap_minutes", 0.0),
+                    speed_anomaly_sigma=anom.get("speed_anomaly_sigma", 0.0),
+                    course_anomaly_sigma=anom.get("course_anomaly_sigma", 0.0),
+                    vessel_type_risk=vessel_type_risk.get(mmsi, 0.0),
+                    historical_violations=historical_violations.get(mmsi, 0),
+                    is_dark_sar_target=mmsi in dark_mmsis,
+                )
+            )
 
         return features

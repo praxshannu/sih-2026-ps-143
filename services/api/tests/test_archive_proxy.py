@@ -35,7 +35,6 @@ _purge_app_namespace()
 sys.path.insert(0, str(API_DIR))
 
 import httpx  # noqa: E402
-
 from app.routers.archive import _bbox_params, _proxy_get  # noqa: E402
 
 WAKASHIO = (57.6, -21.0, 58.2, -20.4)

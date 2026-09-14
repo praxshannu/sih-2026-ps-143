@@ -21,15 +21,11 @@ API quirks caught while writing this:
 from __future__ import annotations
 
 import os
-import shutil
-import subprocess
 import sys
 import tempfile
-import time
 from pathlib import Path
 from typing import Any
 
-import numpy as np
 import xarray as xr
 
 ERA5_DATASET = "reanalysis-era5-single-levels"
@@ -73,6 +69,7 @@ def fetch_era5_wind(
         suitable for `opendrift.readers.reader_netCDF_CF_generic`.
     """
     import cdsapi
+
     _ensure_cdsapi()
 
     key = api_key or os.getenv("CDSAPI_KEY")
@@ -83,7 +80,8 @@ def fetch_era5_wind(
     area = [f"{north:.3f}", f"{west:.3f}", f"{south:.3f}", f"{east:.3f}"]
 
     # Build a list of (date, time) strings inside [start, end].
-    from datetime import datetime, timedelta, timezone
+    from datetime import datetime, timedelta
+
     t0 = datetime.fromisoformat(start.replace("Z", "+00:00"))
     t1 = datetime.fromisoformat(end.replace("Z", "+00:00"))
     if t1 <= t0:

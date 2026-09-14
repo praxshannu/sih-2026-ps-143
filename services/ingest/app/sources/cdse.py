@@ -289,9 +289,7 @@ class CdseArchiveClient:
         size: int = 2048,
     ) -> bytes:
         """Analysis-ready float32 GeoTIFF (sigma0 VV, sigma0 VH, dataMask)."""
-        return await self.render(
-            bbox, start, end, size, size, GEOTIFF_EVALSCRIPT, fmt="image/tiff"
-        )
+        return await self.render(bbox, start, end, size, size, GEOTIFF_EVALSCRIPT, fmt="image/tiff")
 
 
 _client: CdseArchiveClient | None = None

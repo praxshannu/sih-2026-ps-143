@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import time
 from contextlib import asynccontextmanager
+from datetime import UTC
 
 import httpx
 from fastapi import FastAPI, Request
@@ -12,8 +13,14 @@ from loguru import logger
 
 from app.middleware.rate_limit import RateLimitMiddleware
 from app.routers import alerts, archive, attribution, cases, detect, drift, results, vessels, ws
-from app.schemas import HealthResponse, PipelineTrigger, PipelineStatus, ServiceHealth, WSEvent, WSEventType
 from app.routers.ws import get_ws_manager
+from app.schemas import (
+    HealthResponse,
+    PipelineStatus,
+    PipelineTrigger,
+    ServiceHealth,
+    WSEvent,
+)
 
 DETECT_SERVICE_URL = os.getenv("DETECT_SERVICE_URL", "http://sentinel-detect:8002")
 DRIFT_SERVICE_URL = os.getenv("DRIFT_SERVICE_URL", "http://sentinel-drift:8003")
@@ -90,9 +97,13 @@ async def health_check():
                 resp = await client.get(f"{url}/health")
                 latency = (time.time() - t0) * 1000
                 status_str = "healthy" if resp.status_code == 200 else "degraded"
-                services.append(ServiceHealth(name=name, status=status_str, latency_ms=round(latency, 1)))
+                services.append(
+                    ServiceHealth(name=name, status=status_str, latency_ms=round(latency, 1))
+                )
             except httpx.RequestError as exc:
-                services.append(ServiceHealth(name=name, status="unreachable", error=str(exc)[:200]))
+                services.append(
+                    ServiceHealth(name=name, status="unreachable", error=str(exc)[:200])
+                )
 
     healthy_count = sum(1 for s in services if s.status == "healthy")
     if healthy_count == len(services):
@@ -114,12 +125,13 @@ async def ws_stats():
 
 @app.post("/api/v1/pipeline/trigger", response_model=PipelineStatus, tags=["pipeline"])
 async def trigger_pipeline(body: PipelineTrigger):
-    from datetime import datetime, timezone
+    from datetime import datetime
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     try:
         from app.celery_app import celery_app
+
         celery_app.send_task(
             "app.tasks.run_full_pipeline",
             args=[body.case_id, body.stages, body.payload],

@@ -58,9 +58,9 @@ class BCEDiceLoss(nn.Module):
         self.dice_weight = dice_weight
 
     def forward(self, logits: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
-        return self.bce_weight * self.bce(
+        return self.bce_weight * self.bce(logits, targets) + self.dice_weight * self.dice(
             logits, targets
-        ) + self.dice_weight * self.dice(logits, targets)
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -68,9 +68,7 @@ class BCEDiceLoss(nn.Module):
 # ---------------------------------------------------------------------------
 
 
-def compute_iou(
-    preds: torch.Tensor, targets: torch.Tensor, threshold: float = 0.5
-) -> float:
+def compute_iou(preds: torch.Tensor, targets: torch.Tensor, threshold: float = 0.5) -> float:
     preds_binary = (torch.sigmoid(preds) > threshold).float()
     intersection = (preds_binary * targets).sum()
     union = preds_binary.sum() + targets.sum() - intersection
@@ -79,9 +77,7 @@ def compute_iou(
     return (intersection / union).item()
 
 
-def compute_f1(
-    preds: torch.Tensor, targets: torch.Tensor, threshold: float = 0.5
-) -> float:
+def compute_f1(preds: torch.Tensor, targets: torch.Tensor, threshold: float = 0.5) -> float:
     preds_binary = (torch.sigmoid(preds) > threshold).float()
     tp = (preds_binary * targets).sum()
     fp = (preds_binary * (1 - targets)).sum()
@@ -184,9 +180,7 @@ def validate(
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Train UNet++ oil spill detector")
-    parser.add_argument(
-        "--data-dir", type=str, required=True, help="Path to DARTIS dataset root"
-    )
+    parser.add_argument("--data-dir", type=str, required=True, help="Path to DARTIS dataset root")
     parser.add_argument(
         "--output-dir",
         type=str,
@@ -201,9 +195,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--num-workers", type=int, default=4)
     parser.add_argument("--encoder", type=str, default="resnet34")
     parser.add_argument("--in-channels", type=int, default=6)
-    parser.add_argument(
-        "--resume", type=str, default=None, help="Resume from checkpoint"
-    )
+    parser.add_argument("--resume", type=str, default=None, help="Resume from checkpoint")
     parser.add_argument("--val-split", type=float, default=0.15)
     parser.add_argument("--log-dir", type=str, default="./runs/detector")
     parser.add_argument("--mixed-precision", action="store_true", default=True)
@@ -242,9 +234,7 @@ def main() -> None:
     train_dataset = SAROilSpillDataset(
         args.data_dir, indices=train_indices, transform=train_transforms
     )
-    val_dataset = SAROilSpillDataset(
-        args.data_dir, indices=val_indices, transform=val_transforms
-    )
+    val_dataset = SAROilSpillDataset(args.data_dir, indices=val_indices, transform=val_transforms)
 
     print(f"[train] Train: {len(train_dataset)}, Val: {len(val_dataset)}")
 
@@ -273,14 +263,10 @@ def main() -> None:
 
     total_params = sum(p.numel() for p in model.parameters())
     trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-    print(
-        f"[train] Model params: {total_params:,} total, {trainable_params:,} trainable"
-    )
+    print(f"[train] Model params: {total_params:,} total, {trainable_params:,} trainable")
 
     criterion = BCEDiceLoss(bce_weight=0.5, dice_weight=0.5)
-    optimizer = torch.optim.AdamW(
-        model.parameters(), lr=args.lr, weight_decay=args.weight_decay
-    )
+    optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
 
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
         optimizer, T_max=args.epochs, eta_min=1e-7
@@ -330,9 +316,7 @@ def main() -> None:
         writer.add_scalar("val/f1", val_metrics["f1"], epoch)
         writer.add_scalar("lr", scheduler.get_last_lr()[0], epoch)
 
-        print(
-            f"[train] Train Loss={train_metrics['loss']:.4f} IoU={train_metrics['iou']:.4f}"
-        )
+        print(f"[train] Train Loss={train_metrics['loss']:.4f} IoU={train_metrics['iou']:.4f}")
         print(
             f"[train] Val   Loss={val_metrics['loss']:.4f} IoU={val_metrics['iou']:.4f} F1={val_metrics['f1']:.4f}"
         )
@@ -353,9 +337,7 @@ def main() -> None:
 
         if val_metrics["iou"] > best_iou:
             best_iou = val_metrics["iou"]
-            torch.save(
-                checkpoint, os.path.join(args.output_dir, "unetpp_scse_best.pth")
-            )
+            torch.save(checkpoint, os.path.join(args.output_dir, "unetpp_scse_best.pth"))
             print(f"[train] New best IoU: {best_iou:.4f} -> saved")
 
     writer.close()

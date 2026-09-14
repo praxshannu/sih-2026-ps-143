@@ -30,6 +30,7 @@ class _CircuitState:
 
     def allow(self, service: str) -> bool:
         import time
+
         if service in self.open_until and time.time() < self.open_until[service]:
             return False
         return True
@@ -40,10 +41,13 @@ class _CircuitState:
 
     def record_failure(self, service: str) -> None:
         import time
+
         self.failures[service] = self.failures.get(service, 0) + 1
         if self.failures[service] >= CIRCUIT_BREAKER_THRESHOLD:
             self.open_until[service] = time.time() + CIRCUIT_BREAKER_TIMEOUT
-            logger.warning("Circuit breaker OPEN for drift service for {}s", CIRCUIT_BREAKER_TIMEOUT)
+            logger.warning(
+                "Circuit breaker OPEN for drift service for {}s", CIRCUIT_BREAKER_TIMEOUT
+            )
 
 
 _circuit = _CircuitState()

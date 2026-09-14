@@ -34,7 +34,7 @@ def _parse(text: str) -> dict[str, str]:
             continue
         # Tolerate an optional `export ` prefix.
         if line.startswith("export "):
-            line = line[len("export "):]
+            line = line[len("export ") :]
         key, _, value = line.partition("=")
         key = key.strip()
         value = value.strip()

@@ -6,23 +6,19 @@ data fetch every 6 hours (or on-demand). Coordinates fetch of all data sources.
 
 from __future__ import annotations
 
-import asyncio
 import time
-from datetime import datetime, timezone
-from typing import Any, Callable, Coroutine
+from collections.abc import Callable, Coroutine
+from datetime import UTC, datetime
+from typing import Any
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 from loguru import logger
 
 from .models.schemas import (
-    AisParams,
-    CmemsParams,
     DataSource,
-    Era5Params,
     JobStatus,
     SchedulerStatus,
-    Sentinel1Params,
     SourceStatus,
 )
 
@@ -76,7 +72,7 @@ class IngestScheduler:
             id="full_ingest_cycle",
             name="Full Ingestion Cycle",
             replace_existing=True,
-            next_run_time=datetime.now(timezone.utc),  # run immediately on start
+            next_run_time=datetime.now(UTC),  # run immediately on start
         )
 
         # Add Sentinel-1 orbital check (every 30 minutes to check for new passes)
@@ -140,7 +136,7 @@ class IngestScheduler:
         logger.info("Manual trigger for source: {}", source.value)
 
         self._source_status[source].last_fetch_status = JobStatus.RUNNING
-        self._source_status[source].last_fetch_time = datetime.now(timezone.utc)
+        self._source_status[source].last_fetch_time = datetime.now(UTC)
 
         t0 = time.time()
         try:
@@ -203,7 +199,7 @@ class IngestScheduler:
         For now, it maintains a simplified schedule based on known
         repeat cycles (12-day for S1A, 12-day for S1B offset by 6 days).
         """
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         # Simplified: S1A revisit every ~6 days over Indian EEZ
         # S1B fills the gap, giving ~3-day effective revisit
@@ -212,11 +208,13 @@ class IngestScheduler:
         # Trigger SAR-specific processing every ~3 days
         if day_of_year % 3 == 0:
             logger.info("Orbital schedule: Sentinel-1 pass expected today")
-            self._orbital_schedule.append({
-                "time": now.isoformat(),
-                "satellite": "S1A" if day_of_year % 6 == 0 else "S1B",
-                "status": "expected",
-            })
+            self._orbital_schedule.append(
+                {
+                    "time": now.isoformat(),
+                    "satellite": "S1A" if day_of_year % 6 == 0 else "S1B",
+                    "status": "expected",
+                }
+            )
 
             # Keep only last 30 entries
             self._orbital_schedule = self._orbital_schedule[-30:]

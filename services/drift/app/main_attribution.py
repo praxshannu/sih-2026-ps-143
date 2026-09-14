@@ -32,7 +32,9 @@ async def lifespan(app: FastAPI):
         "env file={} CDSAPI_KEY={} CMEMS configured={}",
         _ENV_FILE or "none",
         "present" if os.getenv("CDSAPI_KEY") else "MISSING (wind will be synthetic)",
-        "yes" if (os.getenv("COPERNICUSMARINE_SERVICE_USERNAME") or os.getenv("CMEMS_USERNAME")) else "no",
+        "yes"
+        if (os.getenv("COPERNICUSMARINE_SERVICE_USERNAME") or os.getenv("CMEMS_USERNAME"))
+        else "no",
     )
     if not os.getenv("CDSAPI_KEY"):
         logger.warning(
@@ -56,7 +58,6 @@ app = FastAPI(
 
 @app.get("/health")
 async def health() -> dict[str, object]:
-    from app.routers.attribution import router as r
     return {
         "ok": True,
         "service": "sentinel-drift-attribution",

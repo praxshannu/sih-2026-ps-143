@@ -4,10 +4,9 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import Enum
-from typing import Any, Literal
+from typing import Literal
 
 from pydantic import BaseModel, Field
-
 
 # --- Enums ---
 
@@ -55,9 +54,7 @@ class Sentinel1Params(BaseModel):
 class CmemsParams(BaseModel):
     """Parameters for CMEMS ocean current fetch."""
 
-    bbox: tuple[float, float, float, float] = Field(
-        default=(68.0, 5.0, 88.0, 25.0)
-    )
+    bbox: tuple[float, float, float, float] = Field(default=(68.0, 5.0, 88.0, 25.0))
     depth_range: tuple[float, float] = Field(default=(0.0, 50.0))
     lookback_days: int = Field(7, ge=1, le=30)
 
@@ -65,18 +62,14 @@ class CmemsParams(BaseModel):
 class Era5Params(BaseModel):
     """Parameters for ERA5 wind field fetch."""
 
-    bbox: tuple[float, float, float, float] = Field(
-        default=(68.0, 5.0, 88.0, 25.0)
-    )
+    bbox: tuple[float, float, float, float] = Field(default=(68.0, 5.0, 88.0, 25.0))
     lookback_days: int = Field(7, ge=1, le=30)
 
 
 class AisParams(BaseModel):
     """Parameters for AIS data ingestion."""
 
-    bbox: tuple[float, float, float, float] = Field(
-        default=(68.0, 5.0, 88.0, 25.0)
-    )
+    bbox: tuple[float, float, float, float] = Field(default=(68.0, 5.0, 88.0, 25.0))
     lookback_hours: int = Field(6, ge=1, le=168)
     interpolate_gaps: bool = Field(True, description="Interpolate gaps < 5 min")
 

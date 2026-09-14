@@ -29,9 +29,8 @@ from __future__ import annotations
 import math
 import shutil
 import tempfile
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any
 
 import numpy as np
 import xarray as xr
@@ -49,7 +48,7 @@ TIMEOUT_S = 60
 
 
 def _utcnow() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def latest_cycle(at: datetime | None = None) -> datetime:
@@ -58,14 +57,15 @@ def latest_cycle(at: datetime | None = None) -> datetime:
     A cycle's files are published a few hours after the nominal time, so we
     step back one cycle to avoid requesting data that isn't up yet.
     """
-    t = (at or _utcnow()).astimezone(timezone.utc)
+    t = (at or _utcnow()).astimezone(UTC)
     t = t - timedelta(hours=6)
     cycle_h = max(h for h in CYCLE_HOURS if h <= t.hour)
     return t.replace(hour=cycle_h, minute=0, second=0, microsecond=0)
 
 
-def supports_window(start: datetime, end: datetime | None = None,
-                    now: datetime | None = None) -> tuple[bool, str]:
+def supports_window(
+    start: datetime, end: datetime | None = None, now: datetime | None = None
+) -> tuple[bool, str]:
     """Whether NOMADS still holds GFS data covering this window.
 
     Returns (ok, reason). Callers should use this to choose GFS vs ERA5
@@ -83,7 +83,9 @@ def supports_window(start: datetime, end: datetime | None = None,
     return True, "within NOMADS retention"
 
 
-def _fetch_one(cycle: datetime, fhour: int, bbox: tuple[float, float, float, float]) -> xr.Dataset | None:
+def _fetch_one(
+    cycle: datetime, fhour: int, bbox: tuple[float, float, float, float]
+) -> xr.Dataset | None:
     """Fetch one forecast hour, subset server-side. Returns None if absent."""
     west, south, east, north = bbox
     params = {
@@ -137,8 +139,8 @@ def fetch_gfs_wind(
     Raises:
         RuntimeError: if the window is outside retention or nothing downloads.
     """
-    start = start.replace(tzinfo=timezone.utc) if start.tzinfo is None else start
-    end = end.replace(tzinfo=timezone.utc) if end.tzinfo is None else end
+    start = start.replace(tzinfo=UTC) if start.tzinfo is None else start
+    end = end.replace(tzinfo=UTC) if end.tzinfo is None else end
 
     ok, reason = supports_window(start, end)
     if not ok:

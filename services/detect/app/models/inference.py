@@ -7,12 +7,8 @@ eliminate seam artifacts.
 
 from __future__ import annotations
 
-import math
-from typing import Optional
-
 import numpy as np
 import torch
-import torch.nn.functional as F
 from loguru import logger
 
 
@@ -60,9 +56,7 @@ class TiledInference:
             return batch
         have, want = batch.shape[1], self.expected_channels
         if have > want:
-            logger.warning(
-                "Slicing input channels {} -> {} to match model", have, want
-            )
+            logger.warning("Slicing input channels {} -> {} to match model", have, want)
             return batch[:, :want]
         pad = torch.zeros(
             (batch.shape[0], want - have, *batch.shape[2:]),

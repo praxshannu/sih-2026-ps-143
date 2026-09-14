@@ -3,14 +3,13 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Optional
 
 from pydantic import BaseModel, Field
-
 
 # ---------------------------------------------------------------------------
 # Input schemas
 # ---------------------------------------------------------------------------
+
 
 class OriginEllipse(BaseModel):
     """95% confidence ellipse from drift backward analysis."""
@@ -29,7 +28,7 @@ class SarDetection(BaseModel):
     lat: float = Field(..., ge=-90, le=90)
     timestamp: datetime
     confidence: float = Field(0.0, ge=0.0, le=1.0)
-    radar_cross_section_db: Optional[float] = None
+    radar_cross_section_db: float | None = None
 
 
 class AttribRequest(BaseModel):
@@ -104,6 +103,7 @@ class RankRequest(BaseModel):
 # ---------------------------------------------------------------------------
 # Output schemas
 # ---------------------------------------------------------------------------
+
 
 class ScoreResult(BaseModel):
     """Output of the dual scorer for a single suspect.

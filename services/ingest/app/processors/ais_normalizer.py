@@ -6,8 +6,7 @@ PostGIS geometry creation, and bulk upsert with ON CONFLICT.
 
 from __future__ import annotations
 
-import math
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import asyncpg
 from loguru import logger
@@ -118,9 +117,7 @@ class AisNormalizer:
 
         return sorted(seen.values(), key=lambda x: (x["mmsi"], x["timestamp"]))
 
-    def _interpolate_gaps(
-        self, positions: list[dict]
-    ) -> tuple[list[dict], int]:
+    def _interpolate_gaps(self, positions: list[dict]) -> tuple[list[dict], int]:
         """Interpolate positions for gaps shorter than the threshold.
 
         For each vessel (MMSI), if consecutive positions are separated by
@@ -164,9 +161,7 @@ class AisNormalizer:
         return result, interpolated_count
 
     @staticmethod
-    def _interpolate_position(
-        prev: dict, curr: dict, fraction: float
-    ) -> dict:
+    def _interpolate_position(prev: dict, curr: dict, fraction: float) -> dict:
         """Linearly interpolate between two AIS positions."""
         lon = prev["lon"] + fraction * (curr["lon"] - prev["lon"])
         lat = prev["lat"] + fraction * (curr["lat"] - prev["lat"])
@@ -259,9 +254,9 @@ class AisNormalizer:
         if val is None:
             return None
         if isinstance(val, (int, float)):
-            return datetime.fromtimestamp(val, tz=timezone.utc)
+            return datetime.fromtimestamp(val, tz=UTC)
         if isinstance(val, datetime):
-            return val if val.tzinfo else val.replace(tzinfo=timezone.utc)
+            return val if val.tzinfo else val.replace(tzinfo=UTC)
         if isinstance(val, str):
             for fmt in [
                 "%Y-%m-%dT%H:%M:%S.%fZ",
@@ -270,7 +265,7 @@ class AisNormalizer:
                 "%Y/%m/%d %H:%M:%S",
             ]:
                 try:
-                    return datetime.strptime(val, fmt).replace(tzinfo=timezone.utc)
+                    return datetime.strptime(val, fmt).replace(tzinfo=UTC)
                 except ValueError:
                     continue
         return None

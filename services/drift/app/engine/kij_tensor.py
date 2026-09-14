@@ -10,14 +10,13 @@ from __future__ import annotations
 import numpy as np
 from loguru import logger
 
-
 # Physical defaults
-K_MOLECULAR = 1e-6          # m^2/s (molecular diffusion of heat/dye)
-CS_SMAG = 0.15               # Smagorinsky coefficient
-KR_H = 100.0                # Redi horizontal diffusivity m^2/s
-KR_KV_RATIO = 1000.0        # Redi horizontal/vertical aspect ratio
-K_SHEAR_COEFF = 0.1          # Shear-induced mixing coefficient
-DELTA_GRID = 1000.0          # Nominal grid spacing (m) – overridden if dx/dy available
+K_MOLECULAR = 1e-6  # m^2/s (molecular diffusion of heat/dye)
+CS_SMAG = 0.15  # Smagorinsky coefficient
+KR_H = 100.0  # Redi horizontal diffusivity m^2/s
+KR_KV_RATIO = 1000.0  # Redi horizontal/vertical aspect ratio
+K_SHEAR_COEFF = 0.1  # Shear-induced mixing coefficient
+DELTA_GRID = 1000.0  # Nominal grid spacing (m) – overridden if dx/dy available
 
 
 def strain_rate_magnitude(

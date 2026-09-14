@@ -3,14 +3,14 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Literal, Optional
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
-
 
 # ---------------------------------------------------------------------------
 # Input schemas
 # ---------------------------------------------------------------------------
+
 
 class DetectionData(BaseModel):
     """Structured detection data from the detect service."""
@@ -25,7 +25,7 @@ class DetectionData(BaseModel):
     image_path: str = Field(..., description="Path to SAR detection image")
     detected_at: datetime = Field(..., description="Detection timestamp (UTC)")
     geojson: dict[str, Any] = Field(default_factory=dict, description="Spill polygon GeoJSON")
-    spill_polygon_wkt: Optional[str] = Field(None, description="Spill polygon as WKT")
+    spill_polygon_wkt: str | None = Field(None, description="Spill polygon as WKT")
 
 
 class DriftData(BaseModel):
@@ -68,7 +68,7 @@ class AisPosition(BaseModel):
     lat: float
     sog: float = Field(0.0, ge=0)
     cog: float = Field(0.0, ge=0, le=360)
-    heading: Optional[float] = None
+    heading: float | None = None
 
 
 class AisExcerpt(BaseModel):
@@ -77,8 +77,8 @@ class AisExcerpt(BaseModel):
     mmsi: str
     vessel_name: str = "UNKNOWN"
     positions: list[AisPosition] = Field(default_factory=list)
-    gap_start: Optional[datetime] = None
-    gap_end: Optional[datetime] = None
+    gap_start: datetime | None = None
+    gap_end: datetime | None = None
 
 
 class ChainEntry(BaseModel):
@@ -95,7 +95,7 @@ class NarrativeRequest(BaseModel):
     """Request to generate an LLM narrative summary."""
 
     detection: DetectionData
-    drift: Optional[DriftData] = None
+    drift: DriftData | None = None
     suspects: list[SuspectVessel] = Field(default_factory=list)
     evidence_hash: str = Field(default="", description="SHA-256 hash of evidence package")
 
@@ -105,10 +105,10 @@ class CaseFileRequest(BaseModel):
 
     case_id: str = Field(..., description="Investigation case UUID")
     detection: DetectionData
-    drift: Optional[DriftData] = None
+    drift: DriftData | None = None
     suspects: list[SuspectVessel] = Field(default_factory=list)
-    ais_excerpt: Optional[AisExcerpt] = None
-    narrative: Optional[str] = Field(None, description="Pre-generated narrative text")
+    ais_excerpt: AisExcerpt | None = None
+    narrative: str | None = Field(None, description="Pre-generated narrative text")
     chain_of_custody: list[ChainEntry] = Field(default_factory=list)
 
 
@@ -136,6 +136,7 @@ class AlertRequest(BaseModel):
 # ---------------------------------------------------------------------------
 # Output schemas
 # ---------------------------------------------------------------------------
+
 
 class NarrativeResult(BaseModel):
     """LLM-generated narrative output."""

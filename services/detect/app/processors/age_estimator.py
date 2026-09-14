@@ -7,9 +7,7 @@ estimate spill age from the observed area at detection time.
 from __future__ import annotations
 
 import math
-from typing import Optional
 
-import numpy as np
 from loguru import logger
 
 from app.schemas import AgeEstimate, CurrentData, SpillAgeCategory, WindData
@@ -43,16 +41,16 @@ class AgeEstimator:
 
     # Empirical spreading coefficient categories (m²/s²)
     SPREADING_REGIMES = {
-        "calm": 0.01,       # K for calm seas (wind < 3 m/s)
-        "moderate": 0.05,   # K for moderate wind (3-8 m/s)
-        "rough": 0.12,      # K for rough seas (8-12 m/s)
-        "high": 0.25,       # K for high wind (>12 m/s)
+        "calm": 0.01,  # K for calm seas (wind < 3 m/s)
+        "moderate": 0.05,  # K for moderate wind (3-8 m/s)
+        "rough": 0.12,  # K for rough seas (8-12 m/s)
+        "high": 0.25,  # K for high wind (>12 m/s)
     }
 
     AGE_CATEGORIES = {
-        SpillAgeCategory.FRESH: (0.0, 2.0),      # 0-2 hours
-        SpillAgeCategory.MILD: (2.0, 12.0),       # 2-12 hours
-        SpillAgeCategory.WEATHERED: (12.0, 72.0), # 12-72 hours
+        SpillAgeCategory.FRESH: (0.0, 2.0),  # 0-2 hours
+        SpillAgeCategory.MILD: (2.0, 12.0),  # 2-12 hours
+        SpillAgeCategory.WEATHERED: (12.0, 72.0),  # 12-72 hours
         SpillAgeCategory.HEAVY: (72.0, float("inf")),  # >72 hours
     }
 
@@ -74,8 +72,8 @@ class AgeEstimator:
 
     def _compute_spreading_coeff(
         self,
-        wind: Optional[WindData] = None,
-        current: Optional[CurrentData] = None,
+        wind: WindData | None = None,
+        current: CurrentData | None = None,
     ) -> float:
         """Compute the Fay spreading coefficient K.
 
@@ -106,8 +104,8 @@ class AgeEstimator:
     def estimate_age(
         self,
         area_m2: float,
-        wind: Optional[WindData] = None,
-        current: Optional[CurrentData] = None,
+        wind: WindData | None = None,
+        current: CurrentData | None = None,
     ) -> AgeEstimate:
         """Estimate spill age from observed area.
 
@@ -161,8 +159,8 @@ class AgeEstimator:
     def estimate_multi_scale(
         self,
         polygon_areas_m2: list[float],
-        wind: Optional[WindData] = None,
-        current: Optional[CurrentData] = None,
+        wind: WindData | None = None,
+        current: CurrentData | None = None,
     ) -> list[AgeEstimate]:
         """Estimate ages for multiple spill fragments.
 
@@ -179,12 +177,14 @@ class AgeEstimator:
 
         for area in polygon_areas_m2:
             if area <= 0:
-                estimates.append(AgeEstimate(
-                    estimated_hours=None,
-                    category=SpillAgeCategory.FRESH,
-                    area_at_detection_m2=area,
-                    fay_constant_k=K,
-                ))
+                estimates.append(
+                    AgeEstimate(
+                        estimated_hours=None,
+                        category=SpillAgeCategory.FRESH,
+                        area_at_detection_m2=area,
+                        fay_constant_k=K,
+                    )
+                )
                 continue
 
             t_squared = area / (math.pi * K)
@@ -192,12 +192,14 @@ class AgeEstimator:
             t_hours = min(t_hours, self.max_age_hours)
             category = self._classify_age(t_hours)
 
-            estimates.append(AgeEstimate(
-                estimated_hours=round(t_hours, 2),
-                category=category,
-                area_at_detection_m2=round(area, 2),
-                fay_constant_k=round(K, 6),
-            ))
+            estimates.append(
+                AgeEstimate(
+                    estimated_hours=round(t_hours, 2),
+                    category=category,
+                    area_at_detection_m2=round(area, 2),
+                    fay_constant_k=round(K, 6),
+                )
+            )
 
         return estimates
 

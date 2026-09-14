@@ -63,12 +63,8 @@ def _archive(record: str) -> Archive:
         url = links.get("self") if isinstance(links, dict) else None
         if not checksum or not isinstance(url, str):
             break
-        return Archive(
-            record, record_id, expected_name, int(item["size"]), checksum, url
-        )
-    raise RuntimeError(
-        f"Expected archive {expected_name!r} not found in record {record_id}"
-    )
+        return Archive(record, record_id, expected_name, int(item["size"]), checksum, url)
+    raise RuntimeError(f"Expected archive {expected_name!r} not found in record {record_id}")
 
 
 def _human(size: int) -> str:
@@ -111,9 +107,7 @@ def download(archive: Archive, output: Path, min_free_gb: float, extract: bool) 
     actual = _md5(target)
     if actual != archive.checksum.removeprefix("md5:"):
         target.unlink(missing_ok=True)
-        raise RuntimeError(
-            f"MD5 mismatch for {target.name}: {actual} != {archive.checksum}"
-        )
+        raise RuntimeError(f"MD5 mismatch for {target.name}: {actual} != {archive.checksum}")
 
     manifest = {
         "record": archive.record,
@@ -124,9 +118,7 @@ def download(archive: Archive, output: Path, min_free_gb: float, extract: bool) 
         "md5": actual,
         "downloaded_to": str(target),
     }
-    (output / f"{archive.record}.manifest.json").write_text(
-        json.dumps(manifest, indent=2) + "\n"
-    )
+    (output / f"{archive.record}.manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
     print(f"Verified {target} (md5 {actual})")
 
     if extract:
@@ -141,9 +133,7 @@ def download(archive: Archive, output: Path, min_free_gb: float, extract: bool) 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
-        "--list", action="store_true", help="show authoritative archive sizes"
-    )
+    parser.add_argument("--list", action="store_true", help="show authoritative archive sizes")
     parser.add_argument("--record", choices=sorted(RECORDS))
     parser.add_argument("--download", action="store_true")
     parser.add_argument("--extract", action="store_true")

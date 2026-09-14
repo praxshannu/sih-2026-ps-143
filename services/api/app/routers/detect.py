@@ -7,7 +7,6 @@ the UI talks to the API gateway only (per AGENTS.md).
 
 from __future__ import annotations
 
-import json
 import os
 
 import httpx
@@ -70,7 +69,9 @@ async def run_detection(req: DetectRequest) -> JSONResponse:
     `LOW_CONFIDENCE_NO_WIND` flag when within the viability band (2..10 m/s).
     """
     return await _safe_pass(
-        "POST", "detect/deterministic", json=req.model_dump(),
+        "POST",
+        "detect/deterministic",
+        json=req.model_dump(),
     )
 
 

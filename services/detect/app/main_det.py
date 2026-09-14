@@ -16,7 +16,6 @@ plus trained weights under ``app/models/weights/``.
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 from fastapi import FastAPI

@@ -6,8 +6,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
-
 # ---------- Enums ----------
+
 
 class CaseStatus(str, Enum):
     NEW = "new"
@@ -36,6 +36,7 @@ class AlertPriority(str, Enum):
 
 # ---------- Auth ----------
 
+
 class TokenPayload(BaseModel):
     sub: str
     exp: int
@@ -55,6 +56,7 @@ class TokenResponse(BaseModel):
 
 
 # ---------- Cases ----------
+
 
 class CaseCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=256)
@@ -106,6 +108,7 @@ class CaseListResponse(BaseModel):
 
 # ---------- Vessels ----------
 
+
 class VesselProfile(BaseModel):
     id: str
     mmsi: str
@@ -133,6 +136,7 @@ class VesselSearchParams(BaseModel):
 
 
 # ---------- Drift ----------
+
 
 class EllipsePoint(BaseModel):
     lat: float
@@ -176,6 +180,7 @@ class DriftVisualization(BaseModel):
 
 
 # ---------- Alerts ----------
+
 
 class AlertCreate(BaseModel):
     case_id: str
@@ -232,6 +237,7 @@ class WebhookTargetResponse(BaseModel):
 
 # ---------- WebSocket ----------
 
+
 class WSEventType(str, Enum):
     SPILL_DETECTED = "SPILL_DETECTED"
     DRIFT_COMPLETE = "DRIFT_COMPLETE"
@@ -252,6 +258,7 @@ class WSSubscribe(BaseModel):
 
 # ---------- Health ----------
 
+
 class ServiceHealth(BaseModel):
     name: str
     status: Literal["healthy", "degraded", "unreachable"]
@@ -266,6 +273,7 @@ class HealthResponse(BaseModel):
 
 
 # ---------- Pipeline ----------
+
 
 class PipelineTrigger(BaseModel):
     case_id: str

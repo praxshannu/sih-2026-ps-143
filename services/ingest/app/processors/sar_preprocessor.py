@@ -13,7 +13,7 @@ import numpy as np
 import rasterio
 from loguru import logger
 from rasterio.crs import CRS
-from rasterio.transform import from_bounds, array_bounds
+from rasterio.transform import from_bounds
 from scipy.ndimage import uniform_filter
 
 
@@ -82,7 +82,9 @@ class SarPreprocessor:
 
         # Step 2: Speckle filtering
         if speckle_filter != "none":
-            logger.info("Step 2/4: Speckle filtering ({}, window={})", speckle_filter, speckle_window)
+            logger.info(
+                "Step 2/4: Speckle filtering ({}, window={})", speckle_filter, speckle_window
+            )
             filtered = {}
             for name, band_data in calibrated.items():
                 if speckle_filter == "refined_lee":
@@ -97,17 +99,13 @@ class SarPreprocessor:
         if apply_terrain_correction:
             logger.info("Step 3/4: Terrain correction")
             for name in calibrated:
-                calibrated[name] = self._terrain_correction(
-                    calibrated[name], metadata
-                )
+                calibrated[name] = self._terrain_correction(calibrated[name], metadata)
         else:
             logger.info("Step 3/4: Terrain correction skipped")
 
         # Step 4: Geocode and write output
         logger.info("Step 4/4: Geocoding to EPSG:{}", target_epsg)
-        out_path = self._write_geotiff(
-            calibrated, metadata, output_name, target_epsg
-        )
+        out_path = self._write_geotiff(calibrated, metadata, output_name, target_epsg)
 
         logger.info("SAR preprocessing complete: {}", out_path)
         return out_path
@@ -136,7 +134,8 @@ class SarPreprocessor:
 
             with zipfile.ZipFile(path, "r") as zf:
                 tiff_names = [
-                    n for n in zf.namelist()
+                    n
+                    for n in zf.namelist()
                     if n.endswith((".tiff", ".tif")) and "measurement" in n.lower()
                 ]
                 if not tiff_names:
@@ -199,7 +198,7 @@ class SarPreprocessor:
         dn = np.where(np.isfinite(raw_dn), raw_dn, 0.0)
 
         # Convert to power (sigma0 linear)
-        sigma0_power = dn ** 2
+        sigma0_power = dn**2
 
         # Convert to dB
         epsilon = 1e-10
@@ -232,8 +231,8 @@ class SarPreprocessor:
 
         # Local statistics
         local_mean = uniform_filter(image, size=window_size)
-        local_sq_mean = uniform_filter(image ** 2, size=window_size)
-        local_var = local_sq_mean - local_mean ** 2
+        local_sq_mean = uniform_filter(image**2, size=window_size)
+        local_var = local_sq_mean - local_mean**2
         local_var = np.maximum(local_var, 0)
 
         # Global noise variance (estimated from image)
@@ -316,9 +315,7 @@ class SarPreprocessor:
 
         return image[y_lo:y_hi, x_lo:x_hi].copy()
 
-    def _terrain_correction(
-        self, sigma0_db: np.ndarray, metadata: dict
-    ) -> np.ndarray:
+    def _terrain_correction(self, sigma0_db: np.ndarray, metadata: dict) -> np.ndarray:
         """Apply simplified terrain correction.
 
         Corrects for terrain-induced radiometric distortions using
@@ -339,7 +336,9 @@ class SarPreprocessor:
         )
 
         # Simulate incidence angle variation (30-45 degrees typical for S1)
-        incidence_angle = np.radians(35 + 5 * np.sin(2 * np.pi * y_grid) * np.cos(2 * np.pi * x_grid))
+        incidence_angle = np.radians(
+            35 + 5 * np.sin(2 * np.pi * y_grid) * np.cos(2 * np.pi * x_grid)
+        )
 
         # Terrain correction: sigma0_corrected = sigma0 / cos(theta_local)
         correction_factor = np.cos(incidence_angle)

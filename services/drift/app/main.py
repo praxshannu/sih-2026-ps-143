@@ -60,13 +60,37 @@ def _build_fields(spill_lon: float, spill_lat: float, req_ocean, now):
     from .data.forcing_factory import build_forcing_provider
 
     provider, provenance = build_forcing_provider(
-        cmems_path=getattr(req_ocean, "cmems_base", "",) or None,
-        era5_path=getattr(req_ocean, "era5_base", "",) or None,
+        cmems_path=getattr(
+            req_ocean,
+            "cmems_base",
+            "",
+        )
+        or None,
+        era5_path=getattr(
+            req_ocean,
+            "era5_base",
+            "",
+        )
+        or None,
     )
 
     # Try local NetCDF loaders when paths look real.
-    cmems_base = getattr(req_ocean, "cmems_base", "",) or ""
-    era5_base = getattr(req_ocean, "era5_base", "",) or ""
+    cmems_base = (
+        getattr(
+            req_ocean,
+            "cmems_base",
+            "",
+        )
+        or ""
+    )
+    era5_base = (
+        getattr(
+            req_ocean,
+            "era5_base",
+            "",
+        )
+        or ""
+    )
     bbox = getattr(req_ocean, "bbox", (spill_lon - 1, spill_lat - 1, spill_lon + 1, spill_lat + 1))
     try:
         if cmems_base and Path(cmems_base).exists():
@@ -83,9 +107,7 @@ def _build_fields(spill_lon: float, spill_lat: float, req_ocean, now):
             lons = ocean_ds["longitude"].values
             lats = ocean_ds["latitude"].values
             times = _numeric_times(ocean_ds["time"].values)
-            K_field = np.zeros(
-                (u_field.shape[0], u_field.shape[1], u_field.shape[2], 2, 2)
-            )
+            K_field = np.zeros((u_field.shape[0], u_field.shape[1], u_field.shape[2], 2, 2))
             provenance = {
                 "forcing_source": "local_files",
                 "current_origin": "local_cmems_file",
@@ -97,7 +119,11 @@ def _build_fields(spill_lon: float, spill_lat: float, req_ocean, now):
 
     # Factory-sampled synthetic grid (values from the real provider when live).
     try:
-        ts = req_ocean.time_start if hasattr(req_ocean.time_start, "tzinfo") else req_ocean.time_start
+        ts = (
+            req_ocean.time_start
+            if hasattr(req_ocean.time_start, "tzinfo")
+            else req_ocean.time_start
+        )
     except Exception:
         ts = now
     lon_grid = np.linspace(spill_lon - 1.0, spill_lon + 1.0, 9)
@@ -147,12 +173,8 @@ def _apply_xgb_correction(ellipse: ConfidenceEllipse, provider, req, provenance:
         ts = req.ocean_data.time_start
         lon_c, lat_c = ellipse.center_lon, ellipse.center_lat
         try:
-            uc, vc = provider.get_current_vectors(
-                _np.array([lon_c]), _np.array([lat_c]), ts
-            )
-            uw, vw = provider.get_wind_vectors(
-                _np.array([lon_c]), _np.array([lat_c]), ts
-            )
+            uc, vc = provider.get_current_vectors(_np.array([lon_c]), _np.array([lat_c]), ts)
+            uw, vw = provider.get_wind_vectors(_np.array([lon_c]), _np.array([lat_c]), ts)
             u_c, v_c, u_w, v_w = float(uc[0]), float(vc[0]), float(uw[0]), float(vw[0])
         except Exception:
             u_c, v_c, u_w, v_w = 0.15, 0.05, 4.0, 2.0
@@ -225,13 +247,16 @@ async def drift_backward(req: BackwardRequest):
     t0 = time.time()
     logger.info(
         "Backward drift request: spill=({:.4f}, {:.4f}), age={}h, N={}",
-        req.spill_lon, req.spill_lat, req.spill_age_hours, req.n_particles,
+        req.spill_lon,
+        req.spill_lat,
+        req.spill_age_hours,
+        req.n_particles,
     )
 
     try:
         from datetime import datetime as _dt
 
-        from .engine.backward_sde import integrate_backward, compute_confidence_ellipse
+        from .engine.backward_sde import compute_confidence_ellipse, integrate_backward
 
         # Load ocean data (local NetCDF if present, else forcing factory).
         u_field, v_field, K_field, lons, lats, times, provider, provenance = _build_fields(
@@ -239,14 +264,24 @@ async def drift_backward(req: BackwardRequest):
         )
 
         from .engine.ensemble import make_interpolators
+
         u_interp, v_interp, K_interp = make_interpolators(
-            u_field, v_field, K_field, lons, lats, times,
+            u_field,
+            v_field,
+            K_field,
+            lons,
+            lats,
+            times,
         )
 
         # Run backward integration
         origin_lons, origin_lats, regime = integrate_backward(
-            req.spill_lon, req.spill_lat, req.spill_age_hours,
-            u_interp, v_interp, K_interp,
+            req.spill_lon,
+            req.spill_lat,
+            req.spill_age_hours,
+            u_interp,
+            v_interp,
+            K_interp,
             n_particles=req.n_particles,
             random_seed=req.random_seed,
         )
@@ -255,9 +290,7 @@ async def drift_backward(req: BackwardRequest):
         ellipse = compute_confidence_ellipse(origin_lons, origin_lats, confidence=0.95)
 
         # XGBoost physics residual post-hoc correction (never skips WMC).
-        ellipse, xgb_applied, xgb_corr = _apply_xgb_correction(
-            ellipse, provider, req, provenance
-        )
+        ellipse, xgb_applied, xgb_corr = _apply_xgb_correction(ellipse, provider, req, provenance)
 
         # Mean dispersion
         km_per_deg = 111.0 * np.cos(np.radians(np.clip(req.spill_lat, -89, 89)))
@@ -301,14 +334,17 @@ async def drift_forward(req: ForwardRequest):
     t0 = time.time()
     logger.info(
         "Forward forecast request: origin=({:.4f}, {:.4f}), forecast={}h, N={}",
-        req.origin_lon, req.origin_lat, req.forecast_hours, req.n_particles,
+        req.origin_lon,
+        req.origin_lat,
+        req.forecast_hours,
+        req.n_particles,
     )
 
     try:
         from datetime import datetime as _dt2
 
-        from .engine.forward_forecast import integrate_forward, compute_trajectory_quantiles
         from .engine.ensemble import make_interpolators
+        from .engine.forward_forecast import compute_trajectory_quantiles, integrate_forward
 
         # Load ocean data (local NetCDF if present, else forcing factory).
         u_field, v_field, K_field, lons, lats, times, provider, provenance = _build_fields(
@@ -316,7 +352,12 @@ async def drift_forward(req: ForwardRequest):
         )
 
         u_interp, v_interp, K_interp = make_interpolators(
-            u_field, v_field, K_field, lons, lats, times,
+            u_field,
+            v_field,
+            K_field,
+            lons,
+            lats,
+            times,
         )
 
         # Spawn particles from origin distribution
@@ -326,8 +367,12 @@ async def drift_forward(req: ForwardRequest):
 
         # Forward integration
         fwd_result = integrate_forward(
-            origin_lons, origin_lats, req.forecast_hours,
-            u_interp, v_interp, K_interp,
+            origin_lons,
+            origin_lats,
+            req.forecast_hours,
+            u_interp,
+            v_interp,
+            K_interp,
             random_seed=req.random_seed,
         )
 
@@ -337,6 +382,7 @@ async def drift_forward(req: ForwardRequest):
         )
 
         from .schemas import TrajectoryEnsemble, TrajectoryPoint
+
         trajectories = TrajectoryEnsemble(
             mean_path=[TrajectoryPoint(**p) for p in traj["mean_path"]],
             quantile_5_path=[TrajectoryPoint(**p) for p in traj["quantile_5_path"]],
@@ -373,8 +419,11 @@ async def drift_full_pipeline(req: FullPipelineRequest):
     t0 = time.time()
     logger.info(
         "Full pipeline request: spill=({:.4f}, {:.4f}), age={}h, forecast={}h, N={}",
-        req.spill_lon, req.spill_lat, req.spill_age_hours,
-        req.forecast_hours, req.n_particles,
+        req.spill_lon,
+        req.spill_lat,
+        req.spill_age_hours,
+        req.forecast_hours,
+        req.n_particles,
     )
 
     try:
@@ -394,14 +443,23 @@ async def drift_full_pipeline(req: FullPipelineRequest):
         )
 
         u_interp, v_interp, K_interp = make_interpolators(
-            u_field, v_field, K_field, lons, lats, times,
+            u_field,
+            v_field,
+            K_field,
+            lons,
+            lats,
+            times,
         )
 
         # Step 1: Backward
         logger.info("Step 1/3: Backward drift")
         backward_result = run_backward_ensemble(
-            req.spill_lon, req.spill_lat, req.spill_age_hours,
-            u_interp, v_interp, K_interp,
+            req.spill_lon,
+            req.spill_lat,
+            req.spill_age_hours,
+            u_interp,
+            v_interp,
+            K_interp,
             n_particles=req.n_particles,
             random_seed=req.random_seed,
         )
@@ -411,9 +469,7 @@ async def drift_full_pipeline(req: FullPipelineRequest):
                 backward_result.origin_ellipse, provider, req, provenance
             )
             backward_result.origin_ellipse = _corr_ellipse
-            backward_result.forcing_source = str(
-                provenance.get("forcing_source", "synthetic_mock")
-            )
+            backward_result.forcing_source = str(provenance.get("forcing_source", "synthetic_mock"))
             backward_result.forcing_detail = dict(provenance)
             backward_result.xgb_residual_applied = bool(_xgb_ok)
             backward_result.xgb_correction_m = dict(_xgb_corr)
@@ -426,8 +482,12 @@ async def drift_full_pipeline(req: FullPipelineRequest):
         origin_lats = np.array(backward_result.origin_points_lat)
 
         forward_result = run_forward_ensemble(
-            origin_lons, origin_lats, req.forecast_hours,
-            u_interp, v_interp, K_interp,
+            origin_lons,
+            origin_lats,
+            req.forecast_hours,
+            u_interp,
+            v_interp,
+            K_interp,
             n_particles=req.n_particles,
             random_seed=req.random_seed,
         )
@@ -473,6 +533,7 @@ async def drift_full_pipeline(req: FullPipelineRequest):
 def start_server(host: str = "0.0.0.0", port: int = 8001):
     """Run the drift service."""
     import uvicorn
+
     logger.info("Starting SENTINEL Drift Service on {}:{}", host, port)
     uvicorn.run(app, host=host, port=port)
 

@@ -45,9 +45,9 @@ sys.path.insert(0, str(INGEST_DIR))
 
 from app.routers.archive import _resolve_bbox, router  # noqa: E402
 
-WAKASHIO = (57.6, -21.0, 58.2, -20.4)          # open Indian Ocean → synthetic
-MUMBAI = (72.6, 18.8, 73.1, 19.3)              # coastal carve-out → live
-ATLANTIC = (-21.0, 57.6, -20.4, 58.2)          # what a lat-first Mauritius parses to
+WAKASHIO = (57.6, -21.0, 58.2, -20.4)  # open Indian Ocean → synthetic
+MUMBAI = (72.6, 18.8, 73.1, 19.3)  # coastal carve-out → live
+ATLANTIC = (-21.0, 57.6, -20.4, 58.2)  # what a lat-first Mauritius parses to
 
 
 @pytest.fixture(scope="module")
@@ -155,9 +155,7 @@ def test_ais_coverage_named_axes_mumbai_is_live(client):
 
 
 def test_ais_coverage_rejects_partial_axes(client):
-    r = client.get(
-        "/archive/ais/coverage", params={"min_lon": 57.6, "min_lat": -21.0}
-    )
+    r = client.get("/archive/ais/coverage", params={"min_lon": 57.6, "min_lat": -21.0})
     assert r.status_code == 422
     assert "together" in r.json()["detail"]
 
@@ -169,9 +167,7 @@ def test_ais_coverage_rejects_missing_aoi(client):
 
 
 def test_ais_coverage_legacy_string_still_works(client):
-    r = client.get(
-        "/archive/ais/coverage", params={"bbox": "57.6,-21.0,58.2,-20.4"}
-    )
+    r = client.get("/archive/ais/coverage", params={"bbox": "57.6,-21.0,58.2,-20.4"})
     assert r.status_code == 200
     assert r.json()["use_synthetic"] is True
 

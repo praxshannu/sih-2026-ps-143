@@ -12,7 +12,7 @@ from __future__ import annotations
 import os
 
 import httpx
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import Response
 from loguru import logger
 from pydantic import BaseModel, Field
@@ -121,8 +121,7 @@ async def archive_health() -> dict[str, object]:
         )
         raise HTTPException(
             503,
-            f"{_UPSTREAM_ERROR} (upstream replied with non-JSON, status "
-            f"{resp.status_code})",
+            f"{_UPSTREAM_ERROR} (upstream replied with non-JSON, status {resp.status_code})",
         ) from None
 
 
@@ -207,9 +206,7 @@ async def ais_coverage(
     any vessel data is requested. Pass the AOI as named axes — a positional
     bbox string can be silently misread as lat-first.
     """
-    return await _proxy_get(
-        "ais/coverage", _bbox_params(min_lon, min_lat, max_lon, max_lat, bbox)
-    )
+    return await _proxy_get("ais/coverage", _bbox_params(min_lon, min_lat, max_lon, max_lat, bbox))
 
 
 @router.get("/ais")

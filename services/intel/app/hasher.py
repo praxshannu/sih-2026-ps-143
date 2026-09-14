@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 
@@ -31,7 +31,7 @@ def chain_hash(previous_hash: str, current_hash: str) -> str:
     This creates a tamper-evident chain where modifying any stage
     invalidates all subsequent hashes.
     """
-    combined = f"{previous_hash}{current_hash}".encode("utf-8")
+    combined = f"{previous_hash}{current_hash}".encode()
     return compute_sha256(combined)
 
 
@@ -52,7 +52,7 @@ def create_custody_entry(
 
     return {
         "stage": stage,
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(),
         "input_hash": input_hash,
         "output_hash": output_hash,
         "chain_hash": chained,
@@ -104,7 +104,11 @@ def verify_chain(chain: list[dict[str, Any]]) -> tuple[bool, int]:
             # Cannot verify input hash without original data
             pass
 
-        expected_chain = chain_hash(previous_hash, entry["output_hash"]) if previous_hash else entry["output_hash"]
+        expected_chain = (
+            chain_hash(previous_hash, entry["output_hash"])
+            if previous_hash
+            else entry["output_hash"]
+        )
 
         if entry.get("chain_hash", "") != expected_chain:
             return False, i

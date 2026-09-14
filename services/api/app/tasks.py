@@ -14,8 +14,8 @@ from __future__ import annotations
 
 import json
 import os
-from datetime import datetime, timedelta, timezone
-from typing import Any, Optional
+from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import httpx
 from loguru import logger
@@ -52,7 +52,7 @@ DEFAULTS: dict[str, Any] = {
 }
 
 
-def _merge(payload: Optional[dict] = None) -> dict[str, Any]:
+def _merge(payload: dict | None = None) -> dict[str, Any]:
     merged = dict(DEFAULTS)
     if payload:
         merged.update({k: v for k, v in payload.items() if v is not None})
@@ -117,6 +117,7 @@ def _progress(case_id: str, stage: str, pct: float) -> None:
 # Stages
 # ---------------------------------------------------------------------------
 
+
 def stage_detect(case_id: str, p: dict) -> dict:
     _progress(case_id, "detect", 5.0)
     res = _post(
@@ -130,13 +131,17 @@ def stage_detect(case_id: str, p: dict) -> dict:
         spills = data.get("spills", [])
         _publish(case_id, "SPILL_DETECTED", {"spills": spills, "total": len(spills)})
         return {"status": "ok", "spills": len(spills), "data": data}
-    _publish(case_id, "PIPELINE_PROGRESS", {"stage": "detect", "pct_complete": 0.0, "error": res.get("detail")})
+    _publish(
+        case_id,
+        "PIPELINE_PROGRESS",
+        {"stage": "detect", "pct_complete": 0.0, "error": res.get("detail")},
+    )
     return {"status": "error", **{k: v for k, v in res.items() if k != "ok"}}
 
 
 def stage_drift(case_id: str, p: dict) -> dict:
     _progress(case_id, "drift", 30.0)
-    t_end = datetime.now(timezone.utc)
+    t_end = datetime.now(UTC)
     t_start = t_end - timedelta(hours=float(p["spill_age_hours"]) + 24)
     body = {
         "spill_lon": float(p["spill_lon"]),
@@ -165,13 +170,16 @@ def stage_drift(case_id: str, p: dict) -> dict:
         _publish(
             case_id,
             "DRIFT_COMPLETE",
-            {"origin_ellipse": origin, "forcing": (data.get("backward") or {}).get("forcing_source")},
+            {
+                "origin_ellipse": origin,
+                "forcing": (data.get("backward") or {}).get("forcing_source"),
+            },
         )
         return {"status": "ok", "data": data}
     return {"status": "error", **{k: v for k, v in res.items() if k != "ok"}}
 
 
-def stage_attribute(case_id: str, p: dict, drift_data: Optional[dict] = None) -> dict:
+def stage_attribute(case_id: str, p: dict, drift_data: dict | None = None) -> dict:
     _progress(case_id, "attribute", 60.0)
     origin = dict(p["origin"])
     try:
@@ -205,7 +213,7 @@ def stage_attribute(case_id: str, p: dict, drift_data: Optional[dict] = None) ->
     return {"status": "error", **{k: v for k, v in res.items() if k != "ok"}}
 
 
-def _intel_detection(p: dict, case_id: str, detect_data: Optional[dict] = None) -> dict:
+def _intel_detection(p: dict, case_id: str, detect_data: dict | None = None) -> dict:
     spills = (detect_data or {}).get("spills", []) if detect_data else []
     first = spills[0] if spills else {}
     lon = float(first.get("centroid_lon", p["spill_lon"]))
@@ -232,7 +240,7 @@ def _intel_detection(p: dict, case_id: str, detect_data: Optional[dict] = None) 
     }
 
 
-def _intel_drift(drift_data: Optional[dict]) -> Optional[dict]:
+def _intel_drift(drift_data: dict | None) -> dict | None:
     try:
         backward = (drift_data or {}).get("backward", drift_data or {})
         ell = backward.get("origin_ellipse") or {}
@@ -250,7 +258,7 @@ def _intel_drift(drift_data: Optional[dict]) -> Optional[dict]:
         return None
 
 
-def _intel_suspects(attr_data: Optional[dict]) -> list[dict]:
+def _intel_suspects(attr_data: dict | None) -> list[dict]:
     out = []
     for i, s in enumerate((attr_data or {}).get("suspects", [])[:5], start=1):
         out.append(
@@ -274,9 +282,9 @@ def _intel_suspects(attr_data: Optional[dict]) -> list[dict]:
 def stage_intel(
     case_id: str,
     p: dict,
-    detect_data: Optional[dict] = None,
-    drift_data: Optional[dict] = None,
-    attr_data: Optional[dict] = None,
+    detect_data: dict | None = None,
+    drift_data: dict | None = None,
+    attr_data: dict | None = None,
 ) -> dict:
     _progress(case_id, "intel", 80.0)
     body = {
@@ -301,9 +309,9 @@ def stage_intel(
 def stage_case_file(
     case_id: str,
     p: dict,
-    detect_data: Optional[dict] = None,
-    drift_data: Optional[dict] = None,
-    attr_data: Optional[dict] = None,
+    detect_data: dict | None = None,
+    drift_data: dict | None = None,
+    attr_data: dict | None = None,
 ) -> dict:
     _progress(case_id, "case_file", 95.0)
     body = {
@@ -329,6 +337,7 @@ def stage_case_file(
 # ---------------------------------------------------------------------------
 # Celery tasks
 # ---------------------------------------------------------------------------
+
 
 @celery_app.task(name="app.tasks.run_detect_pipeline", bind=True)
 def run_detect_pipeline(self, case_id: str, payload: dict | None = None):
@@ -363,7 +372,9 @@ def generate_case_file(self, case_id: str, payload: dict | None = None):
 
 
 @celery_app.task(name="app.tasks.run_full_pipeline", bind=True)
-def run_full_pipeline(self, case_id: str, stages: list[str] | None = None, payload: dict | None = None):
+def run_full_pipeline(
+    self, case_id: str, stages: list[str] | None = None, payload: dict | None = None
+):
     logger.info("Running full pipeline for case: {}, stages: {}", case_id, stages)
     p = _merge(payload)
     target_stages = stages or ["detect", "drift", "attribute", "intel"]

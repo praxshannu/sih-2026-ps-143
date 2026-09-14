@@ -12,13 +12,11 @@ import os
 import time
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
-from typing import Optional
 
 import numpy as np
 import rasterio
 import torch
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import JSONResponse
 from loguru import logger
 
 from app.models.inference import TiledInference
@@ -28,12 +26,11 @@ from app.processors.lookalike_filter import LookalikeFilter
 from app.processors.multimodal_input import MultimodalInputProcessor
 from app.processors.postprocess import PostProcessor
 from app.schemas import (
-    AgeEstimate,
     AnalyzeRequest,
     AnalyzeResponse,
+    DetectedSpill,
     DetectRequest,
     DetectResponse,
-    DetectedSpill,
     GeoJSONFeature,
     GeoJSONFeatureCollection,
     GeoJSONGeometry,
@@ -41,19 +38,18 @@ from app.schemas import (
     LookalikeAnalysis,
     MetricsResponse,
     ProcessingStatus,
-    SpillAgeCategory,
 )
 
 # ---------------------------------------------------------------------------
 # Global state
 # ---------------------------------------------------------------------------
-_model: Optional[UNetPlusPlusSCSE] = None
-_tiled_inference: Optional[TiledInference] = None
-_input_processor: Optional[MultimodalInputProcessor] = None
-_post_processor: Optional[PostProcessor] = None
-_lookalike_filter: Optional[LookalikeFilter] = None
-_age_estimator: Optional[AgeEstimator] = None
-_device: Optional[torch.device] = None
+_model: UNetPlusPlusSCSE | None = None
+_tiled_inference: TiledInference | None = None
+_input_processor: MultimodalInputProcessor | None = None
+_post_processor: PostProcessor | None = None
+_lookalike_filter: LookalikeFilter | None = None
+_age_estimator: AgeEstimator | None = None
+_device: torch.device | None = None
 
 # Metrics counters
 _metrics = {
@@ -104,8 +100,7 @@ async def lifespan(app: FastAPI):
         )
     else:
         logger.warning(
-            f"Checkpoint not found at {MODEL_CHECKPOINT}, "
-            "loading pretrained encoder only"
+            f"Checkpoint not found at {MODEL_CHECKPOINT}, loading pretrained encoder only"
         )
         _model = UNetPlusPlusSCSE(
             encoder_name=ENCODER_NAME,
@@ -147,6 +142,7 @@ app = FastAPI(
 # Endpoints
 # ---------------------------------------------------------------------------
 
+
 @app.get("/health", response_model=HealthResponse)
 async def health_check():
     """Model health and status check."""
@@ -162,11 +158,7 @@ async def health_check():
 @app.get("/metrics", response_model=MetricsResponse)
 async def metrics():
     """Prometheus-style metrics endpoint."""
-    avg_time = (
-        np.mean(_metrics["inference_times_ms"])
-        if _metrics["inference_times_ms"]
-        else 0.0
-    )
+    avg_time = np.mean(_metrics["inference_times_ms"]) if _metrics["inference_times_ms"] else 0.0
     return MetricsResponse(
         requests_total=_metrics["requests_total"],
         spills_detected_total=_metrics["spills_detected_total"],
@@ -235,6 +227,7 @@ async def analyze(request: AnalyzeRequest):
 # Core processing functions (run in thread pool)
 # ---------------------------------------------------------------------------
 
+
 def _run_detection(request: DetectRequest) -> DetectResponse:
     """Synchronous detection pipeline (runs in thread pool)."""
     assert _input_processor is not None
@@ -260,9 +253,7 @@ def _run_detection(request: DetectRequest) -> DetectResponse:
         crs_epsg = int(src.crs.to_epsg()) if src.crs and src.crs.to_epsg() else 4326
 
     _post_processor.confidence_threshold = request.confidence_threshold
-    polygons, geojson_dict = _post_processor.process(
-        logits, transform=transform
-    )
+    polygons, geojson_dict = _post_processor.process(logits, transform=transform)
 
     inf_time_ms = (time.perf_counter() - inf_start) * 1000
     _metrics["inference_times_ms"].append(inf_time_ms)
@@ -343,17 +334,11 @@ def _run_full_analysis(request: AnalyzeRequest) -> AnalyzeResponse:
 
     _post_processor.confidence_threshold = request.confidence_threshold
     _post_processor.min_area_m2 = request.min_area_m2
-    polygons, geojson_dict = _post_processor.process(
-        logits, transform=transform
-    )
+    polygons, geojson_dict = _post_processor.process(logits, transform=transform)
 
     # Read SAR patch for texture analysis
-    bands = _input_processor.read_sar_bands(
-        request.image_path, request.band_selection
-    )
-    sar_array = _input_processor.normalize_sar(
-        next(iter(bands.values()))
-    )
+    bands = _input_processor.read_sar_bands(request.image_path, request.band_selection)
+    sar_array = _input_processor.normalize_sar(next(iter(bands.values())))
 
     # Lookalike filtering per polygon
     lookalike_results: list[LookalikeAnalysis] = []
@@ -395,8 +380,12 @@ def _run_full_analysis(request: AnalyzeRequest) -> AnalyzeResponse:
                 properties={
                     "id": f"spill_{i:04d}",
                     "area_m2": p.get("area_m2", 0),
-                    "age_hours": age_estimates[i].estimated_hours if i < len(age_estimates) else None,
-                    "age_category": age_estimates[i].category.value if i < len(age_estimates) else None,
+                    "age_hours": age_estimates[i].estimated_hours
+                    if i < len(age_estimates)
+                    else None,
+                    "age_category": age_estimates[i].category.value
+                    if i < len(age_estimates)
+                    else None,
                 },
             )
             for i, p in enumerate(filtered_polygons)
@@ -459,6 +448,7 @@ def _extract_patch(sar_array: np.ndarray, geometry) -> np.ndarray:
 def _confidence_level(confidence: float):
     """Map confidence score to level enum."""
     from app.schemas import ConfidenceLevel
+
     if confidence >= 0.75:
         return ConfidenceLevel.HIGH
     elif confidence >= 0.5:

@@ -5,11 +5,10 @@ Dispatches alerts via SMTP email and HTTP webhooks with retry logic.
 
 from __future__ import annotations
 
-import json
 import os
 import smtplib
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
@@ -58,7 +57,7 @@ def _build_email_html(
           <table style="width: 100%; font-size: 14px; margin-bottom: 16px;">
             <tr><td style="padding: 6px 0; color: #666;">Case ID</td><td style="padding: 6px 0; font-family: monospace;">{case_id}</td></tr>
             <tr><td style="padding: 6px 0; color: #666;">Spill ID</td><td style="padding: 6px 0; font-family: monospace;">{spill_id}</td></tr>
-            <tr><td style="padding: 6px 0; color: #666;">Timestamp (UTC)</td><td style="padding: 6px 0;">{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')}</td></tr>
+            <tr><td style="padding: 6px 0; color: #666;">Timestamp (UTC)</td><td style="padding: 6px 0;">{datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S")}</td></tr>
             <tr><td style="padding: 6px 0; color: #666;">Evidence Hash</td><td style="padding: 6px 0; font-family: monospace; font-size: 11px; word-break: break-all;">{evidence_hash}</td></tr>
           </table>
           <div style="background: #f8f9fa; border-left: 4px solid {color}; padding: 16px; margin-bottom: 16px; font-size: 14px; line-height: 1.6;">
@@ -132,10 +131,15 @@ async def _send_webhook(
                     return True
                 logger.warning(
                     "Webhook {} returned {} (attempt {}/{})",
-                    url, response.status_code, attempt, ALERT_RETRY_COUNT,
+                    url,
+                    response.status_code,
+                    attempt,
+                    ALERT_RETRY_COUNT,
                 )
         except Exception as e:
-            logger.warning("Webhook {} failed (attempt {}/{}): {}", url, attempt, ALERT_RETRY_COUNT, e)
+            logger.warning(
+                "Webhook {} failed (attempt {}/{}): {}", url, attempt, ALERT_RETRY_COUNT, e
+            )
 
     return False
 
@@ -158,7 +162,11 @@ async def dispatch_alert(
 
     logger.info(
         "Dispatching alert {} for case {} (priority={}, emails={}, webhooks={})",
-        alert_id, case_id, alert_priority, len(recipients), len(webhook_urls),
+        alert_id,
+        case_id,
+        alert_priority,
+        len(recipients),
+        len(webhook_urls),
     )
 
     # Send emails
@@ -180,7 +188,7 @@ async def dispatch_alert(
         "alert_priority": alert_priority,
         "summary": summary,
         "evidence_hash": evidence_hash,
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(),
         "source": "sentinel-intel",
     }
     webhooks_sent = 0
@@ -194,7 +202,11 @@ async def dispatch_alert(
 
     logger.info(
         "Alert {} dispatched: {}/{} emails, {}/{} webhooks",
-        alert_id, emails_sent, len(recipients), webhooks_sent, len(webhook_urls),
+        alert_id,
+        emails_sent,
+        len(recipients),
+        webhooks_sent,
+        len(webhook_urls),
     )
 
     return {

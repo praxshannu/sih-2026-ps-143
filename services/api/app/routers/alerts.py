@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-import os
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from loguru import logger
@@ -10,11 +9,9 @@ from app.middleware.auth import get_current_user, require_admin
 from app.schemas import (
     AlertCreate,
     AlertListResponse,
-    AlertPriority,
     AlertResponse,
     AlertType,
     TokenPayload,
-    WebhookTarget,
     WebhookTargetCreate,
     WebhookTargetResponse,
 )
@@ -71,7 +68,7 @@ async def create_alert(
     body: AlertCreate,
     _user: TokenPayload = Depends(get_current_user),
 ):
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     alert_id = _next_alert_id()
     alert = {
         "id": alert_id,
@@ -100,7 +97,7 @@ async def mark_alert_sent(
         raise HTTPException(status_code=404, detail="Alert not found")
     if alert["sent"]:
         raise HTTPException(status_code=400, detail="Alert already sent")
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     alert["sent"] = True
     alert["sent_at"] = now
 
@@ -125,7 +122,7 @@ async def create_webhook(
     body: WebhookTargetCreate,
     _user: TokenPayload = Depends(require_admin),
 ):
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     wh_id = _next_webhook_id()
     webhook = {
         "id": wh_id,
@@ -138,7 +135,14 @@ async def create_webhook(
     }
     _webhooks[wh_id] = webhook
     logger.info("Webhook created: {} ({})", wh_id, body.name)
-    return WebhookTargetResponse(id=wh_id, name=body.name, url=body.url, alert_types=body.alert_types, enabled=body.enabled, created_at=now)
+    return WebhookTargetResponse(
+        id=wh_id,
+        name=body.name,
+        url=body.url,
+        alert_types=body.alert_types,
+        enabled=body.enabled,
+        created_at=now,
+    )
 
 
 @router.delete("/webhooks/{webhook_id}", status_code=status.HTTP_204_NO_CONTENT)

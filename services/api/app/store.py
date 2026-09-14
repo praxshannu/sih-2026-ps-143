@@ -9,13 +9,11 @@ from __future__ import annotations
 
 import json
 import os
-from typing import Any, Optional
+from typing import Any
 
 from loguru import logger
 
-REDIS_URL = os.getenv(
-    "REDIS_URL", os.getenv("REDIS_BROKER_URL", "redis://localhost:6379/0")
-)
+REDIS_URL = os.getenv("REDIS_URL", os.getenv("REDIS_BROKER_URL", "redis://localhost:6379/0"))
 RESULT_TTL_SECONDS = int(os.getenv("RESULT_TTL_SECONDS", "86400"))
 
 _memory: dict[str, dict[str, Any]] = {}
@@ -45,9 +43,7 @@ async def save_stage(case_id: str, stage: str, payload: Any) -> None:
         raw = await client.get(_key(case_id))
         data = json.loads(raw) if raw else {}
         data[stage] = payload
-        await client.setex(
-            _key(case_id), RESULT_TTL_SECONDS, json.dumps(data, default=str)
-        )
+        await client.setex(_key(case_id), RESULT_TTL_SECONDS, json.dumps(data, default=str))
     except Exception as e:
         logger.warning("Result cache write failed, memory-only: {}", e)
     finally:
@@ -75,6 +71,6 @@ async def get_results(case_id: str) -> dict[str, Any]:
     return dict(_memory.get(case_id, {}))
 
 
-async def get_stage(case_id: str, stage: str) -> Optional[Any]:
+async def get_stage(case_id: str, stage: str) -> Any | None:
     results = await get_results(case_id)
     return results.get(stage)

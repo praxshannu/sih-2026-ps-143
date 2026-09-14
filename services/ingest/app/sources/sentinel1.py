@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import httpx
 from loguru import logger
@@ -14,7 +14,9 @@ from ..models.schemas import Sentinel1Product, Sentinel1Result
 # Indian EEZ bounding box
 INDIA_EEZ_BBOX = (68.0, 5.0, 88.0, 25.0)
 
-COPERNICUS_TOKEN_URL = "https://identity.dataspace.copernicus.eu/auth/realms/CDSE/protocol/openid-connect/token"
+COPERNICUS_TOKEN_URL = (
+    "https://identity.dataspace.copernicus.eu/auth/realms/CDSE/protocol/openid-connect/token"
+)
 COPERNICUS_CATALOGUE_URL = "https://catalogue.dataspace.copernicus.eu/odata/v1/Products"
 
 
@@ -35,7 +37,7 @@ class Sentinel1Fetcher:
 
     async def _get_token(self) -> str:
         """Authenticate with Copernicus Data Space and obtain a bearer token."""
-        if self._token and self._token_expires and datetime.now(timezone.utc) < self._token_expires:
+        if self._token and self._token_expires and datetime.now(UTC) < self._token_expires:
             return self._token
 
         async with httpx.AsyncClient(timeout=30) as client:
@@ -54,7 +56,9 @@ class Sentinel1Fetcher:
         if not token:
             raise ValueError("No access_token in Copernicus auth response")
         self._token = token
-        self._token_expires = datetime.now(timezone.utc) + timedelta(seconds=data.get("expires_in", 600) - 60)
+        self._token_expires = datetime.now(UTC) + timedelta(
+            seconds=data.get("expires_in", 600) - 60
+        )
         logger.info("Copernicus token acquired, expires in {}s", data.get("expires_in", 600))
         return token
 
@@ -79,7 +83,7 @@ class Sentinel1Fetcher:
         List of Sentinel1Product metadata dicts.
         """
         lon_min, lat_min, lon_max, lat_max = bbox
-        date_end = datetime.now(timezone.utc)
+        date_end = datetime.now(UTC)
         date_start = date_end - timedelta(days=lookback_days)
 
         date_filter = f"ContentDate/Start ge {date_start.strftime('%Y-%m-%dT00:00:00.000Z')} and ContentDate/Start le {date_end.strftime('%Y-%m-%dT23:59:59.999Z')}"

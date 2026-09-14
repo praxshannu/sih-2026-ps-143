@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import os
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime
 
 import asyncpg
 import httpx
@@ -174,11 +174,16 @@ class AisFetcher:
             # Parse timestamp
             ts_raw = raw.get("TIMESTAMP") or raw.get("timestamp") or raw.get("time", "")
             if isinstance(ts_raw, (int, float)):
-                ts = datetime.fromtimestamp(ts_raw, tz=timezone.utc)
+                ts = datetime.fromtimestamp(ts_raw, tz=UTC)
             elif isinstance(ts_raw, str):
-                for fmt in ["%Y-%m-%dT%H:%M:%S.%fZ", "%Y-%m-%dT%H:%M:%SZ", "%Y-%m-%d %H:%M:%S", "%Y/%m/%d %H:%M:%S"]:
+                for fmt in [
+                    "%Y-%m-%dT%H:%M:%S.%fZ",
+                    "%Y-%m-%dT%H:%M:%SZ",
+                    "%Y-%m-%d %H:%M:%S",
+                    "%Y/%m/%d %H:%M:%S",
+                ]:
                     try:
-                        ts = datetime.strptime(ts_raw, fmt).replace(tzinfo=timezone.utc)
+                        ts = datetime.strptime(ts_raw, fmt).replace(tzinfo=UTC)
                         break
                     except ValueError:
                         continue

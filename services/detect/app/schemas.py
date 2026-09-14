@@ -4,14 +4,14 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import Enum
-from typing import Any, Optional
+from typing import Any
 
-from pydantic import BaseModel, Field, field_validator
-
+from pydantic import BaseModel, Field
 
 # ---------------------------------------------------------------------------
 # Enums
 # ---------------------------------------------------------------------------
+
 
 class ConfidenceLevel(str, Enum):
     HIGH = "high"
@@ -36,6 +36,7 @@ class ProcessingStatus(str, Enum):
 # Input schemas
 # ---------------------------------------------------------------------------
 
+
 class WindData(BaseModel):
     u10: float = Field(..., description="10-m eastward wind component (m/s)")
     v10: float = Field(..., description="10-m northward wind component (m/s)")
@@ -47,6 +48,7 @@ class WindData(BaseModel):
     @property
     def direction_deg(self) -> float:
         import math
+
         return math.degrees(math.atan2(-self.u10, -self.v10)) % 360
 
 
@@ -60,8 +62,8 @@ class DetectRequest(BaseModel):
 
     image_path: str = Field(..., description="Local path or URL to Sentinel-1 GeoTIFF")
     band_selection: str = Field(default="VV", description="SAR polarisation band")
-    wind: Optional[WindData] = Field(default=None, description="ERA5 wind data")
-    current: Optional[CurrentData] = Field(default=None, description="Ocean current data")
+    wind: WindData | None = Field(default=None, description="ERA5 wind data")
+    current: CurrentData | None = Field(default=None, description="Ocean current data")
     tile_size: int = Field(default=512, ge=128, le=2048)
     overlap: int = Field(default=64, ge=0, le=256)
     confidence_threshold: float = Field(default=0.5, ge=0.0, le=1.0)
@@ -72,8 +74,8 @@ class AnalyzeRequest(BaseModel):
 
     image_path: str
     band_selection: str = Field(default="VV")
-    wind: Optional[WindData] = None
-    current: Optional[CurrentData] = None
+    wind: WindData | None = None
+    current: CurrentData | None = None
     tile_size: int = Field(default=512, ge=128, le=2048)
     overlap: int = Field(default=64, ge=0, le=256)
     confidence_threshold: float = Field(default=0.5, ge=0.0, le=1.0)
@@ -84,6 +86,7 @@ class AnalyzeRequest(BaseModel):
 # ---------------------------------------------------------------------------
 # GeoJSON primitives
 # ---------------------------------------------------------------------------
+
 
 class GeoJSONGeometry(BaseModel):
     type: str = "Polygon"
@@ -105,6 +108,7 @@ class GeoJSONFeatureCollection(BaseModel):
 # Output schemas
 # ---------------------------------------------------------------------------
 
+
 class DetectedSpill(BaseModel):
     id: str
     confidence: float = Field(ge=0.0, le=1.0)
@@ -123,10 +127,10 @@ class LookalikeAnalysis(BaseModel):
 
 
 class AgeEstimate(BaseModel):
-    estimated_hours: Optional[float] = Field(default=None, ge=0.0)
+    estimated_hours: float | None = Field(default=None, ge=0.0)
     category: SpillAgeCategory
     area_at_detection_m2: float
-    fay_constant_k: Optional[float] = None
+    fay_constant_k: float | None = None
 
 
 class DetectResponse(BaseModel):

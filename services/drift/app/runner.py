@@ -40,15 +40,11 @@ already match the Wakashio case (24–48 h backtrack, 16 members).
 
 from __future__ import annotations
 
-import json
 import math
 import os
-import sys
-import time
 import warnings
 from dataclasses import asdict, dataclass, field
-from datetime import datetime, timedelta, timezone
-from pathlib import Path
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import numpy as np
@@ -57,10 +53,12 @@ import numpy as np
 warnings.filterwarnings("ignore")
 os.environ.setdefault("OPENDRIFT_DISABLE_LOGGING", "1")
 
+
 # Lazy-imported so a missing OpenDrift doesn't break module load.
 def _opendrift():
-    from opendrift.readers import reader_netCDF_CF_generic
     from opendrift.models.openoil import OpenOil
+    from opendrift.readers import reader_netCDF_CF_generic
+
     return reader_netCDF_CF_generic, OpenOil
 
 
@@ -86,10 +84,10 @@ class OriginEllipse:
     center_lat: float
     semi_major_km: float
     semi_minor_km: float
-    orientation_deg: float   # 0=N, clockwise
+    orientation_deg: float  # 0=N, clockwise
     n_particles: int
-    p50_radius_km: float      # 50% quantile distance from centre
-    p95_radius_km: float      # 95% quantile distance from centre
+    p50_radius_km: float  # 50% quantile distance from centre
+    p95_radius_km: float  # 95% quantile distance from centre
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -119,11 +117,11 @@ class AttributionResult:
 
     run_utc: str
     detection_time: str
-    detection_centroid: tuple[float, float]   # (lon, lat)
+    detection_centroid: tuple[float, float]  # (lon, lat)
     detection_area_km2: float
-    wind_source: str          # "era5" | "synthetic_constant"
-    current_source: str       # "cmems" | "synthetic_constant"
-    wmc_divergence_max: float # max |∇·K| seen across the run
+    wind_source: str  # "era5" | "synthetic_constant"
+    current_source: str  # "cmems" | "synthetic_constant"
+    wmc_divergence_max: float  # max |∇·K| seen across the run
     config: dict[str, Any]
     origin: OriginEllipse
     suspect_vessels: list[VesselCandidate] = field(default_factory=list)
@@ -148,9 +146,14 @@ def _ellipse_from_xy(x_km: np.ndarray, y_km: np.ndarray) -> OriginEllipse:
     if len(x_km) < 4:
         # Fallback to a tiny circle so downstream code never crashes.
         return OriginEllipse(
-            center_lon=0.0, center_lat=0.0, semi_major_km=0.0, semi_minor_km=0.0,
-            orientation_deg=0.0, n_particles=int(len(x_km)),
-            p50_radius_km=0.0, p95_radius_km=0.0,
+            center_lon=0.0,
+            center_lat=0.0,
+            semi_major_km=0.0,
+            semi_minor_km=0.0,
+            orientation_deg=0.0,
+            n_particles=int(len(x_km)),
+            p50_radius_km=0.0,
+            p95_radius_km=0.0,
         )
     cx, cy = float(np.mean(x_km)), float(np.mean(y_km))
     X = np.stack([x_km - cx, y_km - cy], axis=0)  # 2 x N
@@ -174,16 +177,23 @@ def _ellipse_from_xy(x_km: np.ndarray, y_km: np.ndarray) -> OriginEllipse:
     p50 = float(np.percentile(r, 50))
     p95 = float(np.percentile(r, 95))
     return OriginEllipse(
-        center_lon=cx, center_lat=cy,
-        semi_major_km=semi_major, semi_minor_km=semi_minor,
-        orientation_deg=orientation, n_particles=int(len(x_km)),
-        p50_radius_km=p50, p95_radius_km=p95,
+        center_lon=cx,
+        center_lat=cy,
+        semi_major_km=semi_major,
+        semi_minor_km=semi_minor,
+        orientation_deg=orientation,
+        n_particles=int(len(x_km)),
+        p50_radius_km=p50,
+        p95_radius_km=p95,
     )
 
 
-def _make_constant_reader(name: str, fields: dict[str, float],
-                          start_time: datetime | None = None,
-                          end_time: datetime | None = None) -> Any:
+def _make_constant_reader(
+    name: str,
+    fields: dict[str, float],
+    start_time: datetime | None = None,
+    end_time: datetime | None = None,
+) -> Any:
     """Build an in-memory OpenDrift constant reader from a fields dict.
 
     OpenDrift's constant reader defaults ``start_time``/``end_time`` to None;
@@ -191,6 +201,7 @@ def _make_constant_reader(name: str, fields: dict[str, float],
     any time inside it.
     """
     from opendrift.readers.reader_constant import Reader as ConstantReader
+
     r = ConstantReader(
         {
             "sea_water_speed": fields.get("sea_water_speed", 0.0),
@@ -214,8 +225,8 @@ def run_backward_attribution(
     detection_lon: float,
     detection_lat: float,
     detection_area_km2: float,
-    wind_reader: Any,           # opendrift reader (or None for synthetic)
-    current_reader: Any | None, # opendrift reader (or None for synthetic)
+    wind_reader: Any,  # opendrift reader (or None for synthetic)
+    current_reader: Any | None,  # opendrift reader (or None for synthetic)
     vessels: list[dict[str, Any]] | None = None,
     cfg: EnsembleConfig | None = None,
     synthetic_wind_ms: float = 5.0,
@@ -272,8 +283,8 @@ def run_backward_attribution(
     o = OpenOil(loglevel=0)
     # See docstring: no GSHHG, treat AOI as open water so a coastal slick
     # doesn't strand the ensemble on step 1.
-    o.set_config('general:use_auto_landmask', False)
-    o.set_config('environment:fallback:land_binary_mask', 0)
+    o.set_config("general:use_auto_landmask", False)
+    o.set_config("environment:fallback:land_binary_mask", 0)
 
     # OpenOil will refuse to start without wind AND current readers, so when
     # the caller didn't supply real ones we synthesise constant fields from
@@ -292,14 +303,29 @@ def run_backward_attribution(
         if r is not None:
             o.add_reader(r)
     if wind_reader is None:
-        o.add_reader(_make_constant_reader("synthetic_wind", {
-            "x_wind": u_wind, "y_wind": v_wind,
-        }, start_time=sim_start, end_time=sim_end))
+        o.add_reader(
+            _make_constant_reader(
+                "synthetic_wind",
+                {
+                    "x_wind": u_wind,
+                    "y_wind": v_wind,
+                },
+                start_time=sim_start,
+                end_time=sim_end,
+            )
+        )
     if current_reader is None:
-        o.add_reader(_make_constant_reader("synthetic_current", {
-            "x_sea_water_velocity": u_cur,
-            "y_sea_water_velocity": v_cur,
-        }, start_time=sim_start, end_time=sim_end))
+        o.add_reader(
+            _make_constant_reader(
+                "synthetic_current",
+                {
+                    "x_sea_water_velocity": u_cur,
+                    "y_sea_water_velocity": v_cur,
+                },
+                start_time=sim_start,
+                end_time=sim_end,
+            )
+        )
 
     # WMC divergence sampler — track max |∇·K| over the run.
     # With a spatially constant K, ∇·K == 0 and the Well-Mixed Criterion
@@ -362,8 +388,9 @@ def run_backward_attribution(
     if n_kept > 0:
         cluster_dx_km = float(np.mean(x_km))
         cluster_dy_km = float(np.mean(y_km))
-        cluster_d_km = _haversine_km(detection_lon, detection_lat,
-                                     float(np.mean(origin_lon)), float(np.mean(origin_lat)))
+        cluster_d_km = _haversine_km(
+            detection_lon, detection_lat, float(np.mean(origin_lon)), float(np.mean(origin_lat))
+        )
     else:
         cluster_dx_km = cluster_dy_km = cluster_d_km = 0.0
 
@@ -375,7 +402,9 @@ def run_backward_attribution(
     )
     if n_kept == 0:
         notes.append("Backward run produced no surviving particles — origin indeterminate.")
-    elif cluster_d_km < 0.5 and wind_src == "synthetic_constant" and cur_src == "synthetic_constant":
+    elif (
+        cluster_d_km < 0.5 and wind_src == "synthetic_constant" and cur_src == "synthetic_constant"
+    ):
         notes.append("Cluster collapsed onto detection: no real forcing available.")
     if n_kept < n:
         notes.append(f"{n - n_kept}/{n} particles deactivated during the backtrack.")
@@ -401,21 +430,23 @@ def run_backward_attribution(
         if vlon is None or vlat is None:
             continue
         d = _haversine_km(vlon, vlat, origin.center_lon, origin.center_lat)
-        suspects.append(VesselCandidate(
-            mmsi=v.get("mmsi", ""),
-            name=v.get("name", ""),
-            flag=v.get("flag"),
-            distance_to_origin_km=round(d, 2),
-            inside_p50=d <= origin.p50_radius_km,
-            inside_p95=d <= origin.p95_radius_km,
-            age_h=v.get("age_h"),
-            wind_flag="OK" if wind_src == "era5" else "LOW_CONFIDENCE_NO_WIND",
-            provenance=v.get("provenance", "live_terrestrial"),
-        ))
+        suspects.append(
+            VesselCandidate(
+                mmsi=v.get("mmsi", ""),
+                name=v.get("name", ""),
+                flag=v.get("flag"),
+                distance_to_origin_km=round(d, 2),
+                inside_p50=d <= origin.p50_radius_km,
+                inside_p95=d <= origin.p95_radius_km,
+                age_h=v.get("age_h"),
+                wind_flag="OK" if wind_src == "era5" else "LOW_CONFIDENCE_NO_WIND",
+                provenance=v.get("provenance", "live_terrestrial"),
+            )
+        )
     suspects.sort(key=lambda c: c.distance_to_origin_km)
 
     return AttributionResult(
-        run_utc=datetime.now(timezone.utc).isoformat(),
+        run_utc=datetime.now(UTC).isoformat(),
         detection_time=detection_time.isoformat(),
         detection_centroid=(detection_lon, detection_lat),
         detection_area_km2=detection_area_km2,
@@ -428,9 +459,11 @@ def run_backward_attribution(
         notes=notes,
     )
 
+
 # ─────────────────────────────────────────────────────────────────────────
 # Forward forecast (shoreline impact)
 # ─────────────────────────────────────────────────────────────────────────
+
 
 @dataclass
 class ForecastConeStep:
@@ -517,11 +550,11 @@ def run_forward_forecast(
 
     o = OpenOil(loglevel=0)
     if use_landmask:
-        o.set_config('general:use_auto_landmask', True)
-        o.set_config('general:coastline_action', 'stranding')
+        o.set_config("general:use_auto_landmask", True)
+        o.set_config("general:coastline_action", "stranding")
     else:
-        o.set_config('general:use_auto_landmask', False)
-        o.set_config('environment:fallback:land_binary_mask', 0)
+        o.set_config("general:use_auto_landmask", False)
+        o.set_config("environment:fallback:land_binary_mask", 0)
 
     rad_wind = math.radians(synthetic_wind_dir_from_deg + 180.0)
     u_wind = synthetic_wind_ms * math.sin(rad_wind)
@@ -536,13 +569,29 @@ def run_forward_forecast(
         if r is not None:
             o.add_reader(r)
     if wind_reader is None:
-        o.add_reader(_make_constant_reader("synthetic_wind", {
-            "x_wind": u_wind, "y_wind": v_wind,
-        }, start_time=t0, end_time=t1))
+        o.add_reader(
+            _make_constant_reader(
+                "synthetic_wind",
+                {
+                    "x_wind": u_wind,
+                    "y_wind": v_wind,
+                },
+                start_time=t0,
+                end_time=t1,
+            )
+        )
     if current_reader is None:
-        o.add_reader(_make_constant_reader("synthetic_current", {
-            "x_sea_water_velocity": u_cur, "y_sea_water_velocity": v_cur,
-        }, start_time=t0, end_time=t1))
+        o.add_reader(
+            _make_constant_reader(
+                "synthetic_current",
+                {
+                    "x_sea_water_velocity": u_cur,
+                    "y_sea_water_velocity": v_cur,
+                },
+                start_time=t0,
+                end_time=t1,
+            )
+        )
 
     km_per_deg_lat = 110.57
     km_per_deg_lon = 111.32 * max(math.cos(math.radians(origin_lat)), 1e-3)
@@ -570,7 +619,7 @@ def run_forward_forecast(
         outfile=None,
     )
 
-    lon = np.asarray(o.result["lon"].values)   # (trajectory, time)
+    lon = np.asarray(o.result["lon"].values)  # (trajectory, time)
     lat = np.asarray(o.result["lat"].values)
     status = np.asarray(o.result["status"].values)
     times = np.asarray(o.result["time"].values)
@@ -595,7 +644,7 @@ def run_forward_forecast(
     last_cx, last_cy = origin_lon, origin_lat
     for ti in range(lon.shape[1]):
         L, A = lon[:, ti], lat[:, ti]
-        n_str = int(np.nansum(np.any(status[:, :ti + 1] == STRANDED, axis=1)))
+        n_str = int(np.nansum(np.any(status[:, : ti + 1] == STRANDED, axis=1)))
         ok = np.isfinite(L) & np.isfinite(A)
         if ok.any():
             cx, cy = float(np.nanmean(L[ok])), float(np.nanmean(A[ok]))
@@ -609,15 +658,18 @@ def run_forward_forecast(
         hours = float((times[ti] - times[0]) / np.timedelta64(1, "h"))
         if n_str > 0 and first_stranding_h is None:
             first_stranding_h = round(hours, 2)
-        cone.append(ForecastConeStep(
-            hours_ahead=round(hours, 2),
-            valid_time=str(times[ti])[:19],
-            center_lon=cx, center_lat=cy,
-            p50_radius_km=round(float(np.percentile(rad, 50)), 3) if rad.size else 0.0,
-            p95_radius_km=round(float(np.percentile(rad, 95)), 3) if rad.size else 0.0,
-            n_active=int(ok.sum()),
-            n_stranded=n_str,
-        ))
+        cone.append(
+            ForecastConeStep(
+                hours_ahead=round(hours, 2),
+                valid_time=str(times[ti])[:19],
+                center_lon=cx,
+                center_lat=cy,
+                p50_radius_km=round(float(np.percentile(rad, 50)), 3) if rad.size else 0.0,
+                p95_radius_km=round(float(np.percentile(rad, 95)), 3) if rad.size else 0.0,
+                n_active=int(ok.sum()),
+                n_stranded=n_str,
+            )
+        )
 
     final_lon, final_lat = lon[:, -1], lat[:, -1]
     ok_f = np.isfinite(final_lon) & np.isfinite(final_lat)
@@ -661,7 +713,7 @@ def run_forward_forecast(
         )
 
     return ForecastResult(
-        run_utc=datetime.now(timezone.utc).isoformat(),
+        run_utc=datetime.now(UTC).isoformat(),
         origin_time=origin_time.isoformat(),
         origin_lon=origin_lon,
         origin_lat=origin_lat,

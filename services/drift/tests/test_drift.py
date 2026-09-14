@@ -11,6 +11,7 @@ from __future__ import annotations
 import importlib.util
 import sys
 import types
+from datetime import UTC
 from pathlib import Path
 
 import numpy as np
@@ -54,9 +55,7 @@ def test_regime_deep_ocean_is_markov1():
 
 
 def test_regime_shallow_is_smagorinsky():
-    out = _reg.classify_regime(
-        np.array([10.0]), np.array([5.0]), np.array([0.1]), np.array([15.0])
-    )
+    out = _reg.classify_regime(np.array([10.0]), np.array([5.0]), np.array([0.1]), np.array([15.0]))
     assert out == _reg.OceanRegime.SMAGORINSKY
 
 
@@ -115,11 +114,9 @@ def test_forcing_factory_labels_composite_without_credentials():
     assert provenance["forcing_source"] == "composite_gfs_mock"
     assert provenance["current_origin"] == "synthetic_mock"
     # Provider genuinely serves vectors (mock currents, not a crash).
-    from datetime import datetime, timezone
+    from datetime import datetime
 
-    u, v = provider.get_current_vectors(
-        np.array([57.7]), np.array([-20.4]), datetime.now(timezone.utc)
-    )
+    u, v = provider.get_current_vectors(np.array([57.7]), np.array([-20.4]), datetime.now(UTC))
     assert np.all(np.isfinite(u)) and np.all(np.isfinite(v))
 
 

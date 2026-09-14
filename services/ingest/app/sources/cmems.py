@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import os
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import httpx
 import numpy as np
@@ -56,7 +56,7 @@ class CmemsFetcher:
         t0 = time.time()
         lon_min, lat_min, lon_max, lat_max = bbox
 
-        date_end = datetime.now(timezone.utc)
+        date_end = datetime.now(UTC)
         date_start = date_end - timedelta(days=lookback_days)
 
         os.makedirs(self.storage_path, exist_ok=True)
@@ -132,9 +132,7 @@ class CmemsFetcher:
             fetch_duration_seconds=round(time.time() - t0, 2),
         )
 
-    async def _download_via_cds(
-        self, request_payload: dict, out_file: str
-    ) -> int:
+    async def _download_via_cds(self, request_payload: dict, out_file: str) -> int:
         """Download via CDS API (synchronous request, async poll)."""
         headers = {"Authorization": f"Bearer {self.api_key}"}
 

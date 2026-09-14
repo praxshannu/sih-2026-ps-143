@@ -14,11 +14,11 @@ import json
 import os
 from collections import defaultdict
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query
+from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
 from loguru import logger
 
 from app.middleware.auth import _decode_token
-from app.schemas import WSEvent, WSEventType
+from app.schemas import WSEvent
 
 router = APIRouter(tags=["websocket"])
 

@@ -31,7 +31,7 @@ from __future__ import annotations
 import json
 import math
 from dataclasses import asdict, dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -48,18 +48,18 @@ from shapely.validation import make_valid
 class DetectionConfig:
     """All knobs in one place so a single change can be tuned per scene."""
 
-    lee_window: int = 7             # 7x7 Lee-sigma speckle filter on linear sigma0
-    threshold_k: float = 2.0        # how many local-noise-sigma below local background counts as dark
-    local_window: int = 51          # sliding window for the adaptive threshold (pixels)
-    big_window: int = 151           # background-window size (pixels)
-    baseline_percentile: float = 75 # scene-wide "clean sea" dB percentile
+    lee_window: int = 7  # 7x7 Lee-sigma speckle filter on linear sigma0
+    threshold_k: float = 2.0  # how many local-noise-sigma below local background counts as dark
+    local_window: int = 51  # sliding window for the adaptive threshold (pixels)
+    big_window: int = 151  # background-window size (pixels)
+    baseline_percentile: float = 75  # scene-wide "clean sea" dB percentile
     min_scene_contrast_dB: float = 2.5  # pixel must be ≥ this far below the scene baseline
-    open_iter: int = 1              # morphological opening iterations
-    close_iter: int = 2             # morphological closing iterations
-    min_area_km2: float = 0.02      # drop blobs below this area (~2000 px at this scene scale)
-    min_dB_contrast: float = 2.0    # require at least this contrast vs local surroundings
-    max_elongation: float = 5.0     # reject very-streak-shaped blobs (likely wind shadows)
-    fay_K: float = 3.0e-5           # Fay (1971) spreading coefficient; conservative
+    open_iter: int = 1  # morphological opening iterations
+    close_iter: int = 2  # morphological closing iterations
+    min_area_km2: float = 0.02  # drop blobs below this area (~2000 px at this scene scale)
+    min_dB_contrast: float = 2.0  # require at least this contrast vs local surroundings
+    max_elongation: float = 5.0  # reject very-streak-shaped blobs (likely wind shadows)
+    fay_K: float = 3.0e-5  # Fay (1971) spreading coefficient; conservative
     wind_viability: tuple[float, float] = (2.0, 10.0)  # m/s, oil slick detection band
     wind_speed_ms: float | None = None  # set externally once ERA5 licence is accepted
 
@@ -70,22 +70,23 @@ class PolygonFeature:
 
     area_km2: float
     perimeter_km: float
-    compactness: float            # 4πA / P²  -> 1.0 = circle, smaller = more dendritic
-    elongation: float             # bbox long side / short side
+    compactness: float  # 4πA / P²  -> 1.0 = circle, smaller = more dendritic
+    elongation: float  # bbox long side / short side
     mean_dB: float
-    contrast_dB: float            # candidate mean dB - local sea mean dB
-    scene_contrast_dB: float      # candidate mean dB - scene sea baseline (p75)
+    contrast_dB: float  # candidate mean dB - local sea mean dB
+    scene_contrast_dB: float  # candidate mean dB - scene sea baseline (p75)
     age_hours_fay: float | None
     age_hours_uncertainty_h: float | None
-    confidence: float             # 0..1, never 1.0
-    confidence_low: float         # Wilson 95% lower
-    confidence_high: float        # Wilson 95% upper
-    wind_viability: str           # OK | LOW_CONFIDENCE_NO_WIND | OUTSIDE_BAND
+    confidence: float  # 0..1, never 1.0
+    confidence_low: float  # Wilson 95% lower
+    confidence_high: float  # Wilson 95% upper
+    wind_viability: str  # OK | LOW_CONFIDENCE_NO_WIND | OUTSIDE_BAND
     bbox_wsen: list[float] = field(default_factory=list)
     geometry: dict[str, Any] = field(default_factory=dict)
 
 
 # ── Speckle filtering ─────────────────────────────────────────────────────
+
 
 def lee_sigma_filter(linear: np.ndarray, win: int = 7) -> np.ndarray:
     """Lee-sigma speckle filter, the standard SAR smoothing operator.
@@ -105,13 +106,14 @@ def lee_sigma_filter(linear: np.ndarray, win: int = 7) -> np.ndarray:
     var = np.clip(sq - s * s, 0.0, None)
     sigma_v = float(np.nanstd(linear)) or 1e-6  # scene speckle noise coefficient
     cv = np.sqrt(var) / (s + 1e-6)
-    k = (cv ** 2 - sigma_v ** 2) / (cv ** 2 * (1 + sigma_v ** 2) + 1e-6)
+    k = (cv**2 - sigma_v**2) / (cv**2 * (1 + sigma_v**2) + 1e-6)
     k = np.clip(k, 0.0, 1.0)
     out = s + k * (linear - s)
     return out
 
 
 # ── Thresholding ──────────────────────────────────────────────────────────
+
 
 def masked_box_filter(values: np.ndarray, valid: np.ndarray, win: int) -> np.ndarray:
     """Box-filter average of `values` over pixels where `valid` is True, ignoring
@@ -165,6 +167,7 @@ def adaptive_threshold(
 
 # ── Confidence (Wilson 95% CI) ────────────────────────────────────────────
 
+
 def _wilson_ci(p: float, n: int, z: float = 1.96) -> tuple[float, float]:
     """Wilson score interval — the correct binomial CI, not the naive +/-sqrt(pq/n)."""
     if n <= 0:
@@ -175,16 +178,18 @@ def _wilson_ci(p: float, n: int, z: float = 1.96) -> tuple[float, float]:
     return max(0.0, centre - margin), min(1.0, centre + margin)
 
 
-def _confidence(contrast_dB: float, valid_fraction: float, area_km2: float) -> tuple[float, float, float, int]:
+def _confidence(
+    contrast_dB: float, valid_fraction: float, area_km2: float
+) -> tuple[float, float, float, int]:
     """Translate raw evidence into a probability of being a real oil slick.
 
     Combines contrast strength, scene validity, and a minimum blob size; the
     `n` fed to the Wilson interval is the number of "votes" we have for the
     candidate, taken as area_km2 / 0.01 km² so a 1 km² blob is 100 votes.
     """
-    contrast_term = min(1.0, max(0.0, (contrast_dB - 1.0) / 5.0))   # 1..6 dB maps 0..1
-    validity_term = max(0.0, min(1.0, valid_fraction))               # already 0..1
-    size_term = min(1.0, area_km2 / 5.0)                             # 5 km² maps to 1
+    contrast_term = min(1.0, max(0.0, (contrast_dB - 1.0) / 5.0))  # 1..6 dB maps 0..1
+    validity_term = max(0.0, min(1.0, valid_fraction))  # already 0..1
+    size_term = min(1.0, area_km2 / 5.0)  # 5 km² maps to 1
     p = 0.55 * contrast_term + 0.25 * validity_term + 0.20 * size_term
     p = max(0.05, min(0.95, p))  # never claim 100 %
     n = max(8, int(area_km2 / 0.01))
@@ -193,6 +198,7 @@ def _confidence(contrast_dB: float, valid_fraction: float, area_km2: float) -> t
 
 
 # ── Fay spreading ─────────────────────────────────────────────────────────
+
 
 def fay_age(area_km2: float, K: float = 3.0e-5) -> tuple[float | None, float | None]:
     """Inverse of A(t) ≈ π K t² -> t = sqrt(A / (π K)).
@@ -209,6 +215,7 @@ def fay_age(area_km2: float, K: float = 3.0e-5) -> tuple[float | None, float | N
 
 
 # ── Vectorisation ─────────────────────────────────────────────────────────
+
 
 def _vectorize(mask: np.ndarray, transform: Affine) -> list[Polygon]:
     """Convert a binary raster mask into cleaned-up polygons in EPSG:4326."""
@@ -240,6 +247,7 @@ def _ring_buffer(coords: list, distance_m: float, lat: float) -> list[list[float
 
 # ── The detector ──────────────────────────────────────────────────────────
 
+
 class DeterministicDetector:
     """Stateless detector. One instance handles any number of GeoTIFFs."""
 
@@ -249,9 +257,9 @@ class DeterministicDetector:
     def detect(self, tif_path: str | Path) -> dict[str, Any]:
         tif = Path(tif_path)
         with rasterio.open(tif) as src:
-            vv = src.read(1)        # linear sigma0 VV
-            vh = src.read(2)        # linear sigma0 VH
-            msk = src.read(3)       # 1 = valid, 0 = nodata/land
+            vv = src.read(1)  # linear sigma0 VV
+            vh = src.read(2)  # linear sigma0 VH
+            msk = src.read(3)  # 1 = valid, 0 = nodata/land
             transform = src.transform
             width, height = src.width, src.height
             bounds = src.bounds
@@ -296,9 +304,9 @@ class DeterministicDetector:
 
         polygons = _vectorize(candidate, transform)
         feats: list[PolygonFeature] = []
-        scene_area_km2 = abs(
-            (bounds.right - bounds.left) * (bounds.top - bounds.bottom)
-        ) * (111.32 * 111.32 * math.cos(math.radians((bounds.top + bounds.bottom) / 2)))
+        scene_area_km2 = abs((bounds.right - bounds.left) * (bounds.top - bounds.bottom)) * (
+            111.32 * 111.32 * math.cos(math.radians((bounds.top + bounds.bottom) / 2))
+        )
         valid_fraction = float(ocean.sum() / ocean.size)
 
         for poly in polygons:
@@ -308,15 +316,16 @@ class DeterministicDetector:
             cx, cy = poly.centroid.x, poly.centroid.y
             km_per_deg_lon = 111.32 * math.cos(math.radians(cy))
             km_per_deg_lat = 110.57
-            scale2 = (km_per_deg_lon * km_per_deg_lat)
+            scale2 = km_per_deg_lon * km_per_deg_lat
             area_km2 = float(poly.area) * scale2
             if area_km2 < cfg.min_area_km2:
                 continue
             # perimeter
             perim_km = float(poly.length) * 0.5 * (km_per_deg_lon + km_per_deg_lat)
-            compact = (4.0 * math.pi * area_km2) / max(perim_km ** 2, 1e-9)
+            compact = (4.0 * math.pi * area_km2) / max(perim_km**2, 1e-9)
             elongation = (
-                max(maxx - minx, maxy - miny) * max(km_per_deg_lon, km_per_deg_lat)
+                max(maxx - minx, maxy - miny)
+                * max(km_per_deg_lon, km_per_deg_lat)
                 / max(min(maxx - minx, maxy - miny) * max(km_per_deg_lon, km_per_deg_lat), 1e-6)
             )
             # mean dB inside the polygon (rasterised sample)
@@ -379,11 +388,12 @@ class DeterministicDetector:
             "wind_flag": feats[0].wind_viability if feats else "OK",
             "polygons": [asdict(f) for f in feats],
             "detector": "deterministic-lee-adaptive-v1",
-            "ran_utc": datetime.now(timezone.utc).isoformat(),
+            "ran_utc": datetime.now(UTC).isoformat(),
         }
 
 
 # ── helpers ───────────────────────────────────────────────────────────────
+
 
 def _acquisition_time(tif: Path) -> str | None:
     """Resolve the real SAR acquisition instant for a scene.
@@ -423,13 +433,14 @@ def _empty_result(tif: Path, vv_db: np.ndarray, ocean: np.ndarray) -> dict[str, 
         "median_ocean_dB": float(np.nanmedian(vv_db[ocean])) if ocean.any() else None,
         "valid_fraction": round(float(ocean.sum() / ocean.size), 4) if ocean.any() else 0.0,
         "detector": "deterministic-lee-adaptive-v1",
-        "ran_utc": datetime.now(timezone.utc).isoformat(),
+        "ran_utc": datetime.now(UTC).isoformat(),
     }
 
 
 def rasterise_polygon(poly: Polygon, transform: Affine, width: int, height: int) -> np.ndarray:
     """Return a boolean raster of the polygon at the transform's resolution."""
     from rasterio.features import rasterize
+
     return rasterize(
         [(mapping(poly), 1)],
         out_shape=(height, width),
@@ -439,15 +450,14 @@ def rasterise_polygon(poly: Polygon, transform: Affine, width: int, height: int)
     ).astype(bool)
 
 
-def run_on_directory(sar_dir: str | Path, out_dir: str | Path | None = None,
-                     wind_speed_ms: float | None = None) -> list[dict[str, Any]]:
+def run_on_directory(
+    sar_dir: str | Path, out_dir: str | Path | None = None, wind_speed_ms: float | None = None
+) -> list[dict[str, Any]]:
     """Run the detector on every .tif in `sar_dir` and write JSON results."""
     sar = Path(sar_dir)
     out = Path(out_dir or sar)
     out.mkdir(parents=True, exist_ok=True)
-    det = DeterministicDetector(
-        config=DetectionConfig(wind_speed_ms=wind_speed_ms)
-    )
+    det = DeterministicDetector(config=DetectionConfig(wind_speed_ms=wind_speed_ms))
     results: list[dict[str, Any]] = []
     for tif in sorted(sar.glob("*.tif")):
         if tif.name.startswith(".") or tif.name == "index.json":
@@ -455,9 +465,13 @@ def run_on_directory(sar_dir: str | Path, out_dir: str | Path | None = None,
         try:
             r = det.detect(tif)
             (out / f"{tif.stem}.detection.json").write_text(json.dumps(r, indent=2))
-            row: dict[str, Any] = {"scene_id": r["scene_id"], **{
-                k: r[k] for k in ("best_confidence", "polygons_kept", "wind_flag", "median_ocean_dB")
-            }}
+            row: dict[str, Any] = {
+                "scene_id": r["scene_id"],
+                **{
+                    k: r[k]
+                    for k in ("best_confidence", "polygons_kept", "wind_flag", "median_ocean_dB")
+                },
+            }
             row["acquisition_time"] = r.get("acquisition_time")
             top = (r.get("polygons") or [None])[0]
             if top:

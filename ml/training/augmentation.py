@@ -13,11 +13,10 @@ Usage:
 
 from __future__ import annotations
 
-from typing import Optional
-
 try:
     import albumentations as A
     from albumentations.pytorch import ToTensorV2
+
     HAS_ALBUMENTATIONS = True
 except ImportError:
     HAS_ALBUMENTATIONS = False
@@ -32,6 +31,7 @@ class SpeckleNoise:
 
     def __call__(self, image, mask=None, **kwargs):
         import numpy as np
+
         if np.random.random() < self.p:
             sigma = np.random.uniform(*self.noise_range)
             noise = np.random.normal(1.0, sigma, image.shape).astype(image.dtype)
@@ -53,73 +53,91 @@ class SARBrightnessContrast:
 
     def __call__(self, image, mask=None, **kwargs):
         import numpy as np
+
         if np.random.random() < self.p:
             b = np.random.uniform(-self.brightness, self.brightness)
             c = np.random.uniform(1 - self.contrast, 1 + self.contrast)
-            image = np.clip(image * c + b, 0, 1) if image.max() <= 1 else np.clip(image * c + b * 255, 0, 255)
+            image = (
+                np.clip(image * c + b, 0, 1)
+                if image.max() <= 1
+                else np.clip(image * c + b * 255, 0, 255)
+            )
         return {"image": image, "mask": mask}
 
 
 def get_train_transforms(
     image_size: int = 512,
     p: float = 0.5,
-) -> Optional[A.Compose]:
+) -> A.Compose | None:
     """Training augmentations with SAR-specific transforms."""
     if not HAS_ALBUMENTATIONS:
         return None
 
-    return A.Compose([
-        A.Resize(image_size, image_size, p=1.0),
-        A.HorizontalFlip(p=p),
-        A.VerticalFlip(p=p * 0.5),
-        A.RandomRotate90(p=p * 0.5),
-        A.ShiftScaleRotate(
-            shift_limit=0.1,
-            scale_limit=0.15,
-            rotate_limit=30,
-            border_mode=0,
-            p=p,
-        ),
-        A.OneOf([
-            A.GaussNoise(var_limit=(0.001, 0.01), p=0.5),
-            A.ISONoise(p=0.5),
-        ], p=p * 0.6),
-        A.OneOf([
-            A.RandomBrightnessContrast(brightness_limit=0.2, contrast_limit=0.2, p=0.5),
-            A.CLAHE(clip_limit=2.0, p=0.3),
-            A.RandomGamma(gamma_limit=(80, 120), p=0.3),
-        ], p=p * 0.7),
-        A.OneOf([
-            A.ElasticTransform(alpha=50, sigma=5, p=0.3),
-            A.GridDistortion(num_steps=5, distort_limit=0.1, p=0.3),
-            A.OpticalDistortion(distort_limit=0.05, shift_limit=0.05, p=0.3),
-        ], p=p * 0.3),
-        A.Normalize(
-            mean=[0.485, 0.456, 0.406],
-            std=[0.229, 0.224, 0.225],
-            max_pixel_value=1.0,
-        ),
-        ToTensorV2(),
-    ])
+    return A.Compose(
+        [
+            A.Resize(image_size, image_size, p=1.0),
+            A.HorizontalFlip(p=p),
+            A.VerticalFlip(p=p * 0.5),
+            A.RandomRotate90(p=p * 0.5),
+            A.ShiftScaleRotate(
+                shift_limit=0.1,
+                scale_limit=0.15,
+                rotate_limit=30,
+                border_mode=0,
+                p=p,
+            ),
+            A.OneOf(
+                [
+                    A.GaussNoise(var_limit=(0.001, 0.01), p=0.5),
+                    A.ISONoise(p=0.5),
+                ],
+                p=p * 0.6,
+            ),
+            A.OneOf(
+                [
+                    A.RandomBrightnessContrast(brightness_limit=0.2, contrast_limit=0.2, p=0.5),
+                    A.CLAHE(clip_limit=2.0, p=0.3),
+                    A.RandomGamma(gamma_limit=(80, 120), p=0.3),
+                ],
+                p=p * 0.7,
+            ),
+            A.OneOf(
+                [
+                    A.ElasticTransform(alpha=50, sigma=5, p=0.3),
+                    A.GridDistortion(num_steps=5, distort_limit=0.1, p=0.3),
+                    A.OpticalDistortion(distort_limit=0.05, shift_limit=0.05, p=0.3),
+                ],
+                p=p * 0.3,
+            ),
+            A.Normalize(
+                mean=[0.485, 0.456, 0.406],
+                std=[0.229, 0.224, 0.225],
+                max_pixel_value=1.0,
+            ),
+            ToTensorV2(),
+        ]
+    )
 
 
-def get_val_transforms(image_size: int = 512) -> Optional[A.Compose]:
+def get_val_transforms(image_size: int = 512) -> A.Compose | None:
     """Validation augmentations: resize + normalize only."""
     if not HAS_ALBUMENTATIONS:
         return None
 
-    return A.Compose([
-        A.Resize(image_size, image_size, p=1.0),
-        A.Normalize(
-            mean=[0.485, 0.456, 0.406],
-            std=[0.229, 0.224, 0.225],
-            max_pixel_value=1.0,
-        ),
-        ToTensorV2(),
-    ])
+    return A.Compose(
+        [
+            A.Resize(image_size, image_size, p=1.0),
+            A.Normalize(
+                mean=[0.485, 0.456, 0.406],
+                std=[0.229, 0.224, 0.225],
+                max_pixel_value=1.0,
+            ),
+            ToTensorV2(),
+        ]
+    )
 
 
-def get_test_transforms(image_size: int = 512) -> Optional[A.Compose]:
+def get_test_transforms(image_size: int = 512) -> A.Compose | None:
     """Test/inference transforms: same as validation."""
     return get_val_transforms(image_size)
 

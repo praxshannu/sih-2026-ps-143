@@ -8,7 +8,7 @@ from __future__ import annotations
 import asyncio
 import os
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import httpx
 import numpy as np
@@ -53,7 +53,7 @@ class Era5Fetcher:
         t0 = time.time()
         lon_min, lat_min, lon_max, lat_max = bbox
 
-        date_end = datetime.now(timezone.utc)
+        date_end = datetime.now(UTC)
         date_start = date_end - timedelta(days=lookback_days)
 
         os.makedirs(self.storage_path, exist_ok=True)
@@ -74,7 +74,11 @@ class Era5Fetcher:
             "product_type": "reanalysis",
             "variable": ["10m_u_component_of_wind", "10m_v_component_of_wind"],
             "year": list(range(date_start.year, date_end.year + 1)),
-            "month": [f"{m:02d}" for m in range(1, 13) if date_start.month <= m <= date_end.month or date_start.year != date_end.year],
+            "month": [
+                f"{m:02d}"
+                for m in range(1, 13)
+                if date_start.month <= m <= date_end.month or date_start.year != date_end.year
+            ],
             "day": [f"{d:02d}" for d in range(1, 32)],
             "time": [f"{h:02d}:00" for h in range(0, 24, 3)],
             "area": [lat_max, lon_min, lat_min, lon_max],
@@ -93,9 +97,7 @@ class Era5Fetcher:
                     "Set ALLOW_SYNTHETIC_FORCING=true only for an explicitly labelled demo."
                 ) from e
             logger.warning("ERA5 download failed; using explicitly enabled synthetic winds: {}", e)
-            total_bytes = self._generate_synthetic_winds(
-                out_file, bbox, date_start, date_end
-            )
+            total_bytes = self._generate_synthetic_winds(out_file, bbox, date_start, date_end)
 
         ds = xr.open_dataset(
             out_file,
@@ -129,9 +131,7 @@ class Era5Fetcher:
             fetch_duration_seconds=round(time.time() - t0, 2),
         )
 
-    async def _download_via_cds(
-        self, request_payload: dict, out_file: str
-    ) -> int:
+    async def _download_via_cds(self, request_payload: dict, out_file: str) -> int:
         """Download via CDS API with async polling."""
         headers = {"Authorization": f"Bearer {self.api_key}"}
 

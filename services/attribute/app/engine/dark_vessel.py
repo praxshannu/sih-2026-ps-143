@@ -8,14 +8,12 @@ origin ellipse and identifies MMSI gaps.
 
 from __future__ import annotations
 
-import math
 import time
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any
 
 import asyncpg
 from loguru import logger
-
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -42,11 +40,11 @@ class DarkVesselMatch:
     sar_lat: float
     sar_timestamp: Any
     sar_confidence: float
-    nearest_ais_mmsi: Optional[str]
+    nearest_ais_mmsi: str | None
     nearest_ais_distance_nm: float
     nearest_ais_time_delta_min: float
     is_dark: bool  # True if no AIS match within threshold
-    matching_mmsi: Optional[str] = None
+    matching_mmsi: str | None = None
     match_distance_nm: float = 0.0
     match_time_delta_min: float = 0.0
 
@@ -163,10 +161,7 @@ class DarkVesselDetector:
             dist_nm = float(best["distance_nm"])
             td_min = float(best["time_delta_min"])
 
-            is_dark = (
-                dist_nm > self._ais_match_radius_nm
-                or td_min > self._ais_match_window_min
-            )
+            is_dark = dist_nm > self._ais_match_radius_nm or td_min > self._ais_match_window_min
 
             match = DarkVesselMatch(
                 sar_lon=sar["lon"],
@@ -208,11 +203,7 @@ class DarkVesselDetector:
         Inverted logic: if a SAR target has a nearby AIS vessel, that MMSI
         becomes a suspect. Dark vessels have no MMSI to attribute.
         """
-        return {
-            m.matching_mmsi
-            for m in result.matches
-            if m.matching_mmsi is not None
-        }
+        return {m.matching_mmsi for m in result.matches if m.matching_mmsi is not None}
 
     def get_dark_sar_mmsi_set(
         self, sar_targets: list[dict[str, Any]], dark_result: DarkVesselResult
@@ -222,9 +213,7 @@ class DarkVesselDetector:
         For attribution, we look for AIS vessels that were within the broader
         search radius of a dark SAR detection - these are strong suspects.
         """
-        dark_sars = [
-            m for m in dark_result.matches if m.is_dark
-        ]
+        dark_sars = [m for m in dark_result.matches if m.is_dark]
         if not dark_sars:
             return set()
         # In practice, this queries broader AIS context; for now return empty

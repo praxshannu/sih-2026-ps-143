@@ -31,9 +31,8 @@ import json
 import os
 import sys
 import time
-import urllib.parse
-from dataclasses import dataclass, asdict
-from datetime import datetime, timezone
+from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -245,7 +244,7 @@ def fetch_geotiff(token: str, spec: SceneSpec) -> np.ndarray:
         timeout=600,
     )
     resp.raise_for_status()
-    if not resp.content[:2] in (b"II", b"MM"):
+    if resp.content[:2] not in (b"II", b"MM"):
         raise RuntimeError(f"expected TIFF, got: {resp.content[:200]!r}")
 
     tmp = OUT_DIR / f".{spec.key}.raw.tif"
@@ -286,8 +285,15 @@ def write_cog(path: Path, arr: np.ndarray, spec: SceneSpec) -> dict[str, Any]:
     tmp = path.with_suffix(".cog.tif")
     with rasterio.open(path) as src:
         rasterio.shutil.copy(
-            src, tmp, driver="GTiff", compress="deflate", predictor=3,
-            tiled=True, blockxsize=512, blockysize=512, COPY_SRC_OVERVIEWS=True,
+            src,
+            tmp,
+            driver="GTiff",
+            compress="deflate",
+            predictor=3,
+            tiled=True,
+            blockxsize=512,
+            blockysize=512,
+            COPY_SRC_OVERVIEWS=True,
         )
     tmp.replace(path)
 
@@ -348,12 +354,12 @@ def main() -> int:
             meta = write_cog(tif, arr, spec)
             print(
                 f"   geotiff: {meta['width']}x{meta['height']} "
-                f"{meta['bytes']/1e6:.1f} MB in {time.time()-t0:.1f}s"
+                f"{meta['bytes'] / 1e6:.1f} MB in {time.time() - t0:.1f}s"
             )
             print(
                 f"   VV dB p05/med/p95: {meta['stats']['vv_db_p05']:.1f} / "
                 f"{meta['stats']['vv_db_median']:.1f} / {meta['stats']['vv_db_p95']:.1f}"
-                f"  valid={meta['stats']['valid_fraction']*100:.1f}%"
+                f"  valid={meta['stats']['valid_fraction'] * 100:.1f}%"
             )
 
             sidecar = {
@@ -379,7 +385,7 @@ def main() -> int:
                     for sc in scenes[:5]
                 ],
                 "geotiff": str(tif.relative_to(REPO_ROOT)),
-                "fetched_utc": datetime.now(timezone.utc).isoformat(),
+                "fetched_utc": datetime.now(UTC).isoformat(),
                 **meta,
             }
             (OUT_DIR / f"{spec.key}.json").write_text(json.dumps(sidecar, indent=2))
@@ -398,7 +404,8 @@ def main() -> int:
     if index.exists():  # merge: --only runs must not drop earlier scenes
         try:
             prior = [
-                r for r in json.loads(index.read_text()).get("scenes", [])
+                r
+                for r in json.loads(index.read_text()).get("scenes", [])
                 if r.get("key") not in {x.get("key") for x in results}
             ]
         except Exception:  # noqa: BLE001
@@ -406,7 +413,7 @@ def main() -> int:
     index.write_text(
         json.dumps(
             {
-                "generated_utc": datetime.now(timezone.utc).isoformat(),
+                "generated_utc": datetime.now(UTC).isoformat(),
                 "source": "Copernicus Data Space Ecosystem (CDSE OData + Sentinel Hub Process API)",
                 "scenes": prior + results,
             },

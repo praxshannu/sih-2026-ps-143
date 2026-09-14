@@ -3,9 +3,11 @@
 Based on OceanTrace generate_synthetic_data.py adapted for sentinel services layout.
 Uses PNG output instead of GeoTIFF to avoid rasterio dependency on host.
 """
+
 from __future__ import annotations
 
 import os
+
 import numpy as np
 from PIL import Image, ImageDraw
 
@@ -13,12 +15,13 @@ from PIL import Image, ImageDraw
 # SAR Scene Generation (adapted from OceanTrace agent1 training)
 # ---------------------------------------------------------------------------
 
+
 def generate_sar_scene(
     width: int = 512,
     height: int = 512,
     num_slicks: int = 2,
     seed: int = 42,
-    inject_hard_negative: bool = False
+    inject_hard_negative: bool = False,
 ) -> tuple:
     """
     Simulates a realistic Sentinel-1 SAR scene of open ocean with dark oil slick candidates.
@@ -59,8 +62,7 @@ def generate_sar_scene(
         # Draw slick drift tail
         tail_end_x = cx + int(rx * 1.8 * np.cos(np.radians(angle)))
         tail_end_y = cy + int(ry * 1.8 * np.sin(np.radians(angle)))
-        draw.line([cx, cy, tail_end_x, tail_end_y],
-                  fill=255, width=np.random.randint(8, 16))
+        draw.line([cx, cy, tail_end_x, tail_end_y], fill=255, width=np.random.randint(8, 16))
 
     mask = np.array(mask_pil, dtype=np.float32) / 255.0
 
@@ -76,7 +78,7 @@ def generate_sar_scene(
         cy = np.random.randint(100, height - 100)
         rx = np.random.randint(80, 150)
         ry = np.random.randint(40, 80)
-        
+
         hn_mask_pil = Image.new("L", (width, height), 0)
         hn_draw = ImageDraw.Draw(hn_mask_pil)
         bbox = [cx - rx, cy - ry, cx + rx, cy + ry]
@@ -96,7 +98,7 @@ def generate_sar_scene(
 def save_png(filename: str, img_data: np.ndarray) -> None:
     """Save numpy array as a PNG image, normalized to [0, 255]."""
     os.makedirs(os.path.dirname(filename), exist_ok=True)
-    
+
     # Normalize to [0, 1] then to [0, 255]
     img = np.clip(img_data, 0.0, 1.0)
     norm = (img - img.min()) / (img.max() - img.min() + 1e-6)
@@ -104,18 +106,15 @@ def save_png(filename: str, img_data: np.ndarray) -> None:
     pil.save(filename)
 
 
-def generate_benchmark_dataset(base_dir: str = "data/synthetic", 
-                               n_train: int = 150, n_val: int = 20, n_test: int = 10):
+def generate_benchmark_dataset(
+    base_dir: str = "data/synthetic", n_train: int = 150, n_val: int = 20, n_test: int = 10
+):
     """
     Generates train, validation, test datasets for the sentinel detect service.
     Creates PNG images and masks in the expected directory structure.
     The SAROilSpillDataset can read these PNG files.
     """
-    splits = {
-        "train": (n_train, "train"),
-        "val": (n_val, "val"),
-        "test": (n_test, "test")
-    }
+    splits = {"train": (n_train, "train"), "val": (n_val, "val"), "test": (n_test, "test")}
 
     for split_name, (count, split_dir) in splits.items():
         img_dir = os.path.join(base_dir, split_dir, "images")
@@ -124,33 +123,36 @@ def generate_benchmark_dataset(base_dir: str = "data/synthetic",
         os.makedirs(mask_dir, exist_ok=True)
 
         for i in range(count):
-            seed = 100 if split_name == "train" else (
-                200 if split_name == "val" else 300)
+            seed = 100 if split_name == "train" else (200 if split_name == "val" else 300)
             # Inject hard negatives in ~30% of the training images
-            inject_hn = (split_name == "train" and np.random.rand() < 0.3)
+            inject_hn = split_name == "train" and np.random.rand() < 0.3
             sar_img, mask = generate_sar_scene(
-                width=512, height=512, num_slicks=np.random.randint(1, 3), 
-                seed=seed + i, inject_hard_negative=inject_hn)
+                width=512,
+                height=512,
+                num_slicks=np.random.randint(1, 3),
+                seed=seed + i,
+                inject_hard_negative=inject_hn,
+            )
 
             # Save SAR image as PNG (normalized)
-            img_file = os.path.join(img_dir, f"sar_{split_name}_{i+1:03d}.png")
+            img_file = os.path.join(img_dir, f"sar_{split_name}_{i + 1:03d}.png")
             # SAR images have range ~0-2.5, normalize for PNG display
             norm = np.clip(sar_img, 0, 2.5) / 2.5
             save_png(img_file, norm)
 
             # Save PNG ground truth mask
-            mask_file = os.path.join(mask_dir, f"sar_{split_name}_{i+1:03d}.png")
+            mask_file = os.path.join(mask_dir, f"sar_{split_name}_{i + 1:03d}.png")
             Image.fromarray((mask * 255).astype(np.uint8)).save(mask_file)
 
     # Save a dedicated sample image for quick CLI inference testing
     sample_dir = os.path.join(base_dir, "sample")
     os.makedirs(sample_dir, exist_ok=True)
-    sample_sar, sample_mask = generate_sar_scene(
-        width=512, height=512, num_slicks=2, seed=999)
+    sample_sar, sample_mask = generate_sar_scene(width=512, height=512, num_slicks=2, seed=999)
     norm = np.clip(sample_sar, 0, 2.5) / 2.5
     save_png(os.path.join(sample_dir, "sample_sentinel1.png"), norm)
-    Image.fromarray((sample_mask * 255).astype(np.uint8)
-                    ).save(os.path.join(sample_dir, "sample_sentinel1_mask.png"))
+    Image.fromarray((sample_mask * 255).astype(np.uint8)).save(
+        os.path.join(sample_dir, "sample_sentinel1_mask.png")
+    )
 
     print(f"Synthetic SAR dataset generated in '{base_dir}/'")
 

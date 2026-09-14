@@ -6,17 +6,15 @@ that apply both channel-wise and spatial attention.
 
 from __future__ import annotations
 
-from typing import Optional
-
+import timm
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import timm
-
 
 # ---------------------------------------------------------------------------
 # SCSE Attention Module
 # ---------------------------------------------------------------------------
+
 
 class ChannelSE(nn.Module):
     """Channel Squeeze-Excitation."""
@@ -68,6 +66,7 @@ class SCSEBlock(nn.Module):
 # Attention Decoder Block
 # ---------------------------------------------------------------------------
 
+
 class AttentionDecoderBlock(nn.Module):
     """Decoder block with SCSE attention + residual skip connection."""
 
@@ -85,15 +84,16 @@ class AttentionDecoderBlock(nn.Module):
         else:
             self.skip_proj = nn.Identity()
 
-    def forward(self, x: torch.Tensor, skip: Optional[torch.Tensor] = None) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, skip: torch.Tensor | None = None) -> torch.Tensor:
         # Upsample to the skip resolution (×2 per decoder stage) BEFORE fusion.
         # Without this the head emits 1/32-scale logits unusable for masking.
         x = F.interpolate(x, scale_factor=2.0, mode="bilinear", align_corners=False)
         if skip is not None:
             diff_h = x.size(2) - skip.size(2)
             diff_w = x.size(3) - skip.size(3)
-            skip = F.pad(skip, [diff_w // 2, diff_w - diff_w // 2,
-                                diff_h // 2, diff_h - diff_h // 2])
+            skip = F.pad(
+                skip, [diff_w // 2, diff_w - diff_w // 2, diff_h // 2, diff_h - diff_h // 2]
+            )
             x = torch.cat([x, skip], dim=1)
 
         residual = self.skip_proj(x)
@@ -106,6 +106,7 @@ class AttentionDecoderBlock(nn.Module):
 # ---------------------------------------------------------------------------
 # UNet++ with SCSE
 # ---------------------------------------------------------------------------
+
 
 class UNetPlusPlusSCSE(nn.Module):
     """UNet++ with SCSE attention using a timm pretrained encoder.
@@ -123,7 +124,7 @@ class UNetPlusPlusSCSE(nn.Module):
     def __init__(
         self,
         encoder_name: str = "resnet34",
-        encoder_weights: Optional[str] = "imagenet",
+        encoder_weights: str | None = "imagenet",
         in_channels: int = 3,
         classes: int = 1,
         decoder_channels: tuple[int, ...] = (256, 128, 64, 32),
@@ -149,9 +150,7 @@ class UNetPlusPlusSCSE(nn.Module):
         prev_ch = encoder_channels[-1]
         for i, out_ch in enumerate(decoder_channels_full):
             skip_ch = encoder_channels[-(i + 2)] if i < len(encoder_channels) - 1 else 0
-            self.decoder_blocks.append(
-                AttentionDecoderBlock(prev_ch, skip_ch, out_ch)
-            )
+            self.decoder_blocks.append(AttentionDecoderBlock(prev_ch, skip_ch, out_ch))
             prev_ch = out_ch
 
         # Final 1x1 convolution for class prediction
@@ -191,7 +190,7 @@ class UNetPlusPlusSCSE(nn.Module):
         in_channels: int = 3,
         classes: int = 1,
         device: str | torch.device = "cpu",
-    ) -> "UNetPlusPlusSCSE":
+    ) -> UNetPlusPlusSCSE:
         model = cls(
             encoder_name=encoder_name,
             encoder_weights=None,

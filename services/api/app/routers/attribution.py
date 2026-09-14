@@ -18,13 +18,13 @@ Upstream contract (services/drift/app/routers/attribution.py):
 from __future__ import annotations
 
 import os
+from typing import Any
 
 import httpx
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
 from loguru import logger
 from pydantic import BaseModel, Field
-from typing import Any
 
 router = APIRouter(prefix="/drift", tags=["drift"])
 

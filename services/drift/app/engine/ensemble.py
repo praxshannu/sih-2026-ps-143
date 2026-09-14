@@ -13,7 +13,6 @@ import numpy as np
 from loguru import logger
 
 from ..schemas import (
-    ConfidenceEllipse,
     DriftResult,
     ForwardResult,
     FullPipelineResult,
@@ -87,12 +86,19 @@ def run_backward_ensemble(
     """
     logger.info(
         "Running backward ensemble: {} particles from ({:.4f}, {:.4f}), age={}h",
-        n_particles, spill_lon, spill_lat, spill_age_hours,
+        n_particles,
+        spill_lon,
+        spill_lat,
+        spill_age_hours,
     )
 
     origin_lons, origin_lats, regime = integrate_backward(
-        spill_lon, spill_lat, spill_age_hours,
-        u_interp, v_interp, K_interp,
+        spill_lon,
+        spill_lat,
+        spill_age_hours,
+        u_interp,
+        v_interp,
+        K_interp,
         n_particles=n_particles,
         random_seed=random_seed,
     )
@@ -136,19 +142,22 @@ def run_forward_ensemble(
     """
     logger.info(
         "Running forward ensemble: {} particles, {}hr forecast",
-        n_particles, forecast_hours,
+        n_particles,
+        forecast_hours,
     )
 
     result = integrate_forward(
-        origin_lons, origin_lats, forecast_hours,
-        u_interp, v_interp, K_interp,
+        origin_lons,
+        origin_lats,
+        forecast_hours,
+        u_interp,
+        v_interp,
+        K_interp,
         random_seed=random_seed,
     )
 
     # Compute quantiles
-    traj = compute_trajectory_quantiles(
-        result["lons"], result["lats"], result["times"]
-    )
+    traj = compute_trajectory_quantiles(result["lons"], result["lats"], result["times"])
 
     # Build trajectory ensemble
     trajectories = TrajectoryEnsemble(
@@ -198,13 +207,21 @@ def run_full_pipeline(
     """
     logger.info(
         "Full pipeline: spill=({:.4f}, {:.4f}), age={}h, forecast={}h, N={}",
-        spill_lon, spill_lat, spill_age_hours, forecast_hours, n_particles,
+        spill_lon,
+        spill_lat,
+        spill_age_hours,
+        forecast_hours,
+        n_particles,
     )
 
     # --- Backward ---
     drift = run_backward_ensemble(
-        spill_lon, spill_lat, spill_age_hours,
-        u_interp, v_interp, K_interp,
+        spill_lon,
+        spill_lat,
+        spill_age_hours,
+        u_interp,
+        v_interp,
+        K_interp,
         n_particles=n_particles,
         random_seed=random_seed,
     )
@@ -214,8 +231,12 @@ def run_full_pipeline(
     origin_lats = np.array(drift.origin_points_lat)
 
     fwd = run_forward_ensemble(
-        origin_lons, origin_lats, forecast_hours,
-        u_interp, v_interp, K_interp,
+        origin_lons,
+        origin_lats,
+        forecast_hours,
+        u_interp,
+        v_interp,
+        K_interp,
         n_particles=n_particles,
         random_seed=random_seed,
     )
@@ -225,8 +246,10 @@ def run_full_pipeline(
     final_lats = np.array(fwd.trajectories.all_paths_lat)
 
     risk_data = compute_shoreline_risk(
-        final_lons, final_lats,
-        coastline_lons, coastline_lats,
+        final_lons,
+        final_lats,
+        coastline_lons,
+        coastline_lats,
     )
 
     shoreline = ShorelineRisk(

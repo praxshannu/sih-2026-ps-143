@@ -10,7 +10,7 @@ when xgboost is not installed, so the service never hard-crashes on import.
 from __future__ import annotations
 
 import os
-from typing import Any, Dict, Optional
+from typing import Any
 
 import numpy as np
 
@@ -44,7 +44,7 @@ class XGBoostPhysicsResidualModel:
         "oil_viscosity",
     ]
 
-    def __init__(self, model_path: Optional[str] = None) -> None:
+    def __init__(self, model_path: str | None = None) -> None:
         self.is_trained = False
         self.model_dx: Any = None
         self.model_dy: Any = None
@@ -175,7 +175,7 @@ class XGBoostPhysicsResidualModel:
         aspect_ratio: float = 1.0,
         oil_density: float = 880.0,
         oil_viscosity: float = 50.0,
-    ) -> Dict[str, float]:
+    ) -> dict[str, float]:
         """Predict displacement correction (dx_m, dy_m) + uncertainty scale."""
         if not _XGB_AVAILABLE or not self.is_trained or self.model_dx is None:
             dx_m = 0.005 * u_wind * duration_hours * 3600.0
@@ -219,9 +219,7 @@ class XGBoostPhysicsResidualModel:
         assert self.model_dy is not None
         self.model_dy.save_model(os.path.join(directory, "xgb_dy_residual.json"))
         assert self.model_uncertainty is not None
-        self.model_uncertainty.save_model(
-            os.path.join(directory, "xgb_uncertainty.json")
-        )
+        self.model_uncertainty.save_model(os.path.join(directory, "xgb_uncertainty.json"))
 
     def load(self, directory: str) -> None:
         """Load serialized XGBoost models."""
@@ -233,7 +231,5 @@ class XGBoostPhysicsResidualModel:
         assert self.model_dy is not None
         self.model_dy.load_model(os.path.join(directory, "xgb_dy_residual.json"))
         assert self.model_uncertainty is not None
-        self.model_uncertainty.load_model(
-            os.path.join(directory, "xgb_uncertainty.json")
-        )
+        self.model_uncertainty.load_model(os.path.join(directory, "xgb_uncertainty.json"))
         self.is_trained = True

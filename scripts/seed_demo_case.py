@@ -19,7 +19,7 @@ import json
 import math
 import random
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import asyncpg
 
@@ -27,7 +27,7 @@ DB_URL = "postgresql://sentinel:sentinel_secret@db:5432/sentinel"
 
 SPILL_CENTER_LAT = -20.4
 SPILL_CENTER_LON = 57.7
-SPILL_DETECTED_AT = datetime(2020, 7, 25, 10, 30, tzinfo=timezone.utc)
+SPILL_DETECTED_AT = datetime(2020, 7, 25, 10, 30, tzinfo=UTC)
 SPILL_ID = uuid.uuid4()
 DRIFT_ID = uuid.uuid4()
 CASE_ID = uuid.uuid4()
@@ -162,8 +162,8 @@ def _make_track_segment(
     for i in range(8):
         t = i / 7.0
         d_lat = t * length_nm * 0.008333 * math.cos(heading_rad)
-        d_lon = t * length_nm * 0.008333 * math.sin(heading_rad) / math.cos(
-            math.radians(center_lat)
+        d_lon = (
+            t * length_nm * 0.008333 * math.sin(heading_rad) / math.cos(math.radians(center_lat))
         )
         coords.append(f"{center_lon + d_lon:.6f} {center_lat + d_lat:.6f}")
     return f"SRID=4326;LINESTRING({', '.join(coords)})"
@@ -200,21 +200,23 @@ def _make_ais_positions(
         lat = center_lat + d_lat * progress + random.uniform(-0.001, 0.001)
         lon = center_lon + d_lon * progress + random.uniform(-0.001, 0.001)
 
-        positions.append({
-            "mmsi": mmsi,
-            "vessel_name": vessel_name,
-            "vessel_type": vessel_type,
-            "lon": lon,
-            "lat": lat,
-            "sog": round(sog + random.uniform(-0.5, 0.5), 1),
-            "cog": round(cog_var, 1),
-            "heading": int(cog_var) % 360,
-            "nav_status": 0,
-            "imo_number": imo_number,
-            "flag_state": flag_state,
-            "timestamp": t,
-            "source": "synthetic_demo",
-        })
+        positions.append(
+            {
+                "mmsi": mmsi,
+                "vessel_name": vessel_name,
+                "vessel_type": vessel_type,
+                "lon": lon,
+                "lat": lat,
+                "sog": round(sog + random.uniform(-0.5, 0.5), 1),
+                "cog": round(cog_var, 1),
+                "heading": int(cog_var) % 360,
+                "nav_status": 0,
+                "imo_number": imo_number,
+                "flag_state": flag_state,
+                "timestamp": t,
+                "source": "synthetic_demo",
+            }
+        )
     return positions
 
 
@@ -249,13 +251,15 @@ async def seed(conn: asyncpg.Connection) -> None:
         0.35,
         220.0,
         "/data/sar/s1a_20200725_mauritius.tif",
-        json.dumps({
-            "satellite": "Sentinel-1A",
-            "mode": "IW GRDH",
-            "polarization": "VV+VH",
-            "incidence_angle": 38.2,
-            "region": "Indian Ocean - Mauritius",
-        }),
+        json.dumps(
+            {
+                "satellite": "Sentinel-1A",
+                "mode": "IW GRDH",
+                "polarization": "VV+VH",
+                "incidence_angle": 38.2,
+                "region": "Indian Ocean - Mauritius",
+            }
+        ),
     )
 
     print("[seed] Drift result...")
@@ -281,12 +285,18 @@ async def seed(conn: asyncpg.Connection) -> None:
         1000,
         "tidal",
         0.34,
-        json.dumps({"paths": [
-            {"hours": 24, "lat": -20.35, "lon": 57.75, "spread_km": 2.1},
-            {"hours": 48, "lat": -20.28, "lon": 57.82, "spread_km": 4.8},
-            {"hours": 72, "lat": -20.21, "lon": 57.91, "spread_km": 8.3},
-        ]}),
-        json.dumps({"rodrigues": 0.12, "reunion": 0.03, "mauritius_east": 0.87, "mauritius_south": 0.64}),
+        json.dumps(
+            {
+                "paths": [
+                    {"hours": 24, "lat": -20.35, "lon": 57.75, "spread_km": 2.1},
+                    {"hours": 48, "lat": -20.28, "lon": 57.82, "spread_km": 4.8},
+                    {"hours": 72, "lat": -20.21, "lon": 57.91, "spread_km": 8.3},
+                ]
+            }
+        ),
+        json.dumps(
+            {"rodrigues": 0.12, "reunion": 0.03, "mauritius_east": 0.87, "mauritius_south": 0.64}
+        ),
     )
 
     print("[seed] Suspect vessels...")
@@ -397,9 +407,17 @@ async def seed(conn: asyncpg.Connection) -> None:
     base_time = SPILL_DETECTED_AT
 
     primary_positions = _make_ais_positions(
-        "477218700", "MV WAKASHIO", 70, "HKG", "9811000",
-        SPILL_CENTER_LAT - 0.05, SPILL_CENTER_LON - 0.1,
-        base_time, n_positions=50, include_gap=True, gap_minutes=23,
+        "477218700",
+        "MV WAKASHIO",
+        70,
+        "HKG",
+        "9811000",
+        SPILL_CENTER_LAT - 0.05,
+        SPILL_CENTER_LON - 0.1,
+        base_time,
+        n_positions=50,
+        include_gap=True,
+        gap_minutes=23,
     )
     all_positions.extend(primary_positions)
 
@@ -410,7 +428,9 @@ async def seed(conn: asyncpg.Connection) -> None:
         ("503045600", "SOUTHERN LADY", 30, "AUS", "8765432", -20.62, 57.90, 25),
     ]
     for mmsi, name, vtype, flag, imo, lat, lon, n in other_vessels:
-        all_positions.extend(_make_ais_positions(mmsi, name, vtype, flag, imo, lat, lon, base_time, n_positions=n))
+        all_positions.extend(
+            _make_ais_positions(mmsi, name, vtype, flag, imo, lat, lon, base_time, n_positions=n)
+        )
 
     for pos in all_positions:
         await conn.execute(
@@ -421,10 +441,19 @@ async def seed(conn: asyncpg.Connection) -> None:
                 $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12,
                 ST_SetSRID(ST_MakePoint($4, $5), 4326), $13
             )""",
-            pos["mmsi"], pos["vessel_name"], pos["vessel_type"],
-            pos["lon"], pos["lat"], pos["sog"], pos["cog"], pos["heading"],
-            pos["nav_status"], pos["imo_number"], pos["flag_state"],
-            pos["timestamp"], pos["source"],
+            pos["mmsi"],
+            pos["vessel_name"],
+            pos["vessel_type"],
+            pos["lon"],
+            pos["lat"],
+            pos["sog"],
+            pos["cog"],
+            pos["heading"],
+            pos["nav_status"],
+            pos["imo_number"],
+            pos["flag_state"],
+            pos["timestamp"],
+            pos["source"],
         )
 
     print(f"[seed] Done: {len(all_positions)} AIS positions, 5 suspects, case 2020-MU-001")

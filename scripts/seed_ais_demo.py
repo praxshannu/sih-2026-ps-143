@@ -16,16 +16,13 @@ import io
 import math
 import random
 import urllib.request
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import asyncpg
 
 DB_URL = "postgresql://sentinel:sentinel_secret@db:5432/sentinel"
 
-MARINECADASTRE_SAMPLE_URL = (
-    "https://coast.noaa.gov/htdata/CSV/AIS/"
-    "2020/AIS_2020_07_07.zip"
-)
+MARINECADASTRE_SAMPLE_URL = "https://coast.noaa.gov/htdata/CSV/AIS/2020/AIS_2020_07_07.zip"
 
 VESSEL_PROFILES = [
     {"type": 70, "name": "Bulk Carrier", "speed_range": (10.0, 15.0), "weight": 8},
@@ -40,7 +37,23 @@ VESSEL_PROFILES = [
     {"type": 92, "name": "Chemical Tanker", "speed_range": (12.0, 17.0), "weight": 4},
 ]
 
-FLAGS = ["HKG", "PAN", "LBR", "MAR", "SGP", "NOR", "GBR", "JPN", "KOR", "IND", "PA", "MHL", "GRC", "CHN", "RUS"]
+FLAGS = [
+    "HKG",
+    "PAN",
+    "LBR",
+    "MAR",
+    "SGP",
+    "NOR",
+    "GBR",
+    "JPN",
+    "KOR",
+    "IND",
+    "PA",
+    "MHL",
+    "GRC",
+    "CHN",
+    "RUS",
+]
 
 Indian_Ocean_ROUTES = [
     {"name": "Strait of Malacca Exit", "center": (2.0, 100.0), "heading": 270.0, "spread": 5.0},
@@ -59,8 +72,34 @@ def generate_vessel(mmsi_base: int, idx: int) -> dict:
     route = random.choice(Indian_Ocean_ROUTES)
     flag = random.choice(FLAGS)
     name_parts = [
-        random.choice(["STAR", "OCEAN", "SEA", "WAVE", "SPIRIT", "LUCKY", "GOLDEN", "SILVER", "NORTH", "SOUTH"]),
-        random.choice(["BREEZE", "DRAGON", "HAWK", "WOLF", "TIGER", "EAGLE", "PEARL", "QUEEN", "PRINCE", "KING"]),
+        random.choice(
+            [
+                "STAR",
+                "OCEAN",
+                "SEA",
+                "WAVE",
+                "SPIRIT",
+                "LUCKY",
+                "GOLDEN",
+                "SILVER",
+                "NORTH",
+                "SOUTH",
+            ]
+        ),
+        random.choice(
+            [
+                "BREEZE",
+                "DRAGON",
+                "HAWK",
+                "WOLF",
+                "TIGER",
+                "EAGLE",
+                "PEARL",
+                "QUEEN",
+                "PRINCE",
+                "KING",
+            ]
+        ),
     ]
     return {
         "mmsi": str(mmsi_base + idx),
@@ -111,25 +150,25 @@ def generate_track(
         lat += d_lat * 0.05 + random.uniform(-0.002, 0.002)
         lon += d_lon * 0.05 + random.uniform(-0.002, 0.002)
 
-        nav_status = random.choices(
-            [0, 1, 5, 8, 15], weights=[70, 5, 5, 5, 15]
-        )[0]
+        nav_status = random.choices([0, 1, 5, 8, 15], weights=[70, 5, 5, 5, 15])[0]
 
-        positions.append({
-            "mmsi": vessel["mmsi"],
-            "vessel_name": vessel["vessel_name"],
-            "vessel_type": vessel["vessel_type"],
-            "lon": round(lon, 6),
-            "lat": round(lat, 6),
-            "sog": round(speed, 1),
-            "cog": round(cog_var % 360, 1),
-            "heading": int(cog_var) % 360,
-            "nav_status": nav_status,
-            "imo_number": vessel["imo_number"],
-            "flag_state": vessel["flag_state"],
-            "timestamp": t,
-            "source": "marinecadastre_demo",
-        })
+        positions.append(
+            {
+                "mmsi": vessel["mmsi"],
+                "vessel_name": vessel["vessel_name"],
+                "vessel_type": vessel["vessel_type"],
+                "lon": round(lon, 6),
+                "lat": round(lat, 6),
+                "sog": round(speed, 1),
+                "cog": round(cog_var % 360, 1),
+                "heading": int(cog_var) % 360,
+                "nav_status": nav_status,
+                "imo_number": vessel["imo_number"],
+                "flag_state": vessel["flag_state"],
+                "timestamp": t,
+                "source": "marinecadastre_demo",
+            }
+        )
     return positions
 
 
@@ -149,18 +188,31 @@ async def try_download_sample() -> str | None:
         return None
 
 
-async def insert_positions(conn: asyncpg.Connection, positions: list[dict], batch_size: int = 500) -> int:
+async def insert_positions(
+    conn: asyncpg.Connection, positions: list[dict], batch_size: int = 500
+) -> int:
     total = 0
     for i in range(0, len(positions), batch_size):
-        batch = positions[i:i + batch_size]
+        batch = positions[i : i + batch_size]
         records = []
         for p in batch:
-            records.append((
-                p["mmsi"], p["vessel_name"], p["vessel_type"],
-                p["lon"], p["lat"], p["sog"], p["cog"], p["heading"],
-                p["nav_status"], p["imo_number"], p["flag_state"],
-                p["timestamp"], p["source"],
-            ))
+            records.append(
+                (
+                    p["mmsi"],
+                    p["vessel_name"],
+                    p["vessel_type"],
+                    p["lon"],
+                    p["lat"],
+                    p["sog"],
+                    p["cog"],
+                    p["heading"],
+                    p["nav_status"],
+                    p["imo_number"],
+                    p["flag_state"],
+                    p["timestamp"],
+                    p["source"],
+                )
+            )
         await conn.executemany(
             """INSERT INTO ais_positions (
                 mmsi, vessel_name, vessel_type, lon, lat, sog, cog, heading,
@@ -177,7 +229,7 @@ async def insert_positions(conn: asyncpg.Connection, positions: list[dict], batc
 
 
 async def seed_synthetic(conn: asyncpg.Connection) -> None:
-    base_time = datetime(2020, 7, 25, 10, 0, tzinfo=timezone.utc)
+    base_time = datetime(2020, 7, 25, 10, 0, tzinfo=UTC)
     n_vessels = 55
     mmsi_base = 200000000
 
@@ -203,23 +255,25 @@ async def seed_from_csv(conn: asyncpg.Connection, csv_text: str) -> None:
             mmsi = row.get("MMSI", "")
             if not mmsi:
                 continue
-            positions.append({
-                "mmsi": mmsi,
-                "vessel_name": row.get("VesselName", "").strip()[:100] or f"VESSEL_{mmsi}",
-                "vessel_type": int(float(row.get("VesselType", 0) or 0)),
-                "lon": float(row.get("LON", 0)),
-                "lat": float(row.get("LAT", 0)),
-                "sog": float(row.get("SOG", 0) or 0),
-                "cog": float(row.get("COG", 0) or 0),
-                "heading": int(float(row.get("Heading", 0) or 0)),
-                "nav_status": int(float(row.get("Status", 0) or 0)),
-                "imo_number": row.get("IMO", ""),
-                "flag_state": row.get("Flag", ""),
-                "timestamp": datetime.fromisoformat(
-                    row.get("BaseDateTime", "2020-07-07T00:00:00").replace("Z", "+00:00")
-                ),
-                "source": "marinecadastre",
-            })
+            positions.append(
+                {
+                    "mmsi": mmsi,
+                    "vessel_name": row.get("VesselName", "").strip()[:100] or f"VESSEL_{mmsi}",
+                    "vessel_type": int(float(row.get("VesselType", 0) or 0)),
+                    "lon": float(row.get("LON", 0)),
+                    "lat": float(row.get("LAT", 0)),
+                    "sog": float(row.get("SOG", 0) or 0),
+                    "cog": float(row.get("COG", 0) or 0),
+                    "heading": int(float(row.get("Heading", 0) or 0)),
+                    "nav_status": int(float(row.get("Status", 0) or 0)),
+                    "imo_number": row.get("IMO", ""),
+                    "flag_state": row.get("Flag", ""),
+                    "timestamp": datetime.fromisoformat(
+                        row.get("BaseDateTime", "2020-07-07T00:00:00").replace("Z", "+00:00")
+                    ),
+                    "source": "marinecadastre",
+                }
+            )
         except (ValueError, KeyError):
             continue
 

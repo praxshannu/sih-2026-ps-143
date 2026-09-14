@@ -7,7 +7,6 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-
 # --- Input Schemas ---
 
 
@@ -19,9 +18,7 @@ class OceanDataRef(BaseModel):
     and always reports `forcing_source` in the response.
     """
 
-    cmems_base: str = Field(
-        default="", description="Base path to CMEMS GLORYS12 NetCDF files"
-    )
+    cmems_base: str = Field(default="", description="Base path to CMEMS GLORYS12 NetCDF files")
     era5_base: str = Field(default="", description="Base path to ERA5 NetCDF files")
     time_start: datetime = Field(..., description="Start of analysis window")
     time_end: datetime = Field(..., description="End of analysis window")
@@ -35,9 +32,7 @@ class BackwardRequest(BaseModel):
 
     spill_lon: float = Field(..., ge=-180, le=180, description="Spill centroid longitude")
     spill_lat: float = Field(..., ge=-90, le=90, description="Spill centroid latitude")
-    spill_age_hours: float = Field(
-        ..., gt=0, le=720, description="Hours since spill began"
-    )
+    spill_age_hours: float = Field(..., gt=0, le=720, description="Hours since spill began")
     ocean_data: OceanDataRef
     n_particles: int = Field(1000, ge=10, le=10000, description="Ensemble size")
     random_seed: int | None = Field(None, description="Reproducibility seed")
@@ -48,12 +43,8 @@ class ForwardRequest(BaseModel):
 
     origin_lon: float = Field(..., ge=-180, le=180, description="Origin longitude")
     origin_lat: float = Field(..., ge=-90, le=90, description="Origin latitude")
-    origin_lon_sigma: float = Field(
-        0.01, ge=0, description="Origin longitude uncertainty (deg)"
-    )
-    origin_lat_sigma: float = Field(
-        0.01, ge=0, description="Origin latitude uncertainty (deg)"
-    )
+    origin_lon_sigma: float = Field(0.01, ge=0, description="Origin longitude uncertainty (deg)")
+    origin_lat_sigma: float = Field(0.01, ge=0, description="Origin latitude uncertainty (deg)")
     forecast_hours: float = Field(72, gt=0, le=168, description="Forecast duration")
     ocean_data: OceanDataRef
     n_particles: int = Field(1000, ge=10, le=10000)

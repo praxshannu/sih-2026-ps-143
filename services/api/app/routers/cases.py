@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import UTC
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from loguru import logger
 
@@ -61,9 +63,9 @@ async def get_case(case_id: str, _user: TokenPayload = Depends(get_current_user)
 
 @router.post("", response_model=CaseResponse, status_code=status.HTTP_201_CREATED)
 async def create_case(body: CaseCreate, _user: TokenPayload = Depends(get_current_user)):
-    from datetime import datetime, timezone
+    from datetime import datetime
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     case_id = _next_id()
     case = {
         "id": case_id,
@@ -88,7 +90,7 @@ async def update_case(
     body: CaseUpdate,
     _user: TokenPayload = Depends(get_current_user),
 ):
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     case = _cases.get(case_id)
     if not case:
@@ -97,21 +99,23 @@ async def update_case(
     if not update_data:
         raise HTTPException(status_code=400, detail="No fields to update")
     case.update(update_data)
-    case["updated_at"] = datetime.now(timezone.utc)
+    case["updated_at"] = datetime.now(UTC)
     return CaseResponse(**case)
 
 
-@router.post("/{case_id}/annotations", response_model=AnnotationResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/{case_id}/annotations", response_model=AnnotationResponse, status_code=status.HTTP_201_CREATED
+)
 async def add_annotation(
     case_id: str,
     body: AnnotationCreate,
     _user: TokenPayload = Depends(get_current_user),
 ):
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     if case_id not in _cases:
         raise HTTPException(status_code=404, detail="Case not found")
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     annotation = {
         "id": f"ann-{len(_annotations.get(case_id, [])) + 1:06d}",
         "case_id": case_id,

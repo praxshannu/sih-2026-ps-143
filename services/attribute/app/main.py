@@ -10,10 +10,8 @@ import os
 import time
 from contextlib import asynccontextmanager
 from datetime import datetime
-from typing import Any, Optional
 
 import asyncpg
-import numpy as np
 from fastapi import FastAPI, HTTPException
 from loguru import logger
 
@@ -32,7 +30,6 @@ from app.schemas import (
     ScoreResult,
 )
 
-
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
@@ -44,21 +41,15 @@ DATABASE_URL = os.getenv(
 # asyncpg uses plain postgres://, SQLAlchemy driver prefix is for sqlalchemy
 ASYNC_DSN = DATABASE_URL.replace("postgresql+asyncpg://", "postgresql://")
 
-ATTRIBUTION_SEARCH_RADIUS_NM = float(
-    os.getenv("ATTRIBUTION_SEARCH_RADIUS_NM", "50")
-)
-ATTRIBUTION_TIME_WINDOW_HOURS = float(
-    os.getenv("ATTRIBUTION_TIME_WINDOW_HOURS", "6")
-)
+ATTRIBUTION_SEARCH_RADIUS_NM = float(os.getenv("ATTRIBUTION_SEARCH_RADIUS_NM", "50"))
+ATTRIBUTION_TIME_WINDOW_HOURS = float(os.getenv("ATTRIBUTION_TIME_WINDOW_HOURS", "6"))
 
 ATTRIBUTION_FUZZY_WEIGHT = float(os.getenv("ATTRIBUTION_FUZZY_WEIGHT", "0.6"))
 ATTRIBUTION_XGB_WEIGHT = float(os.getenv("ATTRIBUTION_XGB_WEIGHT", "0.4"))
 AIS_PARQUET_PATH = os.getenv("AIS_PARQUET_PATH", "data/ais_demo.parquet")
 
 
-def _blend_scores(
-    fuzzy: float, xgb: float | None
-) -> tuple[float, str]:
+def _blend_scores(fuzzy: float, xgb: float | None) -> tuple[float, str]:
     """Weighted composite of fuzzy + XGB; labels the method used."""
     wf, wx = ATTRIBUTION_FUZZY_WEIGHT, ATTRIBUTION_XGB_WEIGHT
     total = wf + wx
@@ -69,13 +60,14 @@ def _blend_scores(
     blended = (wf * fuzzy + wx * xgb) / total
     return round(float(max(0.0, min(1.0, blended))), 4), "fuzzy_xgb_blend"
 
+
 VESSEL_TYPE_RISK: dict[int, float] = {
-    0: 0.5,   # Unknown
+    0: 0.5,  # Unknown
     30: 0.1,  # Fishing
     31: 0.1,  # Towing
     32: 0.1,  # Towing (large)
-    33: 0.15, # Dredger
-    34: 0.15, # Diving ops
+    33: 0.15,  # Dredger
+    34: 0.15,  # Diving ops
     35: 0.1,  # Military
     36: 0.1,  # Sailing
     37: 0.1,  # Pleasure craft
@@ -100,11 +92,11 @@ VESSEL_TYPE_RISK: dict[int, float] = {
     73: 0.9,  # Cargo (hazmat C)
     74: 0.9,  # Cargo (hazmat D)
     79: 0.9,  # Cargo (special)
-    80: 0.85, # Tanker (inland)
-    81: 0.95, # Tanker (hazmat A)
-    82: 0.95, # Tanker (hazmat B)
-    83: 0.95, # Tanker (hazmat C)
-    84: 0.95, # Tanker (hazmat D)
+    80: 0.85,  # Tanker (inland)
+    81: 0.95,  # Tanker (hazmat A)
+    82: 0.95,  # Tanker (hazmat B)
+    83: 0.95,  # Tanker (hazmat C)
+    84: 0.95,  # Tanker (hazmat D)
     89: 0.9,  # Tanker (special)
 }
 
@@ -113,7 +105,7 @@ VESSEL_TYPE_RISK: dict[int, float] = {
 # Lifespan / DB pool
 # ---------------------------------------------------------------------------
 
-_pool: Optional[asyncpg.Pool] = None
+_pool: asyncpg.Pool | None = None
 
 
 async def _init_pool() -> asyncpg.Pool:
@@ -150,6 +142,7 @@ app = FastAPI(
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _get_pool() -> asyncpg.Pool:
     if _pool is None:
         raise HTTPException(status_code=503, detail="Database pool not initialized")
@@ -164,6 +157,7 @@ def _vessel_type_risk(vessel_type: int) -> float:
 # ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
+
 
 @app.get("/health", response_model=HealthResponse)
 async def health():
@@ -229,19 +223,21 @@ async def rank_suspects(req: RankRequest):
     ranker = SuspectRanker()
     features: list[SuspectFeatures] = []
     for s in req.suspects:
-        features.append(SuspectFeatures(
-            mmsi=s.mmsi,
-            vessel_name=s.vessel_name,
-            min_distance_nm=0.0,  # not used for re-scoring
-            time_delta_minutes=0.0,
-            trajectory_intersection_score=s.score_trajectory,
-            ais_gap_minutes=s.ais_gap_minutes,
-            speed_anomaly_sigma=0.0,
-            course_anomaly_sigma=0.0,
-            vessel_type_risk=s.score_vessel_type,
-            historical_violations=0,
-            is_dark_sar_target=s.is_dark_vessel,
-        ))
+        features.append(
+            SuspectFeatures(
+                mmsi=s.mmsi,
+                vessel_name=s.vessel_name,
+                min_distance_nm=0.0,  # not used for re-scoring
+                time_delta_minutes=0.0,
+                trajectory_intersection_score=s.score_trajectory,
+                ais_gap_minutes=s.ais_gap_minutes,
+                speed_anomaly_sigma=0.0,
+                course_anomaly_sigma=0.0,
+                vessel_type_risk=s.score_vessel_type,
+                historical_violations=0,
+                is_dark_sar_target=s.is_dark_vessel,
+            )
+        )
 
     result = ranker.rank_from_features(features)
 
@@ -328,13 +324,15 @@ async def full_attribution(req: AttribRequest):
     # Collect per-vessel tracks for anomaly detection
     vessel_tracks: dict[str, list[dict]] = {}
     for v in slice_result.vessels:
-        vessel_tracks.setdefault(v.mmsi, []).append({
-            "sog": v.sog,
-            "cog": v.cog,
-            "lon": v.lon,
-            "lat": v.lat,
-            "timestamp": v.timestamp,
-        })
+        vessel_tracks.setdefault(v.mmsi, []).append(
+            {
+                "sog": v.sog,
+                "cog": v.cog,
+                "lon": v.lon,
+                "lat": v.lat,
+                "timestamp": v.timestamp,
+            }
+        )
 
     for mmsi, tracks in vessel_tracks.items():
         if len(tracks) >= 3:
@@ -432,7 +430,9 @@ async def full_attribution(req: AttribRequest):
                 score_history=s.score_history,
                 fuzzy_score=float(s.composite_score),
                 xgb_score=xgb_score,
-                xgb_method=str(xgb_item.get("method", "unavailable")) if xgb_item else "unavailable",
+                xgb_method=str(xgb_item.get("method", "unavailable"))
+                if xgb_item
+                else "unavailable",
                 shap_breakdown=dict(xgb_item.get("shap_breakdown", {})) if xgb_item else {},
                 ais_gap_minutes=s.ais_gap_minutes,
                 is_dark_vessel=s.is_dark_vessel,

@@ -1,0 +1,58 @@
+[project]
+name = "sentinel"
+version = "0.1.0"
+description = "SENTINEL - Autonomous Maritime Oil Spill Intelligence Platform (SIH26143)"
+requires-python = ">=3.11"
+
+[tool.pytest.ini_options]
+testpaths = ["services", "ml"]
+pythonpath = ["."]
+asyncio_mode = "auto"
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::PendingDeprecationWarning",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+extend-exclude = [
+    "data",
+    "node_modules",
+    "services/ui",
+    ".venv",
+    "venv",
+    "build",
+    "dist",
+]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "C4", "SIM"]
+ignore = [
+    "B008",   # FastAPI Depends() in defaults is idiomatic
+    "B905",   # zip(strict=...) needs 3.10+ awareness; not yet universal
+    "SIM117", # nested with is clearer for stacked readers
+]
+fixable = ["E", "F", "W", "I", "UP", "B", "C4", "SIM"]
+
+[tool.ruff.lint.per-file-ignores]
+"*/tests/*" = ["E501"]
+
+[tool.mypy]
+python_version = "3.11"
+warn_unused_configs = true
+ignore_missing_imports = true
+follow_imports = "silent"
+show_error_codes = true
+# Start from a clean, honest baseline and tighten as errors are cleared.
+# `--strict` is the target (AGENTS.md); it is reached by shrinking this list,
+# not by leaving errors on the floor.
+check_untyped_defs = false
+disallow_untyped_defs = false
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = false
+
+[[tool.mypy.overrides]]
+module = "tests.*"
+ignore_errors = true

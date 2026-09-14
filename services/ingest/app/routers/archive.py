@@ -11,7 +11,7 @@ import hashlib
 import json
 import os
 import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -80,7 +80,10 @@ def _resolve_bbox(
                 "min_lon, min_lat, max_lon and max_lat must be supplied together",
             )
         return _validate_bbox(
-            float(min_lon), float(min_lat), float(max_lon), float(max_lat)  # type: ignore[arg-type]
+            float(min_lon),
+            float(min_lat),
+            float(max_lon),
+            float(max_lat),  # type: ignore[arg-type]
         )
     if not bbox:
         raise HTTPException(
@@ -160,8 +163,13 @@ async def search(
     client = get_cdse_client()
     try:
         scenes = await client.search(
-            box, start_iso, end_iso, product_type=product_type,
-            platform=platform, mode=mode, top=top,
+            box,
+            start_iso,
+            end_iso,
+            product_type=product_type,
+            platform=platform,
+            mode=mode,
+            top=top,
         )
     except RuntimeError as exc:
         # Credentials absent — say so plainly instead of returning fake scenes.
@@ -240,15 +248,28 @@ async def ingest(req: IngestRequest) -> dict[str, Any]:
             )
         db = 10.0 * np.log10(valid)
 
-        stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-        key = re.sub(r"[^a-z0-9_]+", "_", (req.label or "archive_scene").lower()).strip("_") or "scene"
+        stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+        key = (
+            re.sub(r"[^a-z0-9_]+", "_", (req.label or "archive_scene").lower()).strip("_")
+            or "scene"
+        )
         out_path = SAR_DIR / f"{key}_{stamp}.tif"
         w, s, e, n = box
         with rasterio.open(
-            out_path, "w", driver="GTiff", height=arr.shape[1], width=arr.shape[2],
-            count=arr.shape[0], dtype="float32", crs="EPSG:4326",
+            out_path,
+            "w",
+            driver="GTiff",
+            height=arr.shape[1],
+            width=arr.shape[2],
+            count=arr.shape[0],
+            dtype="float32",
+            crs="EPSG:4326",
             transform=from_bounds(w, s, e, n, arr.shape[2], arr.shape[1]),
-            compress="deflate", predictor=3, tiled=True, blockxsize=512, blockysize=512,
+            compress="deflate",
+            predictor=3,
+            tiled=True,
+            blockxsize=512,
+            blockysize=512,
         ) as dst:
             dst.write(arr)
             dst.descriptions = ("sigma0_VV_linear", "sigma0_VH_linear", "dataMask")
@@ -265,7 +286,7 @@ async def ingest(req: IngestRequest) -> dict[str, Any]:
             "bytes": out_path.stat().st_size,
             "sha256": hashlib.sha256(out_path.read_bytes()).hexdigest(),
             "scene_name": req.scene_name,
-            "fetched_utc": datetime.now(timezone.utc).isoformat(),
+            "fetched_utc": datetime.now(UTC).isoformat(),
             "source": "CDSE Sentinel Hub Process API (Copernicus Data Space Ecosystem)",
             "stats": {
                 "vv_db_p05": round(float(np.percentile(db, 5)), 2),
@@ -371,13 +392,19 @@ async def ais(
         }
 
     payload = generate_synthetic_ais(
-        box, start_dt, end_dt, n_vessels=n_vessels, seed=seed,
+        box,
+        start_dt,
+        end_dt,
+        n_vessels=n_vessels,
+        seed=seed,
     )
     payload["disclaimer"] = synthetic_disclaimer()
     payload["coverage"] = verdict
     payload["acknowledged"] = bool(acknowledge_synthetic)
     logger.warning(
         "Served SYNTHETIC AIS for bbox={} window={}..{} — no real coverage exists",
-        box, start_iso, end_iso,
+        box,
+        start_iso,
+        end_iso,
     )
     return payload

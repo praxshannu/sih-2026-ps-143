@@ -8,7 +8,6 @@ for the UNet++ encoder.
 from __future__ import annotations
 
 import os
-from typing import Optional
 
 import cv2
 import numpy as np
@@ -37,7 +36,7 @@ class MultimodalInputProcessor:
 
     def __init__(
         self,
-        target_size: Optional[tuple[int, int]] = None,
+        target_size: tuple[int, int] | None = None,
         normalize: bool = True,
     ) -> None:
         self.target_size = target_size
@@ -64,8 +63,7 @@ class MultimodalInputProcessor:
 
         with rasterio.open(image_path) as src:
             logger.info(
-                f"Reading SAR image: {src.width}x{src.height}, "
-                f"{src.count} bands, CRS={src.crs}"
+                f"Reading SAR image: {src.width}x{src.height}, {src.count} bands, CRS={src.crs}"
             )
 
             # Sentinel-1 band naming conventions
@@ -92,8 +90,10 @@ class MultimodalInputProcessor:
                     band_idx = 1 if band_key == "vv" else min(2, src.count)
                 data = src.read(band_idx).astype(self.TARGET_DTYPE)
                 bands[band_key] = data
-                logger.debug(f"Read {band_key}: shape={data.shape}, "
-                             f"range=[{data.min():.4f}, {data.max():.4f}]")
+                logger.debug(
+                    f"Read {band_key}: shape={data.shape}, "
+                    f"range=[{data.min():.4f}, {data.max():.4f}]"
+                )
 
             if not bands:
                 data = src.read(1).astype(self.TARGET_DTYPE)
@@ -122,8 +122,8 @@ class MultimodalInputProcessor:
     def fuse_channels(
         self,
         bands: dict[str, np.ndarray],
-        wind: Optional[WindData] = None,
-        current: Optional[CurrentData] = None,
+        wind: WindData | None = None,
+        current: CurrentData | None = None,
     ) -> np.ndarray:
         """Fuse SAR bands with wind/current data into multi-channel array.
 
@@ -160,9 +160,9 @@ class MultimodalInputProcessor:
         self,
         image_path: str,
         band_selection: str = "VV",
-        wind: Optional[WindData] = None,
-        current: Optional[CurrentData] = None,
-        target_size: Optional[tuple[int, int]] = None,
+        wind: WindData | None = None,
+        current: CurrentData | None = None,
+        target_size: tuple[int, int] | None = None,
     ) -> np.ndarray:
         """Full pipeline: read -> fuse -> resize -> return tensor.
 
@@ -181,14 +181,17 @@ class MultimodalInputProcessor:
 
         size = target_size or self.target_size
         if size is not None and (fused.shape[1] != size[0] or fused.shape[2] != size[1]):
-            fused_resized = np.stack([
-                cv2.resize(
-                    fused[c],
-                    (size[1], size[0]),
-                    interpolation=cv2.INTER_LINEAR,
-                )
-                for c in range(fused.shape[0])
-            ], axis=0)
+            fused_resized = np.stack(
+                [
+                    cv2.resize(
+                        fused[c],
+                        (size[1], size[0]),
+                        interpolation=cv2.INTER_LINEAR,
+                    )
+                    for c in range(fused.shape[0])
+                ],
+                axis=0,
+            )
             logger.debug(f"Resized from {fused.shape} to {fused_resized.shape}")
             return fused_resized
 

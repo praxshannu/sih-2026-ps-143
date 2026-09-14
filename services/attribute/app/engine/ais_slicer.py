@@ -10,11 +10,11 @@ from __future__ import annotations
 import math
 import time
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from datetime import UTC
+from typing import Any
 
 import asyncpg
 from loguru import logger
-
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -48,10 +48,10 @@ class VesselTrack:
     lat: float
     sog: float
     cog: float
-    heading: Optional[int]
-    nav_status: Optional[int]
-    imo_number: Optional[str]
-    flag_state: Optional[str]
+    heading: int | None
+    nav_status: int | None
+    imo_number: str | None
+    flag_state: str | None
     timestamp: Any
     min_distance_nm: float = 0.0
     time_delta_minutes: float = 0.0
@@ -70,6 +70,7 @@ class SliceResult:
 # ---------------------------------------------------------------------------
 # Engine
 # ---------------------------------------------------------------------------
+
 
 class AisSlicer:
     """PostGIS spatiotemporal query engine.
@@ -213,9 +214,9 @@ class AisSlicer:
         Used by the anomaly detector to build behavioral profiles.
         """
         if ref_time is None:
-            from datetime import datetime, timezone
+            from datetime import datetime
 
-            ref_time = datetime.now(timezone.utc)
+            ref_time = datetime.now(UTC)
         sql = """
             SELECT
                 mmsi, vessel_name, vessel_type, lon, lat,

@@ -17,26 +17,24 @@ GET  /drift/health
 
 from __future__ import annotations
 
-import json
-import math
 import os
-import sys
 import tempfile
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
-
-from fastapi import APIRouter, HTTPException, Query
-from loguru import logger
-from pydantic import BaseModel, Field
 
 # Allow the FastAPI app to import the sibling ``runner`` module without
 # setting PYTHONPATH manually. ``app/main_attribution.py`` adjusts sys.path
 # at boot.
 from app.runner import (
-    AttributionResult, EnsembleConfig, run_backward_attribution,
+    AttributionResult,
+    EnsembleConfig,
+    run_backward_attribution,
     run_forward_forecast,
 )
+from fastapi import APIRouter, HTTPException
+from loguru import logger
+from pydantic import BaseModel, Field
 
 router = APIRouter(prefix="/drift", tags=["drift"])
 
@@ -71,7 +69,8 @@ class AttributionRequest(BaseModel):
     # "gfs"/"era5" pin the source. GFS only retains ~10 days on NOMADS.
     forcing: str = Field("auto", description="Wind source: auto | era5 | gfs")
     bbox: tuple[float, float, float, float] | None = Field(
-        default=None, description="(W,S,E,N) override for the forcing bbox; default = a 5° box around the detection",
+        default=None,
+        description="(W,S,E,N) override for the forcing bbox; default = a 5° box around the detection",
     )
 
     # OpenDrift knobs
@@ -85,14 +84,16 @@ class AttributionRequest(BaseModel):
     synthetic_current_dir_deg: float = 220.0
 
 
-def _default_bbox(det_lon: float, det_lat: float, pad_deg: float = 5.0) -> tuple[float, float, float, float]:
+def _default_bbox(
+    det_lon: float, det_lat: float, pad_deg: float = 5.0
+) -> tuple[float, float, float, float]:
     return (det_lon - pad_deg, det_lat - pad_deg, det_lon + pad_deg, det_lat + pad_deg)
 
 
 def _fetch_gfs(bbox, start_dt, end_dt):
     """Pull NOAA GFS 10m wind. Instant, but recent-only — see sources/gfs.py."""
-    from opendrift.readers import reader_netCDF_CF_generic
     from app.sources.gfs import fetch_gfs_wind
+    from opendrift.readers import reader_netCDF_CF_generic
 
     ds = fetch_gfs_wind(bbox, start_dt, end_dt)
     ds = ds.rename({"u10": "x_wind", "v10": "y_wind"})
@@ -131,6 +132,7 @@ def _resolve_wind(bbox, start_dt, end_dt, forcing: str, notes: list[str]):
 
     # auto
     from app.sources.gfs import supports_window
+
     ok, reason = supports_window(start_dt, end_dt)
     if ok:
         try:
@@ -154,6 +156,7 @@ async def health() -> dict[str, Any]:
     out = {"ok": True, "service": "sentinel-drift-attribution"}
     try:
         from opendrift.models.openoil import OpenOil  # noqa: F401
+
         out["opendrift"] = "available"
     except Exception as exc:  # noqa: BLE001
         out["ok"] = False
@@ -164,10 +167,10 @@ async def health() -> dict[str, Any]:
 def _fetch_era5(bbox, start_iso, end_iso):
     """Pull ERA5 hourly 10m wind for the bbox+window. Returns an OpenDrift
     `reader_netCDF_CF_generic` or raises."""
-    from opendrift.readers import reader_netCDF_CF_generic
+
     # Import lazily so missing cdsapi/eccodes doesn't break the module load.
     from app.sources.era5 import fetch_era5_wind
-    import xarray as xr
+    from opendrift.readers import reader_netCDF_CF_generic
 
     # Pad the requested window before hitting CDS.
     #
@@ -234,8 +237,8 @@ def _fetch_cmems(bbox, start_iso, end_iso):
       request by a day on each side so there are always >=2 snapshots.
     * The result is lazy; ``.load()`` before writing to netCDF.
     """
-    from opendrift.readers import reader_netCDF_CF_generic
     import copernicusmarine
+    from opendrift.readers import reader_netCDF_CF_generic
 
     pad_start = (
         datetime.fromisoformat(start_iso.replace("Z", "+00:00")) - timedelta(days=1)
@@ -247,10 +250,14 @@ def _fetch_cmems(bbox, start_iso, end_iso):
     ds = copernicusmarine.open_dataset(
         dataset_id="cmems_mod_glo_phy_my_0.083deg_P1D-m",
         variables=["uo", "vo"],
-        minimum_longitude=bbox[0], maximum_longitude=bbox[2],
-        minimum_latitude=bbox[1], maximum_latitude=bbox[3],
-        start_datetime=pad_start, end_datetime=pad_end,
-        minimum_depth=0.4941, maximum_depth=1.0,
+        minimum_longitude=bbox[0],
+        maximum_longitude=bbox[2],
+        minimum_latitude=bbox[1],
+        maximum_latitude=bbox[3],
+        start_datetime=pad_start,
+        end_datetime=pad_end,
+        minimum_depth=0.4941,
+        maximum_depth=1.0,
     ).load()
 
     rename = {}
@@ -289,7 +296,7 @@ async def attribute(req: AttributionRequest) -> dict[str, Any]:
     try:
         det_dt = datetime.fromisoformat(req.detection_time.replace("Z", "+00:00"))
         if det_dt.tzinfo is None:
-            det_dt = det_dt.replace(tzinfo=timezone.utc)
+            det_dt = det_dt.replace(tzinfo=UTC)
     except Exception as exc:
         raise HTTPException(422, f"detection_time invalid: {exc}") from exc
 
@@ -346,14 +353,14 @@ async def attribute(req: AttributionRequest) -> dict[str, Any]:
         result.notes.extend(notes)
     return result.to_dict()
 
+
 class ForecastRequest(BaseModel):
     """Forward drift projection from a known origin."""
 
     origin_lon: float
     origin_lat: float
     origin_time: str = Field(..., description="ISO-8601 UTC")
-    seed_radius_km: float = Field(1.0, ge=0.05, le=100.0,
-                                  description="Radius of the seed disc")
+    seed_radius_km: float = Field(1.0, ge=0.05, le=100.0, description="Radius of the seed disc")
     duration_h: float = Field(48.0, ge=1, le=168)
 
     use_era5: bool = True
@@ -388,7 +395,7 @@ async def forecast(req: ForecastRequest) -> dict[str, Any]:
     try:
         org_dt = datetime.fromisoformat(req.origin_time.replace("Z", "+00:00"))
         if org_dt.tzinfo is None:
-            org_dt = org_dt.replace(tzinfo=timezone.utc)
+            org_dt = org_dt.replace(tzinfo=UTC)
     except Exception as exc:
         raise HTTPException(422, f"origin_time invalid: {exc}") from exc
 
@@ -418,8 +425,7 @@ async def forecast(req: ForecastRequest) -> dict[str, Any]:
             notes.append(f"CMEMS unavailable: {str(exc)[:200]}")
             logger.warning("CMEMS fetch failed: {}", exc)
 
-    cfg = EnsembleConfig(n_members=req.n_members, duration_h=req.duration_h,
-                         seed=req.seed)
+    cfg = EnsembleConfig(n_members=req.n_members, duration_h=req.duration_h, seed=req.seed)
     try:
         result = run_forward_forecast(
             origin_time=org_dt,

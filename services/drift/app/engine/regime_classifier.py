@@ -75,7 +75,10 @@ def classify_regime(
 
     logger.info(
         "Regime classification: markov1={}, redi={}, smag={} => {}",
-        votes[0], votes[1], votes[2], regime.value,
+        votes[0],
+        votes[1],
+        votes[2],
+        regime.value,
     )
     return regime
 

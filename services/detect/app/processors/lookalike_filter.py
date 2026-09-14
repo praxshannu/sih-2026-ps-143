@@ -7,9 +7,6 @@ Uses wind speed, GLCM texture features, and spatial context heuristics.
 
 from __future__ import annotations
 
-from typing import Optional
-
-import cv2
 import numpy as np
 from loguru import logger
 from scipy import ndimage
@@ -48,9 +45,7 @@ class LookalikeFilter:
         self.min_texture_contrast = min_texture_contrast
         self.context_buffer_m = context_buffer_m
 
-    def compute_texture_features(
-        self, sar_patch: np.ndarray
-    ) -> dict[str, float]:
+    def compute_texture_features(self, sar_patch: np.ndarray) -> dict[str, float]:
         """Compute GLCM texture features for a SAR patch.
 
         Args:
@@ -63,7 +58,9 @@ class LookalikeFilter:
         if sar_patch.max() - sar_patch.min() < 1e-8:
             return {"homogeneity": 1.0, "contrast": 0.0, "energy": 1.0, "correlation": 0.0}
 
-        normed = ((sar_patch - sar_patch.min()) / (sar_patch.max() - sar_patch.min()) * 255).astype(np.uint8)
+        normed = ((sar_patch - sar_patch.min()) / (sar_patch.max() - sar_patch.min()) * 255).astype(
+            np.uint8
+        )
 
         # Compute GLCM at 0, 45, 90, 135 degrees
         offsets = [(0, 1), (1, 1), (1, 0), (1, -1)]
@@ -95,7 +92,7 @@ class LookalikeFilter:
         i_indices, j_indices = np.indices(glcm.shape)
         homogeneity = float(np.sum(glcm / (1.0 + (i_indices - j_indices) ** 2)))
         contrast = float(np.sum(glcm * (i_indices - j_indices) ** 2))
-        energy = float(np.sqrt(np.sum(glcm ** 2)))
+        energy = float(np.sqrt(np.sum(glcm**2)))
 
         # Correlation
         mu_i = np.sum(i_indices * glcm)
@@ -103,7 +100,9 @@ class LookalikeFilter:
         sigma_i = np.sqrt(np.sum((i_indices - mu_i) ** 2 * glcm))
         sigma_j = np.sqrt(np.sum((j_indices - mu_j) ** 2 * glcm))
         if sigma_i > 0 and sigma_j > 0:
-            correlation = float(np.sum((i_indices - mu_i) * (j_indices - mu_j) * glcm) / (sigma_i * sigma_j))
+            correlation = float(
+                np.sum((i_indices - mu_i) * (j_indices - mu_j) * glcm) / (sigma_i * sigma_j)
+            )
         else:
             correlation = 0.0
 
@@ -116,7 +115,7 @@ class LookalikeFilter:
 
     def wind_regime_analysis(
         self,
-        wind: Optional[WindData],
+        wind: WindData | None,
         sar_mask: np.ndarray,
     ) -> tuple[float, list[str]]:
         """Analyse wind regime for look-alike probability.
@@ -143,9 +142,7 @@ class LookalikeFilter:
         elif wind_speed < 6.0:
             # Moderate wind: some uncertainty
             score += 0.15
-            reasons.append(
-                f"Moderate wind ({wind_speed:.1f} m/s) — marginal detection confidence"
-            )
+            reasons.append(f"Moderate wind ({wind_speed:.1f} m/s) — marginal detection confidence")
         else:
             # High wind: dark spots are less likely to be natural
             score -= 0.2
@@ -200,8 +197,8 @@ class LookalikeFilter:
     def context_analysis(
         self,
         spill_mask: np.ndarray,
-        shoreline_mask: Optional[np.ndarray] = None,
-        shipping_lane_mask: Optional[np.ndarray] = None,
+        shoreline_mask: np.ndarray | None = None,
+        shipping_lane_mask: np.ndarray | None = None,
     ) -> tuple[float, list[str]]:
         """Analyse spatial context (proximity to shore/shipping lanes).
 
@@ -213,9 +210,7 @@ class LookalikeFilter:
 
         if shoreline_mask is not None:
             # Calculate distance to nearest shoreline
-            distance_map = ndimage.distance_transform_edt(
-                shoreline_mask == 0
-            )
+            distance_map = ndimage.distance_transform_edt(shoreline_mask == 0)
             min_dist = distance_map[spill_mask > 0].min()
 
             if min_dist < 100:  # pixels
@@ -238,9 +233,9 @@ class LookalikeFilter:
         self,
         sar_patch: np.ndarray,
         spill_mask: np.ndarray,
-        wind: Optional[WindData] = None,
-        shoreline_mask: Optional[np.ndarray] = None,
-        shipping_lane_mask: Optional[np.ndarray] = None,
+        wind: WindData | None = None,
+        shoreline_mask: np.ndarray | None = None,
+        shipping_lane_mask: np.ndarray | None = None,
     ) -> LookalikeAnalysis:
         """Combined look-alike assessment.
 
@@ -268,11 +263,7 @@ class LookalikeFilter:
         all_reasons.extend(context_reasons)
 
         # Weighted combination
-        combined_score = (
-            0.4 * wind_score
-            + 0.35 * texture_score
-            + 0.25 * context_score
-        )
+        combined_score = 0.4 * wind_score + 0.35 * texture_score + 0.25 * context_score
 
         is_lookalike = combined_score > 0.5
 

@@ -92,7 +92,10 @@ def integrate_forward(
 
     logger.info(
         "Forward integration: {} particles, {} steps of {:.0f}s, {}hr forecast",
-        n_particles, n_steps, dt, forecast_hours,
+        n_particles,
+        n_steps,
+        dt,
+        forecast_hours,
     )
 
     # Storage
@@ -119,8 +122,12 @@ def integrate_forward(
         div_K_x = np.zeros(n_particles)
         div_K_y = np.zeros(n_particles)
         if n_particles > 1:
-            dk_dx = np.gradient(K[:, 0, 0], axis=0) / max(np.abs(x.max() - x.min()), 1e-6) * 111000.0
-            dk_dy = np.gradient(K[:, 1, 1], axis=0) / max(np.abs(y.max() - y.min()), 1e-6) * 111000.0
+            dk_dx = (
+                np.gradient(K[:, 0, 0], axis=0) / max(np.abs(x.max() - x.min()), 1e-6) * 111000.0
+            )
+            dk_dy = (
+                np.gradient(K[:, 1, 1], axis=0) / max(np.abs(y.max() - y.min()), 1e-6) * 111000.0
+            )
             div_K_x = dk_dx
             div_K_y = dk_dy
 
@@ -135,6 +142,7 @@ def integrate_forward(
 
         # Diffusion noise
         from .backward_sde import wiener_increment
+
         dW_x, dW_y = wiener_increment(K, dt, rng)
         x += dW_x / 111000.0 / np.cos(np.radians(np.clip(y, -89, 89)))
         y += dW_y / 111000.0
@@ -145,12 +153,18 @@ def integrate_forward(
         if step % max(n_steps // 10, 1) == 0:
             logger.debug(
                 "Step {}/{} (t={:.1f}h): mean=({:.4f}, {:.4f})",
-                step, n_steps, t_hours + dt / 3600.0, x.mean(), y.mean(),
+                step,
+                n_steps,
+                t_hours + dt / 3600.0,
+                x.mean(),
+                y.mean(),
             )
 
     logger.info(
         "Forward complete: {} trajectories, final mean=({:.4f}, {:.4f})",
-        n_particles, lons[:, -1].mean(), lats[:, -1].mean(),
+        n_particles,
+        lons[:, -1].mean(),
+        lats[:, -1].mean(),
     )
 
     return {"lons": lons, "lats": lats, "times": times}
@@ -231,7 +245,7 @@ def compute_shoreline_risk(
         # Estimate risk from particle spread
         spread_km = np.sqrt(
             np.var(final_lons * 111.0 * np.cos(np.radians(np.mean(final_lats)))) * 111.0**2
-            + np.var(final_lats * 111.0)**2
+            + np.var(final_lats * 111.0) ** 2
         )
         risk = min(spread_km / 100.0, 1.0)
         return {
@@ -277,7 +291,9 @@ def compute_shoreline_risk(
 
     logger.info(
         "Shoreline risk: index={:.3f}, nearest={:.1f}km, segments_at_risk={}",
-        risk_index, nearest_impact, len(segments_at_risk),
+        risk_index,
+        nearest_impact,
+        len(segments_at_risk),
     )
 
     return {

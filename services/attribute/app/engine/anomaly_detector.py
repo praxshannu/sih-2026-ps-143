@@ -10,15 +10,15 @@ from __future__ import annotations
 import math
 import time
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any
 
 import numpy as np
 from loguru import logger
 
-
 # ---------------------------------------------------------------------------
 # Data structures
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class BehaviorFeatures:
@@ -47,6 +47,7 @@ class AnomalyResult:
 # ---------------------------------------------------------------------------
 # LSTM Autoencoder (minimal implementation)
 # ---------------------------------------------------------------------------
+
 
 class _LSTMAutoencoder:
     """Minimal LSTM autoencoder for sequence reconstruction.
@@ -120,9 +121,7 @@ class _LSTMAutoencoder:
         h = np.zeros(self.hidden_dim)
         c = np.zeros(self.hidden_dim)
         for t in range(seq.shape[0]):
-            h, c = self._lstm_cell(
-                seq[t], h, c, self.W_ih, self.W_hh, self.b_ih, self.b_hh
-            )
+            h, c = self._lstm_cell(seq[t], h, c, self.W_ih, self.W_hh, self.b_ih, self.b_hh)
         return h, c
 
     def decode(self, latent: np.ndarray, steps: int) -> np.ndarray:
@@ -212,6 +211,7 @@ class _LSTMAutoencoder:
 # Anomaly Detector
 # ---------------------------------------------------------------------------
 
+
 class AnomalyDetector:
     """Behavioral anomaly detection engine.
 
@@ -220,9 +220,7 @@ class AnomalyDetector:
     """
 
     def __init__(self) -> None:
-        self._autoencoder = _LSTMAutoencoder(
-            input_dim=2, hidden_dim=16, latent_dim=8, seq_len=24
-        )
+        self._autoencoder = _LSTMAutoencoder(input_dim=2, hidden_dim=16, latent_dim=8, seq_len=24)
         self._speed_mean: float = 10.0
         self._speed_std: float = 5.0
         self._course_std: float = 15.0
@@ -289,9 +287,7 @@ class AnomalyDetector:
 
         return features
 
-    def features_to_sequence(
-        self, features: list[BehaviorFeatures]
-    ) -> Optional[np.ndarray]:
+    def features_to_sequence(self, features: list[BehaviorFeatures]) -> np.ndarray | None:
         """Convert features to normalized sequence for autoencoder.
 
         Returns (seq_len, 2) array of [normalized_speed, normalized_course_delta].
@@ -389,31 +385,35 @@ class AnomalyDetector:
         course_sigma = course_anomalies / total * 5.0
 
         is_anomalous = (
-            recon_error > self._autoencoder.threshold
-            or speed_sigma > 2.0
-            or course_sigma > 2.0
+            recon_error > self._autoencoder.threshold or speed_sigma > 2.0 or course_sigma > 2.0
         )
 
         anomalies_list = []
         if speed_sigma > 2.0:
-            anomalies_list.append({
-                "type": "speed_anomaly",
-                "sigma": round(speed_sigma, 2),
-                "description": "Unusual speed pattern detected",
-            })
+            anomalies_list.append(
+                {
+                    "type": "speed_anomaly",
+                    "sigma": round(speed_sigma, 2),
+                    "description": "Unusual speed pattern detected",
+                }
+            )
         if course_sigma > 2.0:
-            anomalies_list.append({
-                "type": "course_anomaly",
-                "sigma": round(course_sigma, 2),
-                "description": "Unusual course changes detected",
-            })
+            anomalies_list.append(
+                {
+                    "type": "course_anomaly",
+                    "sigma": round(course_sigma, 2),
+                    "description": "Unusual course changes detected",
+                }
+            )
         if recon_error > self._autoencoder.threshold:
-            anomalies_list.append({
-                "type": "reconstruction_anomaly",
-                "score": round(recon_error, 4),
-                "threshold": round(self._autoencoder.threshold, 4),
-                "description": "Behavior deviates from learned normal pattern",
-            })
+            anomalies_list.append(
+                {
+                    "type": "reconstruction_anomaly",
+                    "score": round(recon_error, 4),
+                    "threshold": round(self._autoencoder.threshold, 4),
+                    "description": "Behavior deviates from learned normal pattern",
+                }
+            )
 
         elapsed_ms = (time.monotonic() - t0) * 1000.0
         logger.debug(

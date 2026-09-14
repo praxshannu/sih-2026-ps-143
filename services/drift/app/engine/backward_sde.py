@@ -8,15 +8,11 @@ Returns 95% confidence ellipse from particle distribution.
 
 from __future__ import annotations
 
-from datetime import datetime
-
 import numpy as np
 from loguru import logger
 
 from ..schemas import ConfidenceEllipse
-from .kij_tensor import k_tensor_assembly
 from .regime_classifier import OceanRegime
-from .wmc_correction import wmc_corrected_velocity
 
 
 def rk4_step_backward(
@@ -168,7 +164,10 @@ def integrate_backward(
 
     logger.info(
         "Backward integration: {} steps of {:.1f}s from ({:.4f}, {:.4f})",
-        n_steps, dt, spill_lon, spill_lat,
+        n_steps,
+        dt,
+        spill_lon,
+        spill_lat,
     )
 
     # Initialize particles at spill centroid with small Gaussian spread
@@ -192,8 +191,12 @@ def integrate_backward(
         div_K_y = np.zeros(n_particles)
         # Approximate divergence from K gradient
         if n_particles > 1:
-            dk_dx = np.gradient(K[:, 0, 0], axis=0) / max(np.abs(x.max() - x.min()), 1e-6) * 111000.0
-            dk_dy = np.gradient(K[:, 1, 1], axis=0) / max(np.abs(y.max() - y.min()), 1e-6) * 111000.0
+            dk_dx = (
+                np.gradient(K[:, 0, 0], axis=0) / max(np.abs(x.max() - x.min()), 1e-6) * 111000.0
+            )
+            dk_dy = (
+                np.gradient(K[:, 1, 1], axis=0) / max(np.abs(y.max() - y.min()), 1e-6) * 111000.0
+            )
             div_K_x = dk_dx
             div_K_y = dk_dy
 
@@ -207,9 +210,7 @@ def integrate_backward(
         v_deg = (v - div_K_y) / 110540.0
 
         # RK4 step (zero div: already folded into u_deg/v_deg)
-        x, y = rk4_step_backward(
-            x, y, u_deg, v_deg, K, np.zeros((n_particles, 2)), dt
-        )
+        x, y = rk4_step_backward(x, y, u_deg, v_deg, K, np.zeros((n_particles, 2)), dt)
 
         # Diffusion (stochastic term)
         dW_x, dW_y = wiener_increment(K, dt, rng)
@@ -219,12 +220,20 @@ def integrate_backward(
         if step % max(n_steps // 10, 1) == 0:
             logger.debug(
                 "Step {}/{}: mean pos = ({:.4f}, {:.4f}), std = ({:.4f}, {:.4f})",
-                step, n_steps, x.mean(), y.mean(), x.std(), y.std(),
+                step,
+                n_steps,
+                x.mean(),
+                y.mean(),
+                x.std(),
+                y.std(),
             )
 
     logger.info(
         "Backward complete: mean origin = ({:.4f}, {:.4f}), spread = ({:.4f}, {:.4f})",
-        x.mean(), y.mean(), x.std(), y.std(),
+        x.mean(),
+        y.mean(),
+        x.std(),
+        y.std(),
     )
 
     return x, y, regime
@@ -281,7 +290,12 @@ def compute_confidence_ellipse(
 
     logger.info(
         "Confidence ellipse ({}%): centre=({:.4f}, {:.4f}), a={:.2f}km, b={:.2f}km, θ={:.1f}°",
-        int(confidence * 100), mean_lon, mean_lat, semi_major, semi_minor, orientation,
+        int(confidence * 100),
+        mean_lon,
+        mean_lat,
+        semi_major,
+        semi_minor,
+        orientation,
     )
 
     return ConfidenceEllipse(

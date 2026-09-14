@@ -8,9 +8,7 @@ from __future__ import annotations
 
 import os
 import sys
-import time
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
 from typing import Any
 
 import asyncpg
@@ -18,8 +16,8 @@ from fastapi import FastAPI, HTTPException
 from loguru import logger
 
 from .models.schemas import (
-    AisParams,
     AisIngestResult,
+    AisParams,
     CmemsParams,
     DataSource,
     Era5Params,
@@ -146,6 +144,7 @@ async def lifespan(app: FastAPI):
 
     logger.info("SENTINEL Ingest Service starting up")
     from pathlib import Path
+
     # mkdir is idempotent — never let an existing dir (or a read-only FS)
     # abort startup of the whole service.
     try:

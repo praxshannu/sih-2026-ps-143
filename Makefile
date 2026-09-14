@@ -1,10 +1,30 @@
-.PHONY: dev build test lint typecheck clean seed demo down logs
+PYTHON ?= python
+SERVICES := api ingest detect drift attribute intel
+RUN_PY   := /Users/praxsmac/.workbuddy-ai/binaries/python/envs/default/bin/python
+
+# Each service ships its own top-level `app` package. Running mypy over
+# `services/` in one invocation makes those collide in sys.modules, so the
+# type check is per-service on purpose.
+MYPY_TARGETS := $(foreach s,$(SERVICES),mypy-$(s))
+
+.PHONY: dev dev-lite build build-lite up down logs test lint format typecheck \
+        clean db-init test-all $(MYPY_TARGETS) mypy-each
 
 dev:
 	docker compose -f docker-compose.txt -f docker-compose.override.yml up --build
 
+# 16 GB Apple Silicon profile: no CUDA, no Prometheus/Grafana/Flower.
+dev-lite:
+	docker compose -f docker-compose.txt -f docker-compose.lite.yml up --build
+
+lite:
+	$(MAKE) dev-lite
+
 build:
 	docker compose -f docker-compose.txt build
+
+build-lite:
+	docker compose -f docker-compose.txt -f docker-compose.lite.yml build
 
 up:
 	docker compose -f docker-compose.txt up -d
@@ -16,24 +36,29 @@ logs:
 	docker compose -f docker-compose.txt logs -f
 
 test:
-	pytest services/ --tb=short -q
+	$(RUN_PY) -m pytest services/ ml/ --tb=short -q
 
 lint:
-	ruff check services/
-	ruff format --check services/
+	$(RUN_PY) -m ruff check services/ ml/ scripts/
+	$(RUN_PY) -m ruff format --check services/ ml/ scripts/
 
 format:
-	ruff format services/
-	ruff check --fix services/
+	$(RUN_PY) -m ruff format services/ ml/ scripts/
+	$(RUN_PY) -m ruff check --fix services/ ml/ scripts/
 
-typecheck:
-	mypy services/ --ignore-missing-imports
+mypy-each: $(MYPY_TARGETS)
+
+$(MYPY_TARGETS): mypy-%:
+	$(RUN_PY) -m mypy services/$*
+
+typecheck: mypy-each
+	$(RUN_PY) -m mypy ml/ --ignore-missing-imports
 
 seed:
-	python scripts/seed_demo_case.py
+	$(PYTHON) scripts/seed_demo_case.py
 
 seed-ais:
-	python scripts/seed_ais_demo.py
+	$(PYTHON) scripts/seed_ais_demo.py
 
 clean:
 	docker compose -f docker-compose.txt down -v --rmi local

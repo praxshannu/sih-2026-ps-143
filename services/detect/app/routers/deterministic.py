@@ -27,16 +27,15 @@ import os
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Query
-from loguru import logger
-from pydantic import BaseModel, Field
-
 from app.processors.deterministic import (
     DetectionConfig,
     DeterministicDetector,
     _acquisition_time,
     run_on_directory,
 )
+from fastapi import APIRouter, HTTPException, Query
+from loguru import logger
+from pydantic import BaseModel, Field
 
 router = APIRouter(prefix="/detect", tags=["detect-det"])
 
@@ -45,8 +44,12 @@ SAR_DIR = DATA_DIR / "sar"
 
 
 class DetectRequest(BaseModel):
-    tif_path: str = Field(..., description="Absolute path to a calibrated GeoTIFF (3 bands: VV, VH, dataMask)")
-    wind_speed_ms: float | None = Field(None, description="Optional ERA5 wind to clear the LOW_CONFIDENCE_NO_WIND flag")
+    tif_path: str = Field(
+        ..., description="Absolute path to a calibrated GeoTIFF (3 bands: VV, VH, dataMask)"
+    )
+    wind_speed_ms: float | None = Field(
+        None, description="Optional ERA5 wind to clear the LOW_CONFIDENCE_NO_WIND flag"
+    )
 
 
 @router.get("/deterministic/health")
@@ -55,7 +58,11 @@ async def deterministic_health() -> dict[str, Any]:
     try:
         # Cheap import smoke-test
         DeterministicDetector(DetectionConfig())  # noqa: F841
-        return {"ok": True, "detector": "deterministic-lee-adaptive-v1", "ml_available": _ml_available()}
+        return {
+            "ok": True,
+            "detector": "deterministic-lee-adaptive-v1",
+            "ml_available": _ml_available(),
+        }
     except Exception as exc:  # noqa: BLE001
         return {"ok": False, "error": str(exc)[:200]}
 
@@ -136,6 +143,7 @@ async def run_all(wind_speed_ms: float | None = Query(None)) -> dict[str, Any]:
 def _ml_available() -> bool:
     try:
         import importlib.util as _u
+
         return bool(_u.find_spec("torch"))
     except Exception:
         return False

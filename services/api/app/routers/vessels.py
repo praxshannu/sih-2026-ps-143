@@ -71,8 +71,14 @@ async def list_vessels(
     page_size: int = Query(20, ge=1, le=100),
     _user: TokenPayload = Depends(get_current_user),
 ):
-    data = await _proxy_get(ATTRIBUTE_SERVICE_URL, f"/cases/{case_id}/vessels?skip={(page-1)*page_size}&limit={page_size}", "attribute")
-    vessels = [VesselProfile(**v) for v in data.get("vessels", data if isinstance(data, list) else [])]
+    data = await _proxy_get(
+        ATTRIBUTE_SERVICE_URL,
+        f"/cases/{case_id}/vessels?skip={(page - 1) * page_size}&limit={page_size}",
+        "attribute",
+    )
+    vessels = [
+        VesselProfile(**v) for v in data.get("vessels", data if isinstance(data, list) else [])
+    ]
     return VesselListResponse(vessels=vessels, total=data.get("total", len(vessels)))
 
 
@@ -94,7 +100,9 @@ async def search_vessels(
     qs = "&".join(params)
     path = f"/cases/{case_id}/vessels/search?{qs}" if qs else f"/cases/{case_id}/vessels"
     data = await _proxy_get(ATTRIBUTE_SERVICE_URL, path, "attribute")
-    vessels = [VesselProfile(**v) for v in data.get("vessels", data if isinstance(data, list) else [])]
+    vessels = [
+        VesselProfile(**v) for v in data.get("vessels", data if isinstance(data, list) else [])
+    ]
     return VesselListResponse(vessels=vessels, total=data.get("total", len(vessels)))
 
 
@@ -104,7 +112,9 @@ async def get_vessel(
     vessel_id: str,
     _user: TokenPayload = Depends(get_current_user),
 ):
-    data = await _proxy_get(ATTRIBUTE_SERVICE_URL, f"/cases/{case_id}/vessels/{vessel_id}", "attribute")
+    data = await _proxy_get(
+        ATTRIBUTE_SERVICE_URL, f"/cases/{case_id}/vessels/{vessel_id}", "attribute"
+    )
     return VesselProfile(**data)
 
 

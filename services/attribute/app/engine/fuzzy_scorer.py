@@ -7,9 +7,9 @@ confidence intervals for statistical rigor.
 
 from __future__ import annotations
 
-import numpy as np
 from dataclasses import dataclass
-from typing import Optional
+
+import numpy as np
 
 
 @dataclass
@@ -30,6 +30,7 @@ class SuspectFeatures:
 def cauchy_membership(x: float, center: float, width: float) -> float:
     return 1.0 / (1.0 + ((x - center) / max(width, 1e-8)) ** 2)
 
+
 def score_suspect(features: SuspectFeatures) -> dict:
     prox = cauchy_membership(features.min_distance_nm, center=0.0, width=5.0)
     temp = cauchy_membership(features.time_delta_minutes, center=0.0, width=30.0)
@@ -43,22 +44,38 @@ def score_suspect(features: SuspectFeatures) -> dict:
     hist = min(features.historical_violations / 3.0, 1.0)
 
     WEIGHTS = {
-        "proximity": 0.22, "temporal": 0.20, "trajectory": 0.18,
-        "anomaly": 0.20, "vessel_type": 0.10, "history": 0.05, "dark_bonus": 0.05,
+        "proximity": 0.22,
+        "temporal": 0.20,
+        "trajectory": 0.18,
+        "anomaly": 0.20,
+        "vessel_type": 0.10,
+        "history": 0.05,
+        "dark_bonus": 0.05,
     }
 
     composite = (
-        WEIGHTS["proximity"] * prox + WEIGHTS["temporal"] * temp +
-        WEIGHTS["trajectory"] * traj + WEIGHTS["anomaly"] * anomaly +
-        WEIGHTS["vessel_type"] * vtype + WEIGHTS["history"] * hist +
-        WEIGHTS["dark_bonus"] * dark_bonus
+        WEIGHTS["proximity"] * prox
+        + WEIGHTS["temporal"] * temp
+        + WEIGHTS["trajectory"] * traj
+        + WEIGHTS["anomaly"] * anomaly
+        + WEIGHTS["vessel_type"] * vtype
+        + WEIGHTS["history"] * hist
+        + WEIGHTS["dark_bonus"] * dark_bonus
     )
     composite = min(composite, 1.0)
 
     n = 100
     z = 1.96
-    lower = (composite + z**2/(2*n) - z*np.sqrt(composite*(1-composite)/n + z**2/(4*n**2))) / (1 + z**2/n)
-    upper = (composite + z**2/(2*n) + z*np.sqrt(composite*(1-composite)/n + z**2/(4*n**2))) / (1 + z**2/n)
+    lower = (
+        composite
+        + z**2 / (2 * n)
+        - z * np.sqrt(composite * (1 - composite) / n + z**2 / (4 * n**2))
+    ) / (1 + z**2 / n)
+    upper = (
+        composite
+        + z**2 / (2 * n)
+        + z * np.sqrt(composite * (1 - composite) / n + z**2 / (4 * n**2))
+    ) / (1 + z**2 / n)
 
     return {
         "composite_score": round(float(composite), 4),

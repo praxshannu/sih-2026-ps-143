@@ -98,10 +98,12 @@ class SAROilSpillDataset(Dataset):
         else:
             try:
                 import rasterio
+
                 with rasterio.open(img_path) as src:
                     image = src.read().astype(np.float32)
             except ImportError:
                 from PIL import Image
+
                 img_pil = Image.open(img_path).convert("RGB")
                 image = np.array(img_pil, dtype=np.float32).transpose(2, 0, 1) / 255.0
 
@@ -110,12 +112,14 @@ class SAROilSpillDataset(Dataset):
         else:
             try:
                 import rasterio
+
                 with rasterio.open(mask_path) as src:
                     mask = src.read(1).astype(np.float32)
             except ImportError:
                 from PIL import Image
+
                 mask_pil = Image.open(mask_path).convert("L")
-                mask = (np.array(mask_pil, dtype=np.float32) / 255.0)
+                mask = np.array(mask_pil, dtype=np.float32) / 255.0
 
         if image.ndim == 2:
             image = image[np.newaxis, ...]
@@ -185,20 +189,36 @@ def get_dataloaders(
     np.random.shuffle(indices)
 
     train_idx = indices[:n_train]
-    val_idx = indices[n_train:n_train + n_val]
-    test_idx = indices[n_train + n_val:]
+    val_idx = indices[n_train : n_train + n_val]
+    test_idx = indices[n_train + n_val :]
 
     from augmentation import get_train_transforms, get_val_transforms
+
     train_tf = train_transform or get_train_transforms(image_size)
     val_tf = val_transform or get_val_transforms(image_size)
 
-    train_ds = SAROilSpillDataset(data_dir, indices=train_idx, transform=train_tf, image_size=image_size)
+    train_ds = SAROilSpillDataset(
+        data_dir, indices=train_idx, transform=train_tf, image_size=image_size
+    )
     val_ds = SAROilSpillDataset(data_dir, indices=val_idx, transform=val_tf, image_size=image_size)
-    test_ds = SAROilSpillDataset(data_dir, indices=test_idx, transform=val_tf, image_size=image_size)
+    test_ds = SAROilSpillDataset(
+        data_dir, indices=test_idx, transform=val_tf, image_size=image_size
+    )
 
-    train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True, num_workers=num_workers, pin_memory=True, drop_last=True)
-    val_loader = DataLoader(val_ds, batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=True)
-    test_loader = DataLoader(test_ds, batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=True)
+    train_loader = DataLoader(
+        train_ds,
+        batch_size=batch_size,
+        shuffle=True,
+        num_workers=num_workers,
+        pin_memory=True,
+        drop_last=True,
+    )
+    val_loader = DataLoader(
+        val_ds, batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=True
+    )
+    test_loader = DataLoader(
+        test_ds, batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=True
+    )
 
     print(f"[dataset] Train: {len(train_ds)}, Val: {len(val_ds)}, Test: {len(test_ds)}")
     return train_loader, val_loader, test_loader

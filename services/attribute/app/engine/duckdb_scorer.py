@@ -12,9 +12,8 @@ from __future__ import annotations
 import json
 import os
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
 
-import numpy as np
 from loguru import logger
 
 
@@ -39,12 +38,10 @@ class DuckDBScorer:
 
     def __init__(
         self,
-        source_path: Optional[str] = None,
-        model_path: Optional[str] = None,
+        source_path: str | None = None,
+        model_path: str | None = None,
     ) -> None:
-        self.source_path = source_path or os.getenv(
-            "AIS_PARQUET_PATH", "data/ais_demo.parquet"
-        )
+        self.source_path = source_path or os.getenv("AIS_PARQUET_PATH", "data/ais_demo.parquet")
         self.model_path = model_path or os.getenv(
             "ATTRIBUTION_XGB_PATH", "data/xgb_attribution.json"
         )
@@ -73,11 +70,7 @@ class DuckDBScorer:
         return self._con
 
     def _ensure_view(self) -> bool:
-        if (
-            not _duckdb_available()
-            or not self.source_path
-            or not os.path.exists(self.source_path)
-        ):
+        if not _duckdb_available() or not self.source_path or not os.path.exists(self.source_path):
             return False
         try:
             con = self._connect()
@@ -138,7 +131,7 @@ class DuckDBScorer:
         origin_lat: float,
         origin_time: datetime,
         window_hours: int = 24,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """DuckDB spatial aggregation around the origin ellipse centre."""
         if not self._ensure_view():
             return []
@@ -170,14 +163,10 @@ class DuckDBScorer:
                 WHERE distance_to_origin < 50000
                 """
             ).fetchall()
-            out: List[Dict[str, Any]] = []
+            out: list[dict[str, Any]] = []
             for mmsi, dist_m, min_sog, gap_s, vtype in rows:
                 vt = str(vtype or "")
-                w = (
-                    1.0
-                    if vt.lower() in ("tanker", "cargo", "81", "82", "70", "71", "72")
-                    else 0.2
-                )
+                w = 1.0 if vt.lower() in ("tanker", "cargo", "81", "82", "70", "71", "72") else 0.2
                 out.append(
                     {
                         "mmsi": str(mmsi),
@@ -199,13 +188,13 @@ class DuckDBScorer:
         origin_lat: float,
         origin_time: datetime,
         window_hours: int = 24,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Score candidates; each item has xgb_score + shap_breakdown + method."""
         feats = self.extract_features(origin_lon, origin_lat, origin_time, window_hours)
         if not feats:
             return []
         mode = self._ensure_model()
-        results: List[Dict[str, Any]] = []
+        results: list[dict[str, Any]] = []
 
         if mode in ("xgb", "shap") and self._model is not None:
             try:
@@ -217,8 +206,7 @@ class DuckDBScorer:
                     shap_values = self._explainer.shap_values(X)
                     for i, f in enumerate(feats):
                         breakdown = {
-                            k: float(shap_values[i, j])
-                            for j, k in enumerate(self.FEATURES)
+                            k: float(shap_values[i, j]) for j, k in enumerate(self.FEATURES)
                         }
                         results.append(
                             {
