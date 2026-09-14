@@ -6,7 +6,6 @@ that apply both channel-wise and spatial attention.
 
 from __future__ import annotations
 
-import timm
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -131,6 +130,19 @@ class UNetPlusPlusSCSE(nn.Module):
         decoder_attention_reduction: int = 16,
     ) -> None:
         super().__init__()
+
+        # timm is imported lazily: it is a heavy optional dependency that is
+        # only needed to *build* an encoder. Importing it at module scope made
+        # the whole package unimportable (and every test uncollectable) on
+        # machines where torch is present but timm is not.
+        try:
+            import timm
+        except ImportError as exc:  # pragma: no cover - depends on environment
+            raise ImportError(
+                "timm is required to build a UNet++ encoder. Install it with "
+                "`pip install timm`, or use the deterministic Tier-A detector "
+                "which has no torch dependency at all."
+            ) from exc
 
         # Build encoder from timm
         self.encoder = timm.create_model(

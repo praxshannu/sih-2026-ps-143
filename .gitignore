@@ -88,3 +88,4 @@ tmp/
 temp/
 *.tmp
 *.bak
+.pytest_tmp/
