@@ -331,8 +331,8 @@ class AnomalyDetector:
             return
 
         # Compute statistics
-        all_speeds = []
-        all_course_deltas = []
+        all_speeds: list[float] = []
+        all_course_deltas: list[float] = []
         for track in all_tracks:
             feats = self.extract_features(track)
             all_speeds.extend(f.speed_knots for f in feats)

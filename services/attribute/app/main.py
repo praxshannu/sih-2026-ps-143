@@ -335,8 +335,10 @@ def _decide_coverage(
     else:
         verdict = coverage_verdict(aoi)
 
-    if aoi is not None and not coverage_verdict(aoi).rankable and verdict.provenance != (
-        "live_satellite"
+    if (
+        aoi is not None
+        and not coverage_verdict(aoi).rankable
+        and verdict.provenance != ("live_satellite")
     ):
         return coverage_verdict(aoi)
     return verdict
