@@ -26,7 +26,7 @@ from __future__ import annotations
 import importlib
 import sys
 import types
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from types import SimpleNamespace
 
 import numpy as np
@@ -361,9 +361,7 @@ def _request(drift_main, **overrides):
 
 async def test_backward_endpoint_reports_503_with_the_reason_code(drift_main, monkeypatch):
     def _boom(*_args, **_kwargs):
-        raise errors.MissingWindForcingError(
-            "no wind", reason="wind_unavailable_synthetic_refused"
-        )
+        raise errors.MissingWindForcingError("no wind", reason="wind_unavailable_synthetic_refused")
 
     monkeypatch.setattr(drift_main, "_build_fields", _boom)
 

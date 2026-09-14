@@ -30,7 +30,11 @@ from .schemas import (
     FullPipelineRequest,
     FullPipelineResult,
     HealthResponse,
-    OceanDataRef,
+    # Deliberate re-export: the forcing-failure tests and other importers build
+    # requests via ``main.OceanDataRef``. The name is unused *within* this module,
+    # so the linter is right about the local reference and wrong about the
+    # intent — hence the narrow suppression rather than deleting the import.
+    OceanDataRef,  # noqa: F401
 )
 
 # Configure loguru
@@ -401,8 +405,6 @@ async def drift_backward(req: BackwardRequest):
 
     try:
         from datetime import datetime as _dt
-
-        from .engine.backward_sde import compute_confidence_ellipse, integrate_backward
 
         # Load ocean data (local NetCDF if present, else forcing factory).
         u_field, v_field, K_field, lons, lats, times, provider, provenance = _build_fields(

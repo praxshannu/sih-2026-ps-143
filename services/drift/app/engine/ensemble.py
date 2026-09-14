@@ -9,6 +9,8 @@ Handles the full lifecycle:
 
 from __future__ import annotations
 
+from typing import Any
+
 import numpy as np
 from loguru import logger
 
@@ -191,13 +193,9 @@ def run_backward_ensemble(
     )
     warnings: list[str] = list((forcing or {}).get("warnings") or [])
     if n_particles < 16:
-        warnings.append(
-            f"Weak ensemble: {n_particles} particles — the ellipse is indicative only."
-        )
+        warnings.append(f"Weak ensemble: {n_particles} particles — the ellipse is indicative only.")
     if backward.regime is None:
-        warnings.append(
-            "K_ij regime undetermined: " + str(backward.regime_selection.get("reason"))
-        )
+        warnings.append("K_ij regime undetermined: " + str(backward.regime_selection.get("reason")))
 
     interval = (
         build_origin_time_interval(

@@ -31,8 +31,8 @@ from __future__ import annotations
 import json
 import sys
 import warnings
-from collections.abc import Callable, Sequence
-from dataclasses import dataclass
+from collections.abc import Callable, Iterable, Sequence
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -252,9 +252,7 @@ class SAROilSpillDataset(Dataset[tuple[torch.Tensor, torch.Tensor]]):
             self.image_paths = [self.image_paths[i] for i in indices]
             self.mask_paths = [self.mask_paths[i] for i in indices]
 
-        self.scene_ids = tuple(
-            default_scene_id(p, self.scene_regex) for p in self.image_paths
-        )
+        self.scene_ids = tuple(default_scene_id(p, self.scene_regex) for p in self.image_paths)
         bands = self._infer_bands()
         self.band_names = self._band_names(bands)
         self.pairing = PairingReport(
