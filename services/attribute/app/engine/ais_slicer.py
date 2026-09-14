@@ -39,7 +39,13 @@ def _as_datetime(value: Any) -> Any:
 
 @dataclass
 class VesselTrack:
-    """A single AIS position record with derived fields."""
+    """A single AIS position record with derived fields.
+
+    ``source`` is the provenance label carried by the row (e.g.
+    ``live_terrestrial`` or ``synthetic_mock``). It is what the coverage gate
+    uses to decide whether this vessel may be scored at all — see
+    ``app/engine/ais_coverage.py``.
+    """
 
     mmsi: str
     vessel_name: str
@@ -55,6 +61,8 @@ class VesselTrack:
     timestamp: Any
     min_distance_nm: float = 0.0
     time_delta_minutes: float = 0.0
+    source: str = "unknown"
+    matched_ping_count: int = 0
 
 
 @dataclass
@@ -120,6 +128,8 @@ class AisSlicer:
                 imo_number,
                 flag_state,
                 timestamp,
+                COALESCE(source, 'unknown') AS source,
+                COUNT(*) OVER (PARTITION BY mmsi) AS matched_ping_count,
                 ST_Distance(
                     geom::geography,
                     ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography
@@ -162,10 +172,7 @@ class AisSlicer:
 
             # Compute time delta from origin
             pos_ts = row["timestamp"]
-            if origin_ts and pos_ts:
-                td = abs((pos_ts - origin_ts).total_seconds() / 60.0)
-            else:
-                td = 0.0
+            td = abs((pos_ts - origin_ts).total_seconds() / 60.0) if origin_ts and pos_ts else 0.0
 
             track = VesselTrack(
                 mmsi=mmsi,
@@ -182,6 +189,8 @@ class AisSlicer:
                 timestamp=pos_ts,
                 min_distance_nm=float(row["min_distance_nm"] or 0.0),
                 time_delta_minutes=td,
+                source=row["source"] or "unknown",
+                matched_ping_count=int(row["matched_ping_count"] or 0),
             )
             vessels.append(track)
 
@@ -221,7 +230,8 @@ class AisSlicer:
             SELECT
                 mmsi, vessel_name, vessel_type, lon, lat,
                 sog, cog, heading, nav_status, imo_number,
-                flag_state, timestamp
+                flag_state, timestamp,
+                COALESCE(source, 'unknown') AS source
             FROM ais_positions
             WHERE mmsi = $1
             AND timestamp BETWEEN ($2::timestamptz - ($3 || ' hours')::interval)
@@ -245,6 +255,7 @@ class AisSlicer:
                 imo_number=row["imo_number"],
                 flag_state=row["flag_state"],
                 timestamp=row["timestamp"],
+                source=row["source"] or "unknown",
             )
             for row in rows
         ]

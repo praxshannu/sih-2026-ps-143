@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Any
 
 from loguru import logger
@@ -21,7 +22,12 @@ from app.engine.fuzzy_scorer import SuspectFeatures, score_suspect
 
 @dataclass
 class RankedSuspect:
-    """A suspect vessel with rank and confidence intervals."""
+    """A suspect vessel with rank and confidence intervals.
+
+    The provenance fields (timestamp, latitude, longitude, speed, course,
+    closest approach, matched ping count) are part of the audit trail and are
+    carried from ``SuspectFeatures`` without modification.
+    """
 
     rank: int
     mmsi: str
@@ -38,6 +44,14 @@ class RankedSuspect:
     ais_gap_minutes: float = 0.0
     is_dark_vessel: bool = False
     anomalies: list[dict[str, Any]] = field(default_factory=list)
+    timestamp: datetime | None = None
+    latitude: float | None = None
+    longitude: float | None = None
+    speed_knots: float | None = None
+    course_deg: float | None = None
+    closest_approach_nm: float | None = None
+    matched_ping_count: int = 0
+    ais_provenance: str = "unknown"
 
 
 @dataclass
@@ -101,6 +115,14 @@ class SuspectRanker:
                     score_history=min(feat.historical_violations / 3.0, 1.0),
                     ais_gap_minutes=scores["ais_gap_minutes"],
                     is_dark_vessel=scores["is_dark_vessel"],
+                    timestamp=scores["timestamp"],
+                    latitude=scores["latitude"],
+                    longitude=scores["longitude"],
+                    speed_knots=scores["speed_knots"],
+                    course_deg=scores["course_deg"],
+                    closest_approach_nm=scores["closest_approach_nm"],
+                    matched_ping_count=scores["matched_ping_count"],
+                    ais_provenance=scores["ais_provenance"],
                 )
             )
 
@@ -155,6 +177,13 @@ class SuspectRanker:
                 vessel_type_risk=s.get("vessel_type_risk", 0.0),
                 historical_violations=s.get("historical_violations", 0),
                 is_dark_sar_target=s.get("is_dark_vessel", False),
+                timestamp=s.get("timestamp"),
+                latitude=s.get("latitude"),
+                longitude=s.get("longitude"),
+                speed_knots=s.get("speed_knots"),
+                course_deg=s.get("course_deg"),
+                matched_ping_count=int(s.get("matched_ping_count", 0) or 0),
+                ais_provenance=str(s.get("ais_provenance", "unknown")),
             )
             features_list.append(feat)
 
@@ -204,6 +233,13 @@ class SuspectRanker:
                     vessel_type_risk=vessel_type_risk.get(mmsi, 0.0),
                     historical_violations=historical_violations.get(mmsi, 0),
                     is_dark_sar_target=mmsi in dark_mmsis,
+                    timestamp=ais.get("timestamp"),
+                    latitude=ais.get("latitude"),
+                    longitude=ais.get("longitude"),
+                    speed_knots=ais.get("speed_knots"),
+                    course_deg=ais.get("course_deg"),
+                    matched_ping_count=int(ais.get("matched_ping_count", 0) or 0),
+                    ais_provenance=str(ais.get("ais_provenance", "unknown")),
                 )
             )
 

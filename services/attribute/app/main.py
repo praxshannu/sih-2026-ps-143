@@ -15,7 +15,16 @@ import asyncpg
 from fastapi import FastAPI, HTTPException
 from loguru import logger
 
-from app.engine.ais_slicer import AisSlicer
+from app.engine.ais_coverage import (
+    REAL_AIS_PROVENANCE,
+    SYNTHETIC_AIS_PROVENANCE,
+    AoiError,
+    CoverageVerdict,
+    coverage_verdict,
+    provenance_verdict,
+    resolve_aoi,
+)
+from app.engine.ais_slicer import AisSlicer, VesselTrack
 from app.engine.anomaly_detector import AnomalyDetector
 from app.engine.dark_vessel import DarkVesselDetector
 from app.engine.fuzzy_scorer import SuspectFeatures, score_suspect
@@ -191,6 +200,13 @@ async def score_single(req: ScoreRequest):
         vessel_type_risk=req.vessel_type_risk,
         historical_violations=req.historical_violations,
         is_dark_sar_target=req.is_dark_sar_target,
+        timestamp=req.timestamp,
+        latitude=req.latitude,
+        longitude=req.longitude,
+        speed_knots=req.speed_knots,
+        course_deg=req.course_deg,
+        matched_ping_count=req.matched_ping_count,
+        ais_provenance=req.ais_provenance,
     )
     scores = score_suspect(feat)
     composite, method = _blend_scores(scores["composite_score"], None)
@@ -214,6 +230,14 @@ async def score_single(req: ScoreRequest):
         ais_gap_minutes=scores["ais_gap_minutes"],
         is_dark_vessel=scores["is_dark_vessel"],
         rank=1,
+        timestamp=req.timestamp,
+        latitude=req.latitude,
+        longitude=req.longitude,
+        speed_knots=req.speed_knots,
+        course_deg=req.course_deg,
+        closest_approach_nm=req.min_distance_nm,
+        matched_ping_count=req.matched_ping_count,
+        ais_provenance=req.ais_provenance,
     )
 
 
@@ -236,6 +260,13 @@ async def rank_suspects(req: RankRequest):
                 vessel_type_risk=s.score_vessel_type,
                 historical_violations=0,
                 is_dark_sar_target=s.is_dark_vessel,
+                timestamp=s.timestamp,
+                latitude=s.latitude,
+                longitude=s.longitude,
+                speed_knots=s.speed_knots,
+                course_deg=s.course_deg,
+                matched_ping_count=s.matched_ping_count,
+                ais_provenance=s.ais_provenance,
             )
         )
 
@@ -258,10 +289,89 @@ async def rank_suspects(req: RankRequest):
                 ais_gap_minutes=s.ais_gap_minutes,
                 is_dark_vessel=s.is_dark_vessel,
                 rank=s.rank,
+                timestamp=s.timestamp,
+                latitude=s.latitude,
+                longitude=s.longitude,
+                speed_knots=s.speed_knots,
+                course_deg=s.course_deg,
+                closest_approach_nm=s.closest_approach_nm,
+                matched_ping_count=s.matched_ping_count,
+                ais_provenance=s.ais_provenance,
             )
             for s in result.suspects
         ],
         total=result.total,
+    )
+
+
+def _decide_coverage(
+    req: AttribRequest,
+    vessels: list[VesselTrack],
+    aoi: tuple[float, float, float, float] | None,
+) -> CoverageVerdict:
+    """Decide whether the AIS behind this request may be ranked at all.
+
+    Evidence order (strongest first): the caller's declared provenance, then
+    the provenance carried by the matched rows, then the AOI policy. An AOI
+    verdict of "no coverage" always wins over a *terrestrial* row label —
+    a terrestrial feed over the open Indian Ocean contradicts the measured
+    result (0 messages in 40 s) and must not be trusted. Satellite AIS is the
+    one exception: it genuinely covers open ocean.
+    """
+    real_rows = [v for v in vessels if (v.source or "unknown").lower() in REAL_AIS_PROVENANCE]
+    synthetic_rows = [
+        v for v in vessels if (v.source or "unknown").lower() in SYNTHETIC_AIS_PROVENANCE
+    ]
+
+    if req.ais_provenance:
+        verdict = provenance_verdict(req.ais_provenance, matched=len(real_rows) or len(vessels))
+    elif real_rows:
+        verdict = provenance_verdict(real_rows[0].source, matched=len(real_rows))
+    elif synthetic_rows:
+        verdict = provenance_verdict(synthetic_rows[0].source, matched=0)
+    elif vessels:
+        # Rows exist but carry a provenance we do not recognise.
+        verdict = provenance_verdict(vessels[0].source, matched=len(vessels))
+    else:
+        verdict = coverage_verdict(aoi)
+
+    if aoi is not None and not coverage_verdict(aoi).rankable and verdict.provenance != (
+        "live_satellite"
+    ):
+        return coverage_verdict(aoi)
+    return verdict
+
+
+def _empty_attrib_response(
+    req: AttribRequest, verdict: CoverageVerdict, elapsed_ms: float
+) -> AttribResponse:
+    """The only legal response when AIS coverage is not real.
+
+    Empty suspects + a machine-readable reason. Never a ranking, never a
+    placeholder score, never silently omitted fields.
+    """
+    logger.warning(
+        "[ATTR] No suspect ranking produced — coverage={} reason={}",
+        verdict.coverage,
+        verdict.reason,
+    )
+    return AttribResponse(
+        case_id=req.case_id,
+        spill_id=req.spill_id,
+        suspects=[],
+        total_candidates=0,
+        dark_vessels_found=0,
+        xgb_candidates=0,
+        scoring_weights={
+            "fuzzy": ATTRIBUTION_FUZZY_WEIGHT,
+            "xgb": ATTRIBUTION_XGB_WEIGHT,
+        },
+        pipeline_ms=round(elapsed_ms, 2),
+        coverage=verdict.coverage,  # type: ignore[arg-type]
+        coverage_reason=verdict.reason,
+        coverage_message=verdict.message,
+        ais_provenance=verdict.provenance,
+        rankable=False,
     )
 
 
@@ -270,13 +380,25 @@ async def full_attribution(req: AttribRequest):
     """Full attribution pipeline.
 
     Pipeline stages:
+      0. AIS coverage gate - refuse to rank without real coverage
       1. AIS slicer - PostGIS spatiotemporal proximity query
       2. Dark vessel check - SAR non-AIS target matching
       3. Anomaly detection - LSTM autoencoder behavioral scoring
       4. Fuzzy scoring - Cauchy membership multi-factor composite
-      5. Ranked suspects - sorted by composite score with CI
+      5. Ranked suspects - sorted by composite score with Wilson 95% CI
     """
     t0 = time.monotonic()
+
+    # Stage 0: resolve the AOI using named axes only. A partial set is a 422 —
+    # a guessed axis silently relocates the AOI and flips the verdict.
+    try:
+        aoi = resolve_aoi(req.min_lon, req.min_lat, req.max_lon, req.max_lat, req.bbox)
+    except AoiError as exc:
+        logger.warning("[ATTR] AOI rejected: {} {}", exc.code, exc.message)
+        raise HTTPException(
+            status_code=422, detail={"reason": exc.code, "message": exc.message}
+        ) from exc
+
     pool = _get_pool()
 
     # Stage 1: AIS Slicer
@@ -296,6 +418,17 @@ async def full_attribution(req: AttribRequest):
         time_window_hours=req.time_window_hours,
     )
     logger.info("[ATTR] AIS slicer: {} distinct vessels", slice_result.distinct_mmsi)
+
+    # Stage 0b: the coverage gate. Nothing below this line may produce a
+    # ranking when the AIS is synthetic, unverified, or absent.
+    verdict = _decide_coverage(req, slice_result.vessels, aoi)
+    if not verdict.rankable:
+        return _empty_attrib_response(req, verdict, (time.monotonic() - t0) * 1000.0)
+
+    # Only vessels whose rows carry a real provenance are scored.
+    real_vessels = [
+        v for v in slice_result.vessels if (v.source or "unknown").lower() in REAL_AIS_PROVENANCE
+    ]
 
     # Stage 2: Dark Vessel Detection
     dark_result = None
@@ -323,7 +456,7 @@ async def full_attribution(req: AttribRequest):
 
     # Collect per-vessel tracks for anomaly detection
     vessel_tracks: dict[str, list[dict]] = {}
-    for v in slice_result.vessels:
+    for v in real_vessels:
         vessel_tracks.setdefault(v.mmsi, []).append(
             {
                 "sog": v.sog,
@@ -350,9 +483,12 @@ async def full_attribution(req: AttribRequest):
     logger.info("[ATTR] Stage 4: Fuzzy scoring")
     ranker = SuspectRanker()
 
-    # Build AIS score dicts
+    # Build AIS score dicts. Every audit field the scorer needs is carried
+    # here: timestamp, latitude, longitude, speed, course, closest approach,
+    # matched ping count, AIS gap. Losing any of them makes the score
+    # unfalsifiable, so they are attached at the point of extraction.
     ais_scores: dict[str, dict] = {}
-    for v in slice_result.vessels:
+    for v in real_vessels:
         mmsi = v.mmsi
         if mmsi not in ais_scores:
             ais_scores[mmsi] = {
@@ -363,22 +499,27 @@ async def full_attribution(req: AttribRequest):
                     mmsi, req.spill_time, lookback_hours=req.time_window_hours
                 ),
                 "trajectory_intersection_score": 0.0,
+                "timestamp": v.timestamp,
+                "latitude": v.lat,
+                "longitude": v.lon,
+                "speed_knots": v.sog,
+                "course_deg": v.cog,
+                "matched_ping_count": v.matched_ping_count,
+                "ais_provenance": v.source,
             }
 
-    # Dark SAR targets become high-priority suspects
-    if sar_dicts:
-        for sar in sar_dicts:
-            # Find nearest AIS vessel to this SAR target
-            for mmsi, ais in ais_scores.items():
-                # Boost trajectory score for vessels near dark SAR targets
-                if mmsi in dark_mmsis:
-                    ais["trajectory_intersection_score"] = max(
-                        ais.get("trajectory_intersection_score", 0.0), 0.8
-                    )
+    # Dark SAR targets become high-priority suspects: a vessel whose AIS
+    # disappears next to a SAR return gets its trajectory score lifted.
+    if sar_dicts and dark_mmsis:
+        for mmsi, ais in ais_scores.items():
+            if mmsi in dark_mmsis:
+                ais["trajectory_intersection_score"] = max(
+                    ais.get("trajectory_intersection_score", 0.0), 0.8
+                )
 
     # Build vessel type risk map
     vtr: dict[str, float] = {}
-    for v in slice_result.vessels:
+    for v in real_vessels:
         vtr[v.mmsi] = _vessel_type_risk(v.vessel_type)
 
     # Aggregate and rank
@@ -437,6 +578,14 @@ async def full_attribution(req: AttribRequest):
                 ais_gap_minutes=s.ais_gap_minutes,
                 is_dark_vessel=s.is_dark_vessel,
                 rank=s.rank,
+                timestamp=s.timestamp,
+                latitude=s.latitude,
+                longitude=s.longitude,
+                speed_knots=s.speed_knots,
+                course_deg=s.course_deg,
+                closest_approach_nm=s.closest_approach_nm,
+                matched_ping_count=s.matched_ping_count,
+                ais_provenance=s.ais_provenance,
             )
         )
     merged.sort(key=lambda r: r.composite_score, reverse=True)
@@ -465,4 +614,9 @@ async def full_attribution(req: AttribRequest):
         },
         pipeline_ms=round(elapsed_ms, 2),
         timestamp=datetime.utcnow(),
+        coverage=verdict.coverage,  # type: ignore[arg-type]
+        coverage_reason=verdict.reason or None,
+        coverage_message=verdict.message,
+        ais_provenance=verdict.provenance,
+        rankable=True,
     )

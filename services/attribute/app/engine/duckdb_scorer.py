@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import json
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 from loguru import logger
@@ -137,16 +137,18 @@ class DuckDBScorer:
             return []
         try:
             con = self._con
-            t = origin_time.strftime("%Y-%m-%d %H:%M:%S")
+            # Parameterized on purpose: AGENTS.md allows no interpolated SQL,
+            # even against a local DuckDB snapshot.
+            t_start = origin_time - timedelta(hours=int(window_hours))
+            t_end = origin_time + timedelta(hours=int(window_hours))
             rows = con.execute(
-                f"""
+                """
                 WITH windowed_ais AS (
                     SELECT mmsi, timestamp, sog, vessel_type,
-                           ST_Distance(geom, ST_Point({float(origin_lon)}, {float(origin_lat)})) AS dist_deg,
+                           ST_Distance(geom, ST_Point(?, ?)) AS dist_deg,
                            LAG(timestamp) OVER (PARTITION BY mmsi ORDER BY timestamp) AS prev_time
                     FROM ais_data
-                    WHERE timestamp BETWEEN CAST('{t}' AS TIMESTAMP) - INTERVAL {int(window_hours)} HOUR
-                                        AND CAST('{t}' AS TIMESTAMP) + INTERVAL {int(window_hours)} HOUR
+                    WHERE timestamp BETWEEN ? AND ?
                 ),
                 vessel_aggregates AS (
                     SELECT mmsi,
@@ -161,7 +163,8 @@ class DuckDBScorer:
                        COALESCE(ais_gap_duration, 0) AS ais_gap_duration, vessel_type
                 FROM vessel_aggregates
                 WHERE distance_to_origin < 50000
-                """
+                """,
+                [float(origin_lon), float(origin_lat), t_start, t_end],
             ).fetchall()
             out: list[dict[str, Any]] = []
             for mmsi, dist_m, min_sog, gap_s, vtype in rows:
