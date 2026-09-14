@@ -7,6 +7,7 @@ PostGIS geometry creation, and bulk upsert with ON CONFLICT.
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from typing import SupportsFloat, SupportsIndex
 
 import asyncpg
 from loguru import logger
@@ -46,8 +47,8 @@ class AisNormalizer:
             return 0, 0, 0
 
         # Step 1: Parse and validate
-        parsed = [self._parse_position(p) for p in positions]
-        parsed = [p for p in parsed if p is not None]
+        raw_parsed = [self._parse_position(p) for p in positions]
+        parsed = [p for p in raw_parsed if p is not None]
 
         # Step 2: Deduplicate by (mmsi, timestamp)
         deduped = self._deduplicate(parsed)
@@ -135,7 +136,7 @@ class AisNormalizer:
         result: list[dict] = []
         interpolated_count = 0
 
-        for mmsi, vessel_positions in by_mmsi.items():
+        for vessel_positions in by_mmsi.values():
             vessel_positions.sort(key=lambda x: x["timestamp"])
 
             result.extend(vessel_positions[:1])
@@ -271,7 +272,7 @@ class AisNormalizer:
         return None
 
     @staticmethod
-    def _safe_float(val: object) -> float | None:
+    def _safe_float(val: str | SupportsFloat | SupportsIndex | None) -> float | None:
         if val is None:
             return None
         try:
@@ -280,7 +281,7 @@ class AisNormalizer:
             return None
 
     @staticmethod
-    def _safe_int(val: object) -> int | None:
+    def _safe_int(val: str | SupportsFloat | SupportsIndex | None) -> int | None:
         if val is None:
             return None
         try:

@@ -305,13 +305,13 @@ class SarPreprocessor:
                     means.append(np.mean(patch))
                     vars_list.append(np.var(patch))
 
-                means = np.array(means)
-                vars_list = np.array(vars_list)
+                means_arr = np.array(means)
+                vars_arr = np.array(vars_list)
 
                 # Select the most homogeneous direction (lowest variance)
-                min_var_idx = np.argmin(vars_list)
-                best_mean = means[min_var_idx]
-                best_var = vars_list[min_var_idx]
+                min_var_idx = np.argmin(vars_arr)
+                best_mean = means_arr[min_var_idx]
+                best_var = vars_arr[min_var_idx]
 
                 noise_var = np.var(image) * 0.25
 

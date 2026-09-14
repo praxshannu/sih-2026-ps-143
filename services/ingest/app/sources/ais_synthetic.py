@@ -30,9 +30,10 @@ from __future__ import annotations
 
 import math
 import random
+from collections.abc import Mapping
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Any, Mapping
+from typing import Any
 
 # Regions where no free real AIS coverage exists. Synthetic data may be used
 # here, and ONLY here, and only with the notice attached.

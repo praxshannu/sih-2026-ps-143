@@ -86,9 +86,19 @@ class Sentinel1Fetcher:
         date_end = datetime.now(UTC)
         date_start = date_end - timedelta(days=lookback_days)
 
-        date_filter = f"ContentDate/Start ge {date_start.strftime('%Y-%m-%dT00:00:00.000Z')} and ContentDate/Start le {date_end.strftime('%Y-%m-%dT23:59:59.999Z')}"
-        footprint_filter = f"OData.CSC.Intersects(area=geography'SRID=4326;POLYGON(({lon_min} {lat_min},{lon_max} {lat_min},{lon_max} {lat_max},{lon_min} {lat_max},{lon_min} {lat_min}))')"
-        collection_filter = f"Collection/Name eq 'SENTINEL-1' and Attributes/OData.CSC.StringAttribute/any(att:att/Name eq 'productType' and att/OData.CSC.StringAttribute/Value eq '{product_type}')"
+        start_iso = date_start.strftime("%Y-%m-%dT00:00:00.000Z")
+        end_iso = date_end.strftime("%Y-%m-%dT23:59:59.999Z")
+        date_filter = f"ContentDate/Start ge {start_iso} and ContentDate/Start le {end_iso}"
+        footprint_filter = (
+            "OData.CSC.Intersects(area=geography'SRID=4326;POLYGON(("
+            f"{lon_min} {lat_min},{lon_max} {lat_min},{lon_max} {lat_max},"
+            f"{lon_min} {lat_max},{lon_min} {lat_min}))')"
+        )
+        collection_filter = (
+            "Collection/Name eq 'SENTINEL-1' and "
+            "Attributes/OData.CSC.StringAttribute/any(att:att/Name eq 'productType' and "
+            f"att/OData.CSC.StringAttribute/Value eq '{product_type}')"
+        )
 
         filter_str = f"{collection_filter} and {footprint_filter} and {date_filter}"
 

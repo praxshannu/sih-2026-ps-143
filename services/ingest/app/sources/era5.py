@@ -26,8 +26,8 @@ from loguru import logger
 
 from ..models.schemas import WindFieldResult
 from ..provenance import (
-    PROVENANCE_SYNTHETIC,
     FORCING_GATES,
+    PROVENANCE_SYNTHETIC,
     decide_synthetic,
     window_coverage,
 )

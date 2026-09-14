@@ -280,9 +280,7 @@ async def test_ais_no_coverage_returns_empty_state_not_synthetic(
     assert payload["provenance"] != PROVENANCE_SYNTHETIC
     assert payload["count"] == 0
     assert payload["vessels"] == []
-    assert payload["error"]["reason"] == "+".join(
-        f"{name}_not_enabled" for name in AIS_GATES
-    )
+    assert payload["error"]["reason"] == "+".join(f"{name}_not_enabled" for name in AIS_GATES)
     assert set(payload["error"]["required_env"]) == set(AIS_GATES)
 
 
@@ -455,9 +453,8 @@ def test_missing_sar_dataset_raises_naming_the_path(tmp_path: Path):
 def test_named_bbox_contract_still_rejects_partial_set():
     """Pinned by an existing test; repeated here so a provenance refactor
     cannot quietly regress it."""
-    from fastapi import HTTPException
-
     from app.routers.archive import _resolve_bbox
+    from fastapi import HTTPException
 
     with pytest.raises(HTTPException) as exc:
         _resolve_bbox(57.6, -21.0, None, None, None)
@@ -508,7 +505,9 @@ def _utc(year: int, month: int, day: int) -> datetime:
 def _write_currents(out_file: str) -> None:
     # Naive on purpose: numpy datetime64 carries no timezone and warns if given one.
     now = datetime.now(UTC).replace(tzinfo=None, minute=0, second=0, microsecond=0)
-    times = np.array([now - timedelta(hours=6), now, now + timedelta(hours=6)], dtype="datetime64[ns]")
+    times = np.array(
+        [now - timedelta(hours=6), now, now + timedelta(hours=6)], dtype="datetime64[ns]"
+    )
     ds = xr.Dataset(
         {
             "uo": (["time", "depth", "latitude", "longitude"], np.zeros((3, 1, 2, 2), "f4")),
@@ -527,7 +526,9 @@ def _write_currents(out_file: str) -> None:
 def _write_winds(out_file: str) -> None:
     # Naive on purpose: numpy datetime64 carries no timezone and warns if given one.
     now = datetime.now(UTC).replace(tzinfo=None, minute=0, second=0, microsecond=0)
-    times = np.array([now - timedelta(hours=3), now, now + timedelta(hours=3)], dtype="datetime64[ns]")
+    times = np.array(
+        [now - timedelta(hours=3), now, now + timedelta(hours=3)], dtype="datetime64[ns]"
+    )
     ds = xr.Dataset(
         {
             "u10": (["time", "latitude", "longitude"], np.zeros((3, 2, 2), "f4")),
@@ -543,7 +544,10 @@ def _write_winds(out_file: str) -> None:
 
 
 def _png_text(path: str) -> dict[str, str]:
-    from PIL import Image
+    from PIL import Image, PngImagePlugin
 
     with Image.open(path) as img:
-        return {k: v for k, v in img.text.items()}  # type: ignore[union-attr]
+        # `text` lives on the PNG subclass, not on the base ImageFile that
+        # Image.open() is annotated to return.
+        assert isinstance(img, PngImagePlugin.PngImageFile)
+        return dict(img.text.items())

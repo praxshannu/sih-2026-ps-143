@@ -190,7 +190,9 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="SENTINEL Ingest Service",
-    description="Autonomous data ingestion daemon for Sentinel-1, ocean currents, wind fields, and AIS data",
+    description=(
+        "Autonomous data ingestion daemon for Sentinel-1, ocean currents, wind fields, and AIS data"
+    ),
     version="1.0.0",
     lifespan=lifespan,
 )

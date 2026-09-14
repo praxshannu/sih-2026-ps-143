@@ -37,7 +37,6 @@ from ..models.schemas import AisIngestResult, AisPosition
 from ..provenance import (
     AIS_GATES,
     PROVENANCE_NO_COVERAGE,
-    PROVENANCE_SYNTHETIC,
     bbox_overlap_fraction,
     coverage_report,
     decide_synthetic,
@@ -261,9 +260,7 @@ class AisFetcher:
                     },
                 )
 
-            payload = generate_synthetic_ais(
-                bbox, start_dt, end_dt, n_vessels=n_vessels, seed=seed
-            )
+            payload = generate_synthetic_ais(bbox, start_dt, end_dt, n_vessels=n_vessels, seed=seed)
             payload["source"] = "ais"
             payload["coverage"] = coverage
             payload["disclaimer"] = synthetic_disclaimer()
@@ -305,9 +302,7 @@ class AisFetcher:
                 },
             )
 
-        vessels = self._group_vessels(
-            [p for p in (self._normalize_position(r) for r in raw) if p]
-        )
+        vessels = self._group_vessels([p for p in (self._normalize_position(r) for r in raw) if p])
         return provenance_envelope(
             "ais",
             PROVENANCE_LIVE,
