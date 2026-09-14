@@ -23,6 +23,7 @@ production code:
 
 from __future__ import annotations
 
+import contextlib
 import importlib
 import sys
 import types
@@ -145,10 +146,8 @@ def test_missing_wind_is_not_masked_by_a_current_failure(real_current, no_real_w
 def test_missing_wind_never_returns_a_mock_provider(real_current, no_real_wind):
     """The whole point: no provider object is produced, so nothing can serve it."""
     provider = None
-    try:
+    with contextlib.suppress(errors.MissingWindForcingError):
         provider, _provenance = fac.build_forcing_provider(window=WINDOW, allow_synthetic=False)
-    except errors.MissingWindForcingError:
-        pass
     assert provider is None
 
 
@@ -347,14 +346,14 @@ def _request(drift_main, **overrides):
         time_end=WINDOW[1],
         bbox=(56.7, -21.4, 58.7, -19.4),
     )
-    kwargs = dict(
-        spill_lon=57.7,
-        spill_lat=-20.4,
-        spill_age_hours=24.0,
-        ocean_data=ocean,
-        n_particles=10,
-        allow_synthetic=False,
-    )
+    kwargs = {
+        "spill_lon": 57.7,
+        "spill_lat": -20.4,
+        "spill_age_hours": 24.0,
+        "ocean_data": ocean,
+        "n_particles": 10,
+        "allow_synthetic": False,
+    }
     kwargs.update(overrides)
     return drift_main.BackwardRequest(**kwargs)
 

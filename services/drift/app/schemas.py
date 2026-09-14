@@ -80,7 +80,10 @@ class ConfidenceEllipse(BaseModel):
     semi_major_km: float
     semi_minor_km: float
     orientation_deg: float = Field(description="Angle of semi-major axis from East")
-    confidence: float = Field(0.95, ge=0.0, le=1.0)
+    # `default=` spelled out: pydantic accepts a positional default, but mypy's
+    # dataclass_transform only recognises the keyword form and would otherwise
+    # treat `confidence` as a required argument at every call site.
+    confidence: float = Field(default=0.95, ge=0.0, le=1.0)
     # Percentile radii: the ellipse assumes a Gaussian cloud; these do not.
     p50_radius_km: float = 0.0
     p95_radius_km: float = 0.0
@@ -176,7 +179,9 @@ class DriftResult(BaseModel):
     confidence: float = Field(0.0, ge=0.0, le=1.0)
     forcing_source: str = Field(
         default="synthetic_mock",
-        description="Provenance: live_cmems_era5 | composite_gfs_mock | synthetic_mock | local_files",
+        description=(
+            "Provenance: live_cmems_era5 | composite_gfs_mock | synthetic_mock | local_files"
+        ),
     )
     forcing_detail: dict = Field(
         default_factory=dict, description="Per-source origins, never silently mocked"
@@ -234,7 +239,8 @@ class ForwardResult(BaseModel):
     spread: list[ForecastConeStep] = Field(default_factory=list)
     wmc: dict = Field(default_factory=dict)
     warnings: list[str] = Field(default_factory=list)
-    confidence: float = Field(0.0, ge=0.0, le=1.0)
+    # Keyword form for the same reason as ConfidenceEllipse.confidence above.
+    confidence: float = Field(default=0.0, ge=0.0, le=1.0)
     computed_at: datetime = Field(default_factory=datetime.utcnow)
 
 

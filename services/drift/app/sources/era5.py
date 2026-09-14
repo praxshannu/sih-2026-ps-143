@@ -91,9 +91,9 @@ def fetch_era5_wind(
     times_for_date: dict[str, list[str]] = {}
     cur = t0.replace(minute=0, second=0, microsecond=0)
     while cur <= t1:
-        ds = cur.strftime("%Y-%m-%d")
-        seen_dates.add(ds)
-        times_for_date.setdefault(ds, []).append(cur.strftime("%H:%M"))
+        date_str = cur.strftime("%Y-%m-%d")
+        seen_dates.add(date_str)
+        times_for_date.setdefault(date_str, []).append(cur.strftime("%H:%M"))
         cur += timedelta(hours=1)
 
     home = _ensure_rcfile(key)
@@ -105,9 +105,9 @@ def fetch_era5_wind(
         # We download all dates and concatenate after; tiny cost, simpler code.
         all_files: list[str] = []
         out_dir = Path(tempfile.mkdtemp(prefix="era5_dl_"))
-        for ds in sorted(seen_dates):
-            target = out_dir / f"{ds}.grib"
-            logger_msg = f"ERA5 fetch {ds} (hours={len(times_for_date[ds])})"
+        for date_str in sorted(seen_dates):
+            target = out_dir / f"{date_str}.grib"
+            logger_msg = f"ERA5 fetch {date_str} (hours={len(times_for_date[date_str])})"
             print(f"[era5] requesting {logger_msg}…", file=sys.stderr)
             client.retrieve(
                 ERA5_DATASET,
@@ -117,10 +117,10 @@ def fetch_era5_wind(
                         "10m_u_component_of_wind",
                         "10m_v_component_of_wind",
                     ],
-                    "year": ds.split("-")[0],
-                    "month": ds.split("-")[1],
-                    "day": ds.split("-")[2],
-                    "time": times_for_date[ds],
+                    "year": date_str.split("-")[0],
+                    "month": date_str.split("-")[1],
+                    "day": date_str.split("-")[2],
+                    "time": times_for_date[date_str],
                     "area": area,
                     "data_format": "grib",
                     "download_format": "unarchived",

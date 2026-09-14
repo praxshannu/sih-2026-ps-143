@@ -70,7 +70,9 @@ class AttributionRequest(BaseModel):
     forcing: str = Field("auto", description="Wind source: auto | era5 | gfs")
     bbox: tuple[float, float, float, float] | None = Field(
         default=None,
-        description="(W,S,E,N) override for the forcing bbox; default = a 5° box around the detection",
+        description=(
+            "(W,S,E,N) override for the forcing bbox; default = a 5° box around the detection"
+        ),
     )
 
     # OpenDrift knobs
@@ -310,7 +312,7 @@ async def attribute(req: AttributionRequest) -> dict[str, Any]:
 
     wind_reader = None
     current_reader = None
-    notes = []
+    notes: list[str] = []
     if req.use_era5:
         wind_reader, _src = _resolve_wind(
             bbox,

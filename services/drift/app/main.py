@@ -218,7 +218,10 @@ def _build_fields(spill_lon: float, spill_lat: float, req_ocean, now, allow_synt
                 "provider": "analytic_constant",
                 "is_real": False,
                 "status": "synthetic_mock",
-                "reason": f"Provider sampling failed ({str(e)[:120]}); constant analytic field substituted",
+                "reason": (
+                    f"Provider sampling failed ({str(e)[:120]}); "
+                    "constant analytic field substituted"
+                ),
             },
         )
     u_field = np.stack([u2, u2])
@@ -245,8 +248,14 @@ def _iso_time(value: object) -> str | None:
     """ISO-8601 for a datetime (or numpy datetime64), else None."""
     if value is None:
         return None
+    # Duck-typed on purpose: callers hand us a datetime or a numpy datetime64,
+    # and only the former has isoformat(). Spelling the lookup out keeps the
+    # typing honest instead of asserting a method `object` does not declare.
+    isoformat = getattr(value, "isoformat", None)
+    if not callable(isoformat):
+        return str(value)
     try:
-        return value.isoformat()  # type: ignore[union-attr]
+        return str(isoformat())
     except Exception:  # noqa: BLE001 - provenance metadata must never crash a run
         return str(value)
 
@@ -374,7 +383,10 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="SENTINEL Drift Service",
-    description="Lagrangian physics drift engine for oil spill origin finding and shoreline impact forecasting",
+    description=(
+        "Lagrangian physics drift engine for oil spill origin finding "
+        "and shoreline impact forecasting"
+    ),
     version="1.0.0",
     lifespan=lifespan,
 )
@@ -501,7 +513,7 @@ async def drift_backward(req: BackwardRequest):
         raise _http_forcing_unavailable(exc) from exc
     except Exception as e:
         logger.error("Backward drift failed: {}", str(e))
-        raise HTTPException(status_code=500, detail=f"Drift computation failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Drift computation failed: {str(e)}") from e
 
 
 @app.post("/drift/forward", response_model=ForwardResult)
@@ -591,7 +603,7 @@ async def drift_forward(req: ForwardRequest):
         raise _http_forcing_unavailable(exc) from exc
     except Exception as e:
         logger.error("Forward forecast failed: {}", str(e))
-        raise HTTPException(status_code=500, detail=f"Forecast computation failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Forecast computation failed: {str(e)}") from e
 
 
 @app.post("/drift/full", response_model=FullPipelineResult)
@@ -721,7 +733,7 @@ async def drift_full_pipeline(req: FullPipelineRequest):
         raise _http_forcing_unavailable(exc) from exc
     except Exception as e:
         logger.error("Full pipeline failed: {}", str(e))
-        raise HTTPException(status_code=500, detail=f"Pipeline computation failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Pipeline computation failed: {str(e)}") from e
 
 
 def start_server(host: str = "0.0.0.0", port: int = 8001):
