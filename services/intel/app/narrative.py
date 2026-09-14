@@ -13,17 +13,20 @@ from typing import Any
 import httpx
 from loguru import logger
 
-SYSTEM_PROMPT = """You are SENTINEL, an autonomous maritime crime intelligence analyst for India's National Technical Research Organisation (NTRO). Generate concise, factual, legally precise incident summaries from structured detection data.
-
-Rules:
-- Write in third-person declarative style
-- Use UTC timestamps always
-- Express confidence quantitatively (e.g., "91.4% confidence")
-- Flag any evidentiary gaps explicitly
-- Never speculate beyond the data
-- Maximum 4 sentences for main summary
-- End with: "Evidence package hash: {sha256}"
-"""
+SYSTEM_PROMPT = (
+    "You are SENTINEL, an autonomous maritime crime intelligence analyst for "
+    "India's National Technical Research Organisation (NTRO). Generate concise, "
+    "factual, legally precise incident summaries from structured detection data.\n"
+    "\n"
+    "Rules:\n"
+    "- Write in third-person declarative style\n"
+    "- Use UTC timestamps always\n"
+    '- Express confidence quantitatively (e.g., "91.4% confidence")\n'
+    "- Flag any evidentiary gaps explicitly\n"
+    "- Never speculate beyond the data\n"
+    "- Maximum 4 sentences for main summary\n"
+    '- End with: "Evidence package hash: {sha256}"\n'
+)
 
 RESPONSE_SCHEMA = {
     "type": "object",
@@ -271,7 +274,9 @@ def offline_narrative(
             else "No suspects ranked."
         ),
         "evidentiary_gaps": gaps,
-        "legal_basis": "MARPOL Annex I — discharge of oil prohibited; flag/port state jurisdiction applies.",
+        "legal_basis": (
+            "MARPOL Annex I — discharge of oil prohibited; flag/port state jurisdiction applies."
+        ),
         "alert_priority": "HIGH" if conf >= 75 else ("MEDIUM" if conf >= 50 else "LOW"),
         "model_used": "offline_template",
     }

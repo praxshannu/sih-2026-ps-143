@@ -31,22 +31,29 @@ CASE_FILE_TEMPLATE = Template(
 <style>
   @page { size: A4; margin: 2cm 2.5cm; }
   @page :first { margin-top: 1.5cm; }
-  body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 10pt; color: #1a1a1a; line-height: 1.5; }
+  body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size:"""
+    """ 10pt; color: #1a1a1a; line-height: 1.5; }
   h1 { font-size: 18pt; color: #0d1b2a; margin: 0 0 4pt; }
-  h2 { font-size: 13pt; color: #1b263b; border-bottom: 2px solid #415a77; padding-bottom: 4pt; margin-top: 18pt; margin-bottom: 8pt; }
+  h2 { font-size: 13pt; color: #1b263b; border-bottom: 2px solid #415a77;"""
+    """ padding-bottom: 4pt; margin-top: 18pt; margin-bottom: 8pt; }
   h3 { font-size: 11pt; color: #415a77; margin-top: 12pt; margin-bottom: 4pt; }
-  .header { text-align: center; border-bottom: 3px solid #0d1b2a; padding-bottom: 12pt; margin-bottom: 16pt; }
-  .header .org { font-size: 9pt; color: #778da9; text-transform: uppercase; letter-spacing: 2pt; margin-bottom: 4pt; }
+  .header { text-align: center; border-bottom: 3px solid #0d1b2a; padding-bottom:"""
+    """ 12pt; margin-bottom: 16pt; }
+  .header .org { font-size: 9pt; color: #778da9; text-transform: uppercase;"""
+    """ letter-spacing: 2pt; margin-bottom: 4pt; }
   .header .case-num { font-size: 14pt; font-weight: bold; color: #0d1b2a; margin-top: 8pt; }
   .meta-table { width: 100%; border-collapse: collapse; margin-bottom: 12pt; }
   .meta-table td { padding: 4pt 8pt; font-size: 9pt; border: 1px solid #dee2e6; }
   .meta-table td.label { background: #f1f3f5; color: #495057; width: 30%; font-weight: 600; }
   table.data { width: 100%; border-collapse: collapse; margin: 8pt 0 12pt; font-size: 9pt; }
-  table.data th { background: #0d1b2a; color: #fff; padding: 5pt 6pt; text-align: left; font-weight: 600; }
+  table.data th { background: #0d1b2a; color: #fff; padding: 5pt 6pt; text-align:"""
+    """ left; font-weight: 600; }
   table.data td { padding: 4pt 6pt; border-bottom: 1px solid #dee2e6; }
   table.data tr:nth-child(even) { background: #f8f9fa; }
   .highlight { background: #fff3cd !important; font-weight: bold; }
-  .hash-box { background: #f1f3f5; border: 1px solid #dee2e6; padding: 8pt; font-family: monospace; font-size: 8pt; word-break: break-all; margin: 8pt 0; border-radius: 4pt; }
+  .hash-box { background: #f1f3f5; border: 1px solid #dee2e6; padding: 8pt;"""
+    """ font-family: monospace; font-size: 8pt; word-break: break-all; margin: 8pt 0;"""
+    """ border-radius: 4pt; }
   .priority-critical { color: #8e44ad; font-weight: bold; }
   .priority-high { color: #e74c3c; font-weight: bold; }
   .priority-medium { color: #f39c12; font-weight: bold; }
@@ -56,14 +63,17 @@ CASE_FILE_TEMPLATE = Template(
   .qr-container { text-align: center; margin: 12pt 0; }
   .qr-container img { width: 120px; height: 120px; }
   .qr-label { font-size: 8pt; color: #6c757d; margin-top: 4pt; }
-  .footer { position: fixed; bottom: 0; width: 100%; text-align: center; font-size: 7pt; color: #adb5bd; border-top: 1px solid #dee2e6; padding-top: 4pt; }
+  .footer { position: fixed; bottom: 0; width: 100%; text-align: center; font-size:"""
+    """ 7pt; color: #adb5bd; border-top: 1px solid #dee2e6; padding-top: 4pt; }
   .page-break { page-break-before: always; }
   .timeline { margin: 8pt 0; }
   .timeline-entry { display: flex; align-items: flex-start; margin-bottom: 6pt; }
-  .timeline-dot { width: 10px; height: 10px; border-radius: 50%; background: #415a77; margin-right: 8pt; margin-top: 3pt; flex-shrink: 0; }
+  .timeline-dot { width: 10px; height: 10px; border-radius: 50%; background:"""
+    """ #415a77; margin-right: 8pt; margin-top: 3pt; flex-shrink: 0; }
   .timeline-content { font-size: 9pt; }
   .timeline-time { font-family: monospace; color: #6c757d; font-size: 8pt; }
-  .marpol-box { background: #e8f4f8; border-left: 4px solid #0077b6; padding: 10pt 12pt; margin: 12pt 0; font-size: 9pt; }
+  .marpol-box { background: #e8f4f8; border-left: 4px solid #0077b6; padding: 10pt"""
+    """ 12pt; margin: 12pt 0; font-size: 9pt; }
   .marpol-box .article { font-weight: bold; color: #0077b6; }
 </style>
 </head>
@@ -110,7 +120,8 @@ CASE_FILE_TEMPLATE = Template(
 </table>
 
 <h2>1. Incident Narrative</h2>
-<div style="background: #f8f9fa; padding: 10pt; border-left: 4px solid #415a77; margin-bottom: 8pt;">
+<div style="background: #f8f9fa; padding: 10pt; border-left: 4px solid #415a77;"""
+    """ margin-bottom: 8pt;">
   {{ narrative_text }}
 </div>
 {% if key_finding %}
@@ -130,10 +141,12 @@ CASE_FILE_TEMPLATE = Template(
 <p style="font-size: 9pt; color: #6c757d;">Spill polygon overlay on Sentinel-1 SAR imagery.</p>
 {% if sar_image_path %}
 <div style="text-align: center; margin: 8pt 0;">
-  <img src="file://{{ sar_image_path }}" style="max-width: 100%; max-height: 400px; border: 1px solid #dee2e6;">
+  <img src="file://{{ sar_image_path }}" style="max-width: 100%; max-height: 400px;"""
+    """ border: 1px solid #dee2e6;">
 </div>
 {% else %}
-<div style="background: #f8f9fa; padding: 20pt; text-align: center; color: #6c757d; border: 1px dashed #dee2e6;">
+<div style="background: #f8f9fa; padding: 20pt; text-align: center; color: #6c757d;"""
+    """ border: 1px dashed #dee2e6;">
   SAR image not available - provide image_path in detection data
 </div>
 {% endif %}
@@ -149,7 +162,8 @@ CASE_FILE_TEMPLATE = Template(
   <tr><td>Centroid Lon</td><td>{{ "%.6f"|format(centroid_lon) }}</td></tr>
   <tr><td>Centroid Lat</td><td>{{ "%.6f"|format(centroid_lat) }}</td></tr>
   {% if spill_polygon_wkt %}
-  <tr><td>Polygon WKT</td><td style="font-family: monospace; font-size: 8pt; word-break: break-all;">{{ spill_polygon_wkt }}</td></tr>
+  <tr><td>Polygon WKT</td><td style="font-family: monospace; font-size: 8pt;"""
+    """ word-break: break-all;">{{ spill_polygon_wkt }}</td></tr>
   {% endif %}
 </table>
 
@@ -171,7 +185,9 @@ CASE_FILE_TEMPLATE = Template(
 <h2>5. Suspect Vessel Ranking</h2>
 {% if suspects %}
 <table class="data">
-  <tr><th>#</th><th>Vessel Name</th><th>MMSI</th><th>Composite</th><th>Proximity</th><th>Temporal</th><th>Trajectory</th><th>Anomaly</th><th>Gap (min)</th><th>Dark</th></tr>
+  <tr><th>#</th><th>Vessel"""
+    """ Name</th><th>MMSI</th><th>Composite</th><th>Proximity</th><th>Temporal</th>"""
+    """<th>Trajectory</th><th>Anomaly</th><th>Gap (min)</th><th>Dark</th></tr>
 {% for s in suspects %}
   <tr>
     <td>{{ s.rank }}</td>
@@ -196,11 +212,15 @@ CASE_FILE_TEMPLATE = Template(
 <h2>6. AIS Data Excerpt - Primary Suspect</h2>
 {% if ais_excerpt %}
 <table class="data">
-  <tr><th colspan="5">Vessel: {{ ais_excerpt.vessel_name }} (MMSI: {{ ais_excerpt.mmsi }})</th></tr>
+  <tr><th colspan="5">Vessel: {{ ais_excerpt.vessel_name }} (MMSI: {{"""
+    """ ais_excerpt.mmsi }})</th></tr>
   <tr><th>Timestamp (UTC)</th><th>Lon</th><th>Lat</th><th>SOG (kn)</th><th>COG (&deg;)</th></tr>
 {% for pos in ais_excerpt.positions %}
-  <tr{% if ais_excerpt.gap_start and ais_excerpt.gap_end and pos.timestamp >= ais_excerpt.gap_start and pos.timestamp <= ais_excerpt.gap_end %} class="highlight"{% endif %}>
-    <td>{{ pos.timestamp.strftime('%Y-%m-%d %H:%M') if pos.timestamp is string else pos.timestamp }}</td>
+  <tr{% if ais_excerpt.gap_start and ais_excerpt.gap_end and pos.timestamp >="""
+    """ ais_excerpt.gap_start and pos.timestamp <= ais_excerpt.gap_end %}"""
+    """ class="highlight"{% endif %}>
+    <td>{{ pos.timestamp.strftime('%Y-%m-%d %H:%M') if pos.timestamp is string else"""
+    """ pos.timestamp }}</td>
     <td>{{ "%.6f"|format(pos.lon) }}</td>
     <td>{{ "%.6f"|format(pos.lat) }}</td>
     <td>{{ "%.1f"|format(pos.sog) }}</td>
@@ -226,7 +246,8 @@ CASE_FILE_TEMPLATE = Template(
     <div class="timeline-content">
       <strong>{{ entry.stage }}</strong> &mdash; {{ entry.service }}<br>
       <span class="timeline-time">{{ entry.timestamp }}</span><br>
-      <span style="font-size: 8pt; color: #6c757d; font-family: monospace;">in: {{ entry.input_hash[:16] }}... | out: {{ entry.output_hash[:16] }}...</span>
+      <span style="font-size: 8pt; color: #6c757d; font-family: monospace;">in: {{"""
+    """ entry.input_hash[:16] }}... | out: {{ entry.output_hash[:16] }}...</span>
     </div>
   </div>
 {% endfor %}
@@ -236,7 +257,8 @@ CASE_FILE_TEMPLATE = Template(
 
 <h2>8. Chain of Custody</h2>
 <table class="data">
-  <tr><th>Stage</th><th>Service</th><th>Timestamp (UTC)</th><th>Input Hash</th><th>Output Hash</th><th>Chain Hash</th></tr>
+  <tr><th>Stage</th><th>Service</th><th>Timestamp (UTC)</th><th>Input"""
+    """ Hash</th><th>Output Hash</th><th>Chain Hash</th></tr>
 {% for entry in chain_of_custody %}
   <tr>
     <td>{{ entry.stage }}</td>
@@ -266,7 +288,8 @@ CASE_FILE_TEMPLATE = Template(
 </div>
 
 <div class="footer">
-  SENTINEL Maritime Intelligence System | NTRO | Case {{ case_id }} | Evidence: {{ evidence_hash[:16] }}... | Page generated {{ generated_utc }}
+  SENTINEL Maritime Intelligence System | NTRO | Case {{ case_id }} | Evidence: {{"""
+    """ evidence_hash[:16] }}... | Page generated {{ generated_utc }}
 </div>
 
 </body>

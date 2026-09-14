@@ -40,37 +40,52 @@ def _build_email_html(
     }
     color = priority_colors.get(alert_priority, "#95a5a6")
 
-    return f"""
+    return (
+        """
     <!DOCTYPE html>
     <html>
     <head><meta charset="utf-8"></head>
-    <body style="font-family: 'Segoe UI', Arial, sans-serif; margin: 0; padding: 20px; background: #f4f4f4;">
-      <div style="max-width: 640px; margin: 0 auto; background: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+    <body style="font-family: 'Segoe UI', Arial, sans-serif; margin: 0; padding:"""
+        """ 20px; background: #f4f4f4;">
+      <div style="max-width: 640px; margin: 0 auto; background: #fff; border-radius:"""
+        """ 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
         <div style="background: #1a1a2e; color: #fff; padding: 20px 24px;">
           <h2 style="margin: 0; font-size: 18px;">SENTINEL Maritime Intelligence</h2>
-          <p style="margin: 4px 0 0; font-size: 12px; color: #aaa;">NTRO - National Technical Research Organisation</p>
+          <p style="margin: 4px 0 0; font-size: 12px; color: #aaa;">NTRO - National"""
+        f""" Technical Research Organisation</p>
         </div>
         <div style="padding: 24px;">
-          <div style="display: inline-block; background: {color}; color: #fff; padding: 4px 12px; border-radius: 4px; font-size: 12px; font-weight: bold; margin-bottom: 16px;">
+          <div style="display: inline-block; background: {color}; color: #fff;"""
+        """ padding: 4px 12px; border-radius: 4px; font-size: 12px; font-weight: bold;"""
+        f""" margin-bottom: 16px;">
             {alert_priority} PRIORITY
           </div>
           <table style="width: 100%; font-size: 14px; margin-bottom: 16px;">
-            <tr><td style="padding: 6px 0; color: #666;">Case ID</td><td style="padding: 6px 0; font-family: monospace;">{case_id}</td></tr>
-            <tr><td style="padding: 6px 0; color: #666;">Spill ID</td><td style="padding: 6px 0; font-family: monospace;">{spill_id}</td></tr>
-            <tr><td style="padding: 6px 0; color: #666;">Timestamp (UTC)</td><td style="padding: 6px 0;">{datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S")}</td></tr>
-            <tr><td style="padding: 6px 0; color: #666;">Evidence Hash</td><td style="padding: 6px 0; font-family: monospace; font-size: 11px; word-break: break-all;">{evidence_hash}</td></tr>
+            <tr><td style="padding: 6px 0; color: #666;">Case ID</td><td"""
+        f""" style="padding: 6px 0; font-family: monospace;">{case_id}</td></tr>
+            <tr><td style="padding: 6px 0; color: #666;">Spill ID</td><td"""
+        f""" style="padding: 6px 0; font-family: monospace;">{spill_id}</td></tr>
+            <tr><td style="padding: 6px 0; color: #666;">Timestamp (UTC)</td><td"""
+        """ style="padding: 6px"""
+        f""" 0;">{datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S")}</td></tr>
+            <tr><td style="padding: 6px 0; color: #666;">Evidence Hash</td><td"""
+        """ style="padding: 6px 0; font-family: monospace; font-size: 11px; word-break:"""
+        f""" break-all;">{evidence_hash}</td></tr>
           </table>
-          <div style="background: #f8f9fa; border-left: 4px solid {color}; padding: 16px; margin-bottom: 16px; font-size: 14px; line-height: 1.6;">
+          <div style="background: #f8f9fa; border-left: 4px solid {color}; padding:"""
+        f""" 16px; margin-bottom: 16px; font-size: 14px; line-height: 1.6;">
             {summary}
           </div>
           <p style="font-size: 12px; color: #999; margin: 0;">
-            This is an automated alert from SENTINEL. Case file and evidence package are available on the dashboard.
+            This is an automated alert from SENTINEL. Case file and evidence package"""
+        """ are available on the dashboard.
           </p>
         </div>
       </div>
     </body>
     </html>
     """
+    )
 
 
 async def _send_email(

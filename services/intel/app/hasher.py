@@ -96,10 +96,6 @@ def verify_chain(chain: list[dict[str, Any]]) -> tuple[bool, int]:
     previous_hash = ""
 
     for i, entry in enumerate(chain):
-        output_hash = compute_object_hash(
-            {"stage": entry["stage"], "output": entry.get("output_hash", "")}
-        )
-
         if entry.get("input_hash", "") == "":
             # Cannot verify input hash without original data
             pass

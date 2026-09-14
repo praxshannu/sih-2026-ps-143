@@ -162,7 +162,7 @@ async def create_narrative(req: NarrativeRequest):
 
     except Exception as e:
         logger.exception("[INTEL] Narrative generation failed: {}", e)
-        raise HTTPException(status_code=500, detail=f"Narrative generation failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Narrative generation failed: {e}") from e
 
 
 @app.post("/intel/case-file", response_model=CaseFileResult)
@@ -211,7 +211,11 @@ async def create_case_file(req: CaseFileRequest):
             except Exception as e:
                 logger.warning("[INTEL] Narrative generation failed, using fallback: {}", e)
                 narrative_data = {
-                    "summary": f"Oil spill detected at ({req.detection.centroid_lat:.4f}, {req.detection.centroid_lon:.4f}) with {req.detection.confidence * 100:.1f}% confidence.",
+                    "summary": (
+                        f"Oil spill detected at ({req.detection.centroid_lat:.4f}, "
+                        f"{req.detection.centroid_lon:.4f}) with "
+                        f"{req.detection.confidence * 100:.1f}% confidence."
+                    ),
                     "key_finding": "Automated detection pending manual review.",
                     "evidentiary_gaps": ["LLM narrative unavailable"],
                     "legal_basis": "",
@@ -274,7 +278,7 @@ async def create_case_file(req: CaseFileRequest):
 
     except Exception as e:
         logger.exception("[INTEL] Case file generation failed: {}", e)
-        raise HTTPException(status_code=500, detail=f"Case file generation failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Case file generation failed: {e}") from e
 
 
 @app.post("/intel/hash", response_model=HashResult)
@@ -285,7 +289,6 @@ async def compute_hash(req: HashRequest):
     output to the previous stage hash.
     """
     try:
-        output_hash_data = {"case_id": req.case_id, "stage": req.stage, "data": req.data}
         output_hash = compute_evidence_hash(
             case_id=req.case_id,
             spill_id="",
@@ -319,7 +322,7 @@ async def compute_hash(req: HashRequest):
 
     except Exception as e:
         logger.exception("[INTEL] Hash computation failed: {}", e)
-        raise HTTPException(status_code=500, detail=f"Hash computation failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Hash computation failed: {e}") from e
 
 
 @app.post("/intel/alert", response_model=AlertResult)
@@ -351,7 +354,7 @@ async def send_alert(req: AlertRequest):
 
     except Exception as e:
         logger.exception("[INTEL] Alert dispatch failed: {}", e)
-        raise HTTPException(status_code=500, detail=f"Alert dispatch failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Alert dispatch failed: {e}") from e
 
 
 # ---------------------------------------------------------------------------
