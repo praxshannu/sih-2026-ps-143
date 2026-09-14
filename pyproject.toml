@@ -39,7 +39,27 @@ fixable = ["E", "F", "W", "I", "UP", "B", "C4", "SIM"]
 "*/tests/*" = ["E501"]
 
 [tool.mypy]
-python_version = "3.11"
+# NOTE ON THE VERSION GAP — this is deliberate, not an oversight.
+#
+# The deployment target is Python 3.11 (services/detect and services/drift ship
+# python:3.11-slim, services/api ships 3.12). But mypy's *parse* target has to
+# match the interpreter whose stubs it reads, and the development/CI interpreter
+# is 3.13. Pinning `python_version = "3.11"` makes mypy choke on installed
+# third-party stubs that use PEP 695 `type` statements — numpy's `__init__.pyi`
+# fails with "Type statement is only supported in Python 3.12 and greater",
+# which aborts the whole check before a single line of our code is examined.
+#
+# So: type-check under 3.13, and validate the 3.11 deployment target by actually
+# building the images (see docs/RUNBOOK.md), which is the only check that can
+# catch a 3.11-only syntax problem anyway.
+python_version = "3.13"
+# Every service ships its own top-level `app` package, and each service's tests
+# put that service directory on sys.path so `import app.x` resolves. mypy then
+# sees the same file under two module names ("app.provenance" and
+# "services.ingest.app.provenance") and refuses to check anything. Resolving
+# module names from the repo root gives every file exactly one name.
+explicit_package_bases = true
+mypy_path = "."
 warn_unused_configs = true
 ignore_missing_imports = true
 follow_imports = "silent"

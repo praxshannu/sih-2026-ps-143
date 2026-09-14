@@ -56,8 +56,7 @@ def _prune_old_runs(root: Path) -> None:
 
 def _install_local_temp_root() -> None:
     root = Path(
-        os.environ.get("SENTINEL_PYTEST_TMP")
-        or (Path(__file__).resolve().parent / ".pytest_tmp")
+        os.environ.get("SENTINEL_PYTEST_TMP") or (Path(__file__).resolve().parent / ".pytest_tmp")
     )
     try:
         root.mkdir(parents=True, exist_ok=True)
