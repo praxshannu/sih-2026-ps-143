@@ -32,7 +32,7 @@ import math
 import random
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, Mapping
 
 # Regions where no free real AIS coverage exists. Synthetic data may be used
 # here, and ONLY here, and only with the notice attached.
@@ -87,36 +87,71 @@ def should_use_synthetic(bbox: tuple[float, float, float, float]) -> bool:
     return not in_coastal
 
 
-def coverage_verdict(bbox: tuple[float, float, float, float]) -> dict[str, Any]:
-    """Explain, for the UI, *why* an AOI is real or synthetic.
+def coverage_verdict(
+    bbox: tuple[float, float, float, float],
+    env: Mapping[str, str] | None = None,
+) -> dict[str, Any]:
+    """Explain, for the UI, *why* an AOI is real, synthetic, or unavailable.
 
     The response is always returned so the frontend can render the reason, not
     just a boolean — the operator needs to know the basis for the label.
+
+    Geography alone is not the verdict. Synthetic AIS also requires the
+    operator to have opened both gates (``SENTINEL_DEMO_MODE`` and
+    ``ALLOW_SYNTHETIC_AIS``). Reporting ``use_synthetic: true`` on geography
+    alone would promise vessel tracks that ``AisFetcher`` then refuses to
+    serve, so the two are computed from the same rule here.
     """
+    # Imported lazily: app.provenance must stay import-free of this module.
+    from app.provenance import AIS_GATES, env_flag
+
     w, s, e, n = bbox
     in_open = any(_overlaps(bbox, b) for b in NO_REAL_COVERAGE_BOXES)
     coastal_hits = [list(b) for b in KNOWN_COASTAL_COVERAGE_BOXES if _overlaps(bbox, b)]
-    synthetic = in_open and not coastal_hits
+    geo_synthetic = in_open and not coastal_hits
+
+    closed = [name for name in AIS_GATES if not env_flag(name, env)]
+    synthetic = bool(geo_synthetic and not closed)
 
     if synthetic:
         basis = (
             "AOI lies in the open Indian Ocean. AISStream is a terrestrial "
             "receiver network and has no coverage here; verified 0 messages "
-            "over an Indian Ocean bbox in a 40 s live test."
+            "over an Indian Ocean bbox in a 40 s live test. Synthetic tracks "
+            "are enabled, so simulated vessels will be served — clearly "
+            "labelled, and not usable as evidence."
         )
         mode = "synthetic_only"
+        provenance: str = PROVENANCE
+        reason = "synthetic_permitted"
+    elif geo_synthetic:
+        basis = (
+            "AOI lies in the open Indian Ocean, where AISStream's terrestrial "
+            "receivers have no coverage (verified 0 messages in a 40 s live "
+            "test) and no free historical source exists. Synthetic AIS is "
+            f"available but NOT enabled — set {' and '.join(closed)} to "
+            "serve clearly-labelled demo tracks. Until then this AOI returns "
+            "no vessels rather than fabricated ones."
+        )
+        mode = "no_real_coverage"
+        provenance = "no_real_coverage"
+        reason = "+".join(f"{name}_not_enabled" for name in closed)
     elif coastal_hits:
         basis = (
             "AOI overlaps a coastal zone with live AISStream terrestrial "
             "receivers. Real AIS is available and synthetic data is suppressed."
         )
         mode = "live_terrestrial"
+        provenance = "live_terrestrial"
+        reason = "real_coverage_available"
     else:
         basis = (
             "AOI is outside the Indian Ocean no-coverage region. Live "
             "terrestrial AIS coverage is assumed available."
         )
         mode = "live_terrestrial"
+        provenance = "live_terrestrial"
+        reason = "real_coverage_available"
 
     return {
         "bbox": [w, s, e, n],
@@ -124,7 +159,9 @@ def coverage_verdict(bbox: tuple[float, float, float, float]) -> dict[str, Any]:
         "use_synthetic": synthetic,
         "coastal_carveouts": coastal_hits,
         "basis": basis,
-        "provenance": PROVENANCE if synthetic else "live_terrestrial",
+        "provenance": provenance,
+        "reason": reason,
+        "required_env": list(AIS_GATES) if geo_synthetic and not synthetic else [],
         "notice": SYNTHETIC_NOTICE if synthetic else None,
     }
 

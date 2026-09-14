@@ -3,26 +3,54 @@
 from __future__ import annotations
 
 from datetime import datetime
-from enum import Enum
-from typing import Literal
+from enum import StrEnum
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
 # --- Enums ---
 
 
-class DataSource(str, Enum):
+class DataSource(StrEnum):
     SENTINEL1 = "sentinel1"
     CMEMS = "cmems"
     ERA5 = "era5"
     AIS = "ais"
 
 
-class JobStatus(str, Enum):
+class JobStatus(StrEnum):
     PENDING = "pending"
     RUNNING = "running"
     COMPLETED = "completed"
     FAILED = "failed"
+
+
+# --- Provenance ---
+#
+# Every ingest result states where its numbers came from. This is not
+# decoration: docs/VERIFICATION.md §9.2 records an ERA5 pull that silently
+# degraded to synthetic wind and "returned invented numbers". The fields below
+# make that state unmissable and machine-readable.
+#
+# Values come from app.provenance; they are repeated as literals rather than
+# imported so these models stay importable without the source modules.
+
+PROVENANCE_REAL = "real"
+PROVENANCE_SYNTHETIC = "synthetic_mock"
+PROVENANCE_UNAVAILABLE = "unavailable"
+PROVENANCE_NO_COVERAGE = "no_real_coverage"
+
+
+class Provenance(BaseModel):
+    """Where a payload came from, and whether it may be used as evidence."""
+
+    source: str
+    provenance: str = PROVENANCE_REAL
+    is_synthetic: bool = False
+    warning: str | None = None
+    error: dict[str, Any] | None = None
+    coverage: dict[str, Any] | None = None
+    generated_utc: datetime | None = None
 
 
 # --- Input Schemas ---
@@ -108,7 +136,12 @@ class Sentinel1Result(BaseModel):
 
 
 class OceanCurrentResult(BaseModel):
-    """Result of CMEMS ocean current fetch."""
+    """Result of CMEMS ocean current fetch.
+
+    ``provenance`` is ``"cmems"`` for real data and ``"synthetic_mock"`` for an
+    explicitly gated fallback; ``is_synthetic`` mirrors it so a consumer that
+    only checks the boolean still gets it right.
+    """
 
     files_downloaded: int
     total_bytes: int
@@ -116,11 +149,15 @@ class OceanCurrentResult(BaseModel):
     time_range: tuple[str, str]
     variable_names: list[str]
     fetch_duration_seconds: float
+    provenance: str = "cmems"
+    is_synthetic: bool = False
+    warning: str | None = None
+    coverage: dict[str, Any] | None = None
     timestamp: datetime = Field(default_factory=datetime.utcnow)
 
 
 class WindFieldResult(BaseModel):
-    """Result of ERA5 wind field fetch."""
+    """Result of ERA5 wind field fetch. Same provenance contract as CMEMS."""
 
     files_downloaded: int
     total_bytes: int
@@ -128,6 +165,10 @@ class WindFieldResult(BaseModel):
     time_range: tuple[str, str]
     variable_names: list[str]
     fetch_duration_seconds: float
+    provenance: str = "era5"
+    is_synthetic: bool = False
+    warning: str | None = None
+    coverage: dict[str, Any] | None = None
     timestamp: datetime = Field(default_factory=datetime.utcnow)
 
 
@@ -154,13 +195,23 @@ class AisPosition(BaseModel):
 
 
 class AisIngestResult(BaseModel):
-    """Result of AIS data ingestion."""
+    """Result of AIS data ingestion.
+
+    When no real feed is reachable the fetch does **not** invent vessels: it
+    returns ``provenance="no_real_coverage"`` with zero vessels and a
+    machine-readable ``synthetic_reason`` explaining what would have to change.
+    """
 
     records_fetched: int
     records_upserted: int
     unique_vessels: int
     interpolated_gaps: int
     fetch_duration_seconds: float
+    provenance: str = "live_terrestrial"
+    is_synthetic: bool = False
+    synthetic_reason: str | None = None
+    warning: str | None = None
+    coverage: dict[str, Any] | None = None
     timestamp: datetime = Field(default_factory=datetime.utcnow)
 
 

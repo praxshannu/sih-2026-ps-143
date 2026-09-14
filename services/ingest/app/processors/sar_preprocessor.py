@@ -2,6 +2,12 @@
 
 Implements radiometric calibration (sigma0), speckle filtering (Lee / Refined Lee),
 terrain correction, and geocoding to EPSG:4326 using rasterio and numpy.
+
+A missing dataset is a hard error. ``_extract_measurement_bands`` used to return
+an empty dict for a path that did not exist, which surfaced as "No measurement
+bands found" — indistinguishable from a real scene with no usable bands, and
+easy for a caller to mistake for an empty result. The path is now checked first
+and named in the error.
 """
 
 from __future__ import annotations
@@ -15,6 +21,27 @@ from loguru import logger
 from rasterio.crs import CRS
 from rasterio.transform import from_bounds
 from scipy.ndimage import uniform_filter
+
+from ..provenance import ProvenanceError
+
+
+def assert_dataset_present(input_path: str | Path) -> Path:
+    """Return the resolved path, or raise naming it.
+
+    Raises:
+        ProvenanceError: ``reason="sar_dataset_missing"``, with the absolute
+            path in ``detail``. The caller — and the operator reading the log —
+            is told exactly which file was expected.
+    """
+    path = Path(input_path)
+    if not path.exists():
+        raise ProvenanceError(
+            "sentinel1",
+            "sar_dataset_missing",
+            f"no SAR dataset at {path.resolve()} — "
+            "SENTINEL never substitutes synthetic pixels for a missing scene",
+        )
+    return path.resolve()
 
 
 class SarPreprocessor:
@@ -61,11 +88,14 @@ class SarPreprocessor:
         """
         logger.info("Starting SAR preprocessing: {}", input_path)
 
+        # Fail loudly and by name if the scene is not on disk.
+        resolved = assert_dataset_present(input_path)
+
         # Extract measurement bands from the product
-        bands, metadata = self._extract_measurement_bands(input_path)
+        bands, metadata = self._extract_measurement_bands(str(resolved))
 
         # Separate metadata dict from actual band arrays
-        src_metadata = bands.pop("metadata", None)
+        bands.pop("metadata", None)
 
         if not bands:
             logger.error("No measurement bands found in {}", input_path)
@@ -225,7 +255,6 @@ class SarPreprocessor:
         if window_size < 3:
             return image
 
-        half_w = window_size // 2
         rows, cols = image.shape
         output = np.empty_like(image)
 
@@ -234,9 +263,6 @@ class SarPreprocessor:
         local_sq_mean = uniform_filter(image**2, size=window_size)
         local_var = local_sq_mean - local_mean**2
         local_var = np.maximum(local_var, 0)
-
-        # Global noise variance (estimated from image)
-        noise_var = np.var(image) * 0.25
 
         # Coefficient of variation
         cv = np.sqrt(local_var) / (np.abs(local_mean) + 1e-10)
@@ -287,8 +313,6 @@ class SarPreprocessor:
                 best_mean = means[min_var_idx]
                 best_var = vars_list[min_var_idx]
 
-                # Compute local CV
-                cv = np.sqrt(best_var) / (np.abs(best_mean) + 1e-10)
                 noise_var = np.var(image) * 0.25
 
                 # Weight
@@ -366,13 +390,11 @@ class SarPreprocessor:
         if src_meta:
             crs = src_meta.get("crs") or CRS.from_epsg(4326)
             transform = src_meta.get("transform")
-            width = src_meta.get("width", 0)
-            height = src_meta.get("height", 0)
         else:
+            # No source metadata: fall back to the nominal Indian Ocean frame.
+            # Width/height are taken from the band array below, not guessed here.
             crs = CRS.from_epsg(4326)
             transform = from_bounds(68.0, 5.0, 88.0, 25.0, 1000, 1000)
-            width = 1000
-            height = 1000
 
         # Reproject to target CRS if needed
         if crs.to_epsg() != target_epsg:

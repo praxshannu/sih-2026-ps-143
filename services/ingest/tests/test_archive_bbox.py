@@ -135,14 +135,23 @@ def test_nothing_supplied_is_rejected_with_guidance():
 # ── endpoint contract ─────────────────────────────────────────────────────
 
 
-def test_ais_coverage_named_axes_wakashio_is_synthetic(client):
+def test_ais_coverage_named_axes_wakashio_has_no_real_coverage(client):
+    """Wakashio is open Indian Ocean: no receivers exist. That is a *lack of
+    coverage*, not a licence to invent vessels — so with the demo gates closed
+    the verdict is `no_real_coverage` and names the gates that would open it.
+
+    The complement (gates open -> synthetic, with notice) is asserted in
+    `test_ais_coverage_promises_synthetic_only_when_gates_are_open`.
+    """
     r = client.get("/archive/ais/coverage", params=_named(WAKASHIO))
     assert r.status_code == 200
     body = r.json()
-    assert body["use_synthetic"] is True
-    assert body["mode"] == "synthetic_only"
-    assert body["provenance"] == "synthetic_mock"
     assert body["bbox"] == list(WAKASHIO)
+    assert body["use_synthetic"] is False
+    assert body["mode"] == "no_real_coverage"
+    assert body["provenance"] == "no_real_coverage"
+    assert set(body["required_env"]) == {"SENTINEL_DEMO_MODE", "ALLOW_SYNTHETIC_AIS"}
+    assert "AISStream" in body["basis"]
 
 
 def test_ais_coverage_named_axes_mumbai_is_live(client):
@@ -167,12 +176,35 @@ def test_ais_coverage_rejects_missing_aoi(client):
 
 
 def test_ais_coverage_legacy_string_still_works(client):
+    """The deprecated comma form still parses — but it no longer promises
+    synthetic vessels. Geography is not the verdict any more: the demo gates
+    must also be open, and in the test environment they are not."""
     r = client.get("/archive/ais/coverage", params={"bbox": "57.6,-21.0,58.2,-20.4"})
     assert r.status_code == 200
-    assert r.json()["use_synthetic"] is True
+    body = r.json()
+    assert body["use_synthetic"] is False
+    assert body["mode"] == "no_real_coverage"
+    assert body["provenance"] == "no_real_coverage"
+    assert set(body["required_env"]) == {"SENTINEL_DEMO_MODE", "ALLOW_SYNTHETIC_AIS"}
+
+
+def test_ais_coverage_promises_synthetic_only_when_gates_are_open(client, monkeypatch):
+    monkeypatch.setenv("SENTINEL_DEMO_MODE", "true")
+    monkeypatch.setenv("ALLOW_SYNTHETIC_AIS", "true")
+    r = client.get(
+        "/archive/ais/coverage",
+        params={"bbox": "57.6,-21.0,58.2,-20.4"},
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["use_synthetic"] is True
+    assert body["provenance"] == "synthetic_mock"
+    assert body["notice"], "synthetic AIS must never be offered without the notice"
 
 
 def test_ais_endpoint_honours_named_axes(client):
+    """Named axes are honoured, and with the gates closed an open-ocean AOI
+    returns the explicit no-coverage state instead of fabricated vessels."""
     r = client.get(
         "/archive/ais",
         params={
@@ -184,5 +216,8 @@ def test_ais_endpoint_honours_named_axes(client):
     assert r.status_code == 200
     body = r.json()
     assert body["bbox"] == list(WAKASHIO)
-    assert body["provenance"] == "synthetic_mock"
-    assert body["count"] > 0
+    assert body["provenance"] == "no_real_coverage"
+    assert body["is_synthetic"] is False
+    assert body["count"] == 0
+    assert body["vessels"] == []
+    assert body["error"]["reason"], "the reason must be machine-readable"

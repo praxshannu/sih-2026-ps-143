@@ -2,10 +2,20 @@
 
 Downloads latest ocean current u/v components as NetCDF with Dask-compatible chunking.
 Covers the Indian Ocean basin.
+
+FAIL-CLOSED CONTRACT
+--------------------
+A failed upstream never degrades to invented currents on its own. The gate is
+``ALLOW_SYNTHETIC_FORCING=true`` and it is evaluated by
+``app.provenance.decide_synthetic`` — the same helper ERA5 and AIS use, so the
+three sources cannot drift apart. Unset (the default) means the fetch raises
+:class:`app.provenance.ProvenanceError` with a machine-readable reason; set
+means the result is stamped ``synthetic_mock`` and carries a warning string.
 """
 
 from __future__ import annotations
 
+import asyncio
 import os
 import time
 from datetime import UTC, datetime, timedelta
@@ -16,6 +26,12 @@ import xarray as xr
 from loguru import logger
 
 from ..models.schemas import OceanCurrentResult
+from ..provenance import (
+    PROVENANCE_SYNTHETIC,
+    FORCING_GATES,
+    decide_synthetic,
+    window_coverage,
+)
 
 # Indian EEZ bounding box
 INDIA_EEZ_BBOX = (68.0, 5.0, 88.0, 25.0)
@@ -92,21 +108,27 @@ class CmemsFetcher:
         )
 
         total_bytes = 0
+        provenance = "cmems"
+        warning: str | None = None
 
         try:
             # Attempt CDS API download
             total_bytes = await self._download_via_cds(request_payload, out_file)
         except Exception as e:
-            if os.getenv("ALLOW_SYNTHETIC_FORCING", "false").lower() != "true":
-                logger.error("CMEMS download failed and synthetic forcing is disabled: {}", e)
-                raise RuntimeError(
-                    "CMEMS currents unavailable; refusing synthetic forcing. "
-                    "Set ALLOW_SYNTHETIC_FORCING=true only for an explicitly labelled demo."
-                ) from e
-            logger.warning("CMEMS download failed; using explicitly enabled synthetic data: {}", e)
+            decision = decide_synthetic("cmems", required_env=FORCING_GATES)
+            decision.require(e)
+            # Only reached when the operator explicitly opened the gate.
+            logger.warning(
+                "CMEMS download failed ({}) — serving SYNTHETIC currents because {} is set. "
+                "This is not real data and must not be used as evidence.",
+                e,
+                ", ".join(FORCING_GATES),
+            )
             total_bytes = self._generate_synthetic_currents(
                 out_file, bbox, date_start, date_end, depth_range
             )
+            provenance = PROVENANCE_SYNTHETIC
+            warning = decision.warning
 
         # Reopen and apply Dask chunking
         ds = xr.open_dataset(
@@ -116,11 +138,34 @@ class CmemsFetcher:
 
         time_range = (str(date_start), str(date_end))
 
+        # Honest coverage: compare what was requested against what the file
+        # actually holds. A truncated window otherwise looks exactly like a
+        # healthy fetch (see VERIFICATION §10 — the same trap was responsible
+        # for an "ERA5 outage" that was really an off-by-one).
+        returned: tuple[datetime, datetime] | None = None
+        if "time" in ds.coords and ds.time.size:
+            # NetCDF time is naive UTC; make it explicit so the comparison in
+            # window_coverage cannot silently mix aware and naive datetimes.
+            returned = (
+                ds.time.values.min().astype("datetime64[us]").item().replace(tzinfo=UTC),
+                ds.time.values.max().astype("datetime64[us]").item().replace(tzinfo=UTC),
+            )
+        coverage = window_coverage((date_start, date_end), returned)
+        if coverage["status"] != "full":
+            logger.warning(
+                "CMEMS coverage {}: requested {}..{}, got {}",
+                coverage["status"],
+                date_start.isoformat(),
+                date_end.isoformat(),
+                coverage["returned"],
+            )
+
         logger.info(
-            "CMEMS fetch complete: {} bytes, shape={}, time={}",
+            "CMEMS fetch complete: {} bytes, shape={}, time={}, provenance={}",
             total_bytes,
             {v: ds[v].shape for v in ds.data_vars if v in self.variables},
             time_range,
+            provenance,
         )
 
         return OceanCurrentResult(
@@ -130,6 +175,10 @@ class CmemsFetcher:
             time_range=time_range,
             variable_names=self.variables,
             fetch_duration_seconds=round(time.time() - t0, 2),
+            provenance=provenance,
+            is_synthetic=provenance == PROVENANCE_SYNTHETIC,
+            warning=warning,
+            coverage=coverage,
         )
 
     async def _download_via_cds(self, request_payload: dict, out_file: str) -> int:
@@ -181,18 +230,22 @@ class CmemsFetcher:
         time_end: datetime,
         depth_range: tuple[float, float],
     ) -> int:
-        """Generate realistic synthetic ocean current data as fallback.
+        """Generate synthetic ocean current data — ONLY behind an explicit gate.
 
-        Creates time-varying u/v fields with a tidal-like signal for Indian Ocean.
+        Creates time-varying u/v fields with a tidal-like signal. Every field
+        produced here is labelled ``synthetic_mock`` by the caller; the NetCDF
+        itself is also tagged so a leaked file still identifies itself.
         """
         lon_min, lat_min, lon_max, lat_max = bbox
 
         lons = np.arange(lon_min, lon_max, 0.25)
         lats = np.arange(lat_min, lat_max, 0.25)
         depths = np.arange(depth_range[0], depth_range[1], 1.0)
+        # numpy datetime64 has no timezone; drop the offset rather than let
+        # numpy warn and silently reinterpret it.
         times = np.arange(
-            np.datetime64(time_start.isoformat()),
-            np.datetime64(time_end.isoformat()),
+            np.datetime64(time_start.replace(tzinfo=None).isoformat()),
+            np.datetime64(time_end.replace(tzinfo=None).isoformat()),
             np.timedelta64(6, "h"),
         )
 
@@ -203,13 +256,18 @@ class CmemsFetcher:
 
         rng = np.random.default_rng(42)
 
-        # Base current pattern with lat-dependent magnitude
+        # Base current pattern with lat-dependent magnitude.
+        # Kept as (n_lat, 1) so it broadcasts across longitude — squeezing it to
+        # (n_lat,) made broadcast_to fail against the (…, n_lat, n_lon) target.
         lat_grid = np.linspace(lat_min, lat_max, n_lat)[:, np.newaxis]
-        base_u = 0.15 * np.sin(np.radians(lat_grid)).squeeze()
-        base_v = 0.10 * np.cos(np.radians(lat_grid)).squeeze()
+        base_u = 0.15 * np.sin(np.radians(lat_grid))
+        base_v = 0.10 * np.cos(np.radians(lat_grid))
 
-        # Add temporal variability
-        time_phase = np.linspace(0, 4 * np.pi, n_time)[:, np.newaxis, np.newaxis]
+        # Add temporal variability. Four axes (time, depth, lat, lon) — with
+        # only three, broadcast_to left-pads to (1, n_time, 1, 1) and then fails
+        # against n_depth, which is how this fallback used to raise ValueError
+        # instead of ever producing a field.
+        time_phase = np.linspace(0, 4 * np.pi, n_time)[:, np.newaxis, np.newaxis, np.newaxis]
         temporal_u = 0.05 * np.sin(time_phase)
         temporal_v = 0.03 * np.cos(time_phase)
 
@@ -241,6 +299,8 @@ class CmemsFetcher:
                 "title": "Synthetic GLORYS12-style ocean currents for Indian EEZ",
                 "source": "sentinel-ingest fallback generator",
                 "conventions": "CF-1.8",
+                "provenance": PROVENANCE_SYNTHETIC,
+                "warning": "SYNTHETIC — not real CMEMS data. Demonstration use only.",
             },
         )
 
@@ -263,7 +323,3 @@ class CmemsFetcher:
             file_size,
         )
         return file_size
-
-
-# Need asyncio import for poll loop
-import asyncio  # noqa: E402

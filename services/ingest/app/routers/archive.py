@@ -23,6 +23,8 @@ from loguru import logger
 from pydantic import BaseModel, Field
 from rasterio.transform import from_bounds
 
+from ..sources.ais import AisFetcher
+from ..sources.ais_synthetic import coverage_verdict, synthetic_disclaimer
 from ..sources.cdse import get_cdse_client
 
 router = APIRouter(prefix="/archive", tags=["archive"])
@@ -74,17 +76,14 @@ def _resolve_bbox(
     """
     named = (min_lon, min_lat, max_lon, max_lat)
     if any(v is not None for v in named):
-        if any(v is None for v in named):
+        if min_lon is None or min_lat is None or max_lon is None or max_lat is None:
+            # Explicit per-name check (rather than `any(v is None ...)`) so the
+            # narrowing below is visible to the type checker without a cast.
             raise HTTPException(
                 422,
                 "min_lon, min_lat, max_lon and max_lat must be supplied together",
             )
-        return _validate_bbox(
-            float(min_lon),
-            float(min_lat),
-            float(max_lon),
-            float(max_lat),  # type: ignore[arg-type]
-        )
+        return _validate_bbox(min_lon, min_lat, max_lon, max_lat)
     if not bbox:
         raise HTTPException(
             422,
@@ -303,12 +302,6 @@ async def ingest(req: IngestRequest) -> dict[str, Any]:
 
 
 # ── AIS coverage verdict + synthetic fallback (open Indian Ocean only) ───
-from ..sources.ais_synthetic import (  # noqa: E402
-    coverage_verdict,
-    generate_synthetic_ais,
-    should_use_synthetic,
-    synthetic_disclaimer,
-)
 
 
 @router.get("/ais/coverage")
@@ -357,10 +350,18 @@ async def ais(
     """Vessel positions for the AOI. Real AIS when coverage exists;
     clearly-labelled synthetic data when it does not (open Indian Ocean).
 
+    The decision is **not** made here. It is made once, in
+    :func:`app.sources.ais.AisFetcher.fetch_envelope`, which applies the same
+    ``app.provenance`` gate as CMEMS and ERA5:
+
+    * synthetic tracks require ``SENTINEL_DEMO_MODE=true`` **and**
+      ``ALLOW_SYNTHETIC_AIS=true`` **and** an AOI with no real receivers;
+    * otherwise the response is ``live_terrestrial`` or an explicit
+      ``no_real_coverage`` state with zero vessels — never an invented track.
+
     The response always carries ``provenance`` and ``disclaimer``. When
     ``provenance == "synthetic_mock"`` the UI must render the disclaimer as a
-    blocking banner. There is no quiet path: the notice, the reason, and the
-    machine-readable provenance all travel with the payload itself.
+    blocking banner.
     """
     box = _resolve_bbox(min_lon, min_lat, max_lon, max_lat, bbox)
     start_iso = _parse_iso(start, "start")
@@ -370,41 +371,13 @@ async def ais(
     if end_dt <= start_dt:
         raise HTTPException(422, "end must be after start")
 
-    verdict = coverage_verdict(box)
-
-    if not should_use_synthetic(box):
-        # In regions with real coverage we do not serve synthetic data at all.
-        return {
-            "provenance": "live_terrestrial",
-            "is_synthetic": False,
-            "bbox": list(box),
-            "window": [start_iso, end_iso],
-            "count": 0,
-            "vessels": [],
-            "notice": None,
-            "disclaimer": None,
-            "coverage": verdict,
-            "reason": (
-                "Real AIS coverage is available for this region; the UI "
-                "should subscribe to AISStream directly via the gateway, "
-                "not consume this synthetic endpoint."
-            ),
-        }
-
-    payload = generate_synthetic_ais(
-        box,
-        start_dt,
-        end_dt,
-        n_vessels=n_vessels,
-        seed=seed,
+    payload: dict[str, Any] = await AisFetcher().fetch_envelope(
+        box, start_dt, end_dt, n_vessels=n_vessels, seed=seed
     )
-    payload["disclaimer"] = synthetic_disclaimer()
-    payload["coverage"] = verdict
+    payload["coverage"] = {**payload.get("coverage", {}), "verdict": coverage_verdict(box)}
+    payload["notice"] = payload.get("notice")
+    payload["disclaimer"] = (
+        synthetic_disclaimer() if payload.get("provenance") == "synthetic_mock" else None
+    )
     payload["acknowledged"] = bool(acknowledge_synthetic)
-    logger.warning(
-        "Served SYNTHETIC AIS for bbox={} window={}..{} — no real coverage exists",
-        box,
-        start_iso,
-        end_iso,
-    )
     return payload

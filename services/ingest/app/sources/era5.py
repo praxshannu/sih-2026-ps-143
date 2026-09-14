@@ -1,6 +1,15 @@
 """ECMWF ERA5 wind field fetcher.
 
 Fetches 10m wind components (u10, v10) via the CDS API and caches as NetCDF.
+
+FAIL-CLOSED CONTRACT
+--------------------
+``docs/VERIFICATION.md`` §9.2: an ERA5 pull once silently degraded to synthetic
+wind and "the run succeeded and returned invented numbers". That path is now
+closed by default. The gate is ``ALLOW_SYNTHETIC_FORCING=true``, evaluated by
+``app.provenance.decide_synthetic`` — the same helper CMEMS and AIS use. Unset
+means the fetch raises :class:`app.provenance.ProvenanceError`; set means the
+result is stamped ``synthetic_mock`` and carries a warning string.
 """
 
 from __future__ import annotations
@@ -16,6 +25,12 @@ import xarray as xr
 from loguru import logger
 
 from ..models.schemas import WindFieldResult
+from ..provenance import (
+    PROVENANCE_SYNTHETIC,
+    FORCING_GATES,
+    decide_synthetic,
+    window_coverage,
+)
 
 # Indian EEZ bounding box
 INDIA_EEZ_BBOX = (68.0, 5.0, 88.0, 25.0)
@@ -86,18 +101,24 @@ class Era5Fetcher:
         }
 
         total_bytes = 0
+        provenance = "era5"
+        warning: str | None = None
 
         try:
             total_bytes = await self._download_via_cds(request_payload, out_file)
         except Exception as e:
-            if os.getenv("ALLOW_SYNTHETIC_FORCING", "false").lower() != "true":
-                logger.error("ERA5 download failed and synthetic forcing is disabled: {}", e)
-                raise RuntimeError(
-                    "ERA5 winds unavailable; refusing synthetic forcing. "
-                    "Set ALLOW_SYNTHETIC_FORCING=true only for an explicitly labelled demo."
-                ) from e
-            logger.warning("ERA5 download failed; using explicitly enabled synthetic winds: {}", e)
+            decision = decide_synthetic("era5", required_env=FORCING_GATES)
+            decision.require(e)
+            # Only reached when the operator explicitly opened the gate.
+            logger.warning(
+                "ERA5 download failed ({}) — serving SYNTHETIC winds because {} is set. "
+                "This is not real data and must not be used as evidence.",
+                e,
+                ", ".join(FORCING_GATES),
+            )
             total_bytes = self._generate_synthetic_winds(out_file, bbox, date_start, date_end)
+            provenance = PROVENANCE_SYNTHETIC
+            warning = decision.warning
 
         ds = xr.open_dataset(
             out_file,
@@ -115,11 +136,30 @@ class Era5Fetcher:
         variable_names = [v for v in ["u10", "v10"] if v in ds.data_vars]
         time_range = (str(date_start), str(date_end))
 
+        # Honest temporal coverage. A truncated window is the realistic partial
+        # case here, and it otherwise reads as a healthy fetch.
+        returned: tuple[datetime, datetime] | None = None
+        if "time" in ds.coords and ds.time.size:
+            returned = (
+                ds.time.values.min().astype("datetime64[us]").item().replace(tzinfo=UTC),
+                ds.time.values.max().astype("datetime64[us]").item().replace(tzinfo=UTC),
+            )
+        coverage = window_coverage((date_start, date_end), returned)
+        if coverage["status"] != "full":
+            logger.warning(
+                "ERA5 coverage {}: requested {}..{}, got {}",
+                coverage["status"],
+                date_start.isoformat(),
+                date_end.isoformat(),
+                coverage["returned"],
+            )
+
         logger.info(
-            "ERA5 fetch complete: {} bytes, variables={}, time={}",
+            "ERA5 fetch complete: {} bytes, variables={}, time={}, provenance={}",
             total_bytes,
             variable_names,
             time_range,
+            provenance,
         )
 
         return WindFieldResult(
@@ -129,6 +169,10 @@ class Era5Fetcher:
             time_range=time_range,
             variable_names=variable_names,
             fetch_duration_seconds=round(time.time() - t0, 2),
+            provenance=provenance,
+            is_synthetic=provenance == PROVENANCE_SYNTHETIC,
+            warning=warning,
+            coverage=coverage,
         )
 
     async def _download_via_cds(self, request_payload: dict, out_file: str) -> int:
@@ -176,17 +220,20 @@ class Era5Fetcher:
         time_start: datetime,
         time_end: datetime,
     ) -> int:
-        """Generate realistic synthetic wind data as fallback.
+        """Generate synthetic wind data — ONLY behind an explicit gate.
 
-        Produces monsoon-like wind patterns for the Indian Ocean.
+        Produces monsoon-like wind patterns. Every field produced here is
+        labelled ``synthetic_mock`` by the caller, and the NetCDF is tagged too.
         """
         lon_min, lat_min, lon_max, lat_max = bbox
 
         lons = np.arange(lon_min, lon_max, 0.25)
         lats = np.arange(lat_min, lat_max, 0.25)
+        # numpy datetime64 has no timezone; drop the offset rather than let
+        # numpy warn and silently reinterpret it.
         times = np.arange(
-            np.datetime64(time_start.isoformat()),
-            np.datetime64(time_end.isoformat()),
+            np.datetime64(time_start.replace(tzinfo=None).isoformat()),
+            np.datetime64(time_end.replace(tzinfo=None).isoformat()),
             np.timedelta64(3, "h"),
         )
 
@@ -240,6 +287,8 @@ class Era5Fetcher:
                 "source": "sentinel-ingest fallback generator",
                 "conventions": "CF-1.8",
                 "units": "m s-1",
+                "provenance": PROVENANCE_SYNTHETIC,
+                "warning": "SYNTHETIC — not real ERA5 data. Demonstration use only.",
             },
         )
 

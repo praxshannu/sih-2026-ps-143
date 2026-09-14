@@ -1,8 +1,25 @@
-"""Load MarineCadastre sample AIS data or generate synthetic tracks.
+"""Seed AIS rows for the demo: real MarineCadastre first, synthetic only if forced.
 
-Downloads a sample AIS CSV from MarineCadastre (or generates synthetic data
-if download fails) and inserts into PostGIS. Creates realistic vessel tracks
-for 50+ vessels in the Indian Ocean.
+History
+-------
+This script used to download a MarineCadastre sample and, when that failed,
+silently generate 55 fabricated vessel tracks — 8 MMSIs x exactly 200 rows at a
+perfect 600 s cadence in the shipped CSV, which is how `data/ais_demo.csv` was
+shown to be synthetic (VERIFICATION §4). Fabricated rows in the same table as
+real ones are indistinguishable downstream, so the fallback is now gated.
+
+Rules
+-----
+1. Real data wins. The MarineCadastre download is attempted first and used if
+   it works.
+2. If it fails, the script **exits non-zero** unless all of these hold:
+   * ``SENTINEL_DEMO_MODE=true``
+   * ``ALLOW_SYNTHETIC_AIS=true``
+   * the demo AOI sits in ``NO_REAL_COVERAGE_BOXES`` and outside
+     ``KNOWN_COASTAL_COVERAGE_BOXES`` (decided by
+     ``ais_synthetic.should_use_synthetic`` — reused, never re-implemented)
+3. Every synthetic row is stamped ``source='synthetic_mock'`` so it is labelled
+   in the database itself, not only in the API response.
 
 Usage:
     python scripts/seed_ais_demo.py
@@ -15,14 +32,34 @@ import csv
 import io
 import math
 import random
+import sys
 import urllib.request
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 import asyncpg
+from loguru import logger
+
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+from services.ingest.app.provenance import (  # noqa: E402
+    AIS_GATES,
+    PROVENANCE_SYNTHETIC,
+    env_flag,
+)
+from services.ingest.app.sources.ais_synthetic import (  # noqa: E402
+    should_use_synthetic,
+)
 
 DB_URL = "postgresql://sentinel:sentinel_secret@db:5432/sentinel"
 
 MARINECADASTRE_SAMPLE_URL = "https://coast.noaa.gov/htdata/CSV/AIS/2020/AIS_2020_07_07.zip"
+
+# The AOI synthetic tracks are generated for. It must be a region with no real
+# receiver coverage; `should_use_synthetic` is the authority on that.
+DEMO_BBOX = (57.6, -21.0, 58.2, -20.4)  # Wakashio zone, SE of Mauritius
 
 VESSEL_PROFILES = [
     {"type": 70, "name": "Bulk Carrier", "speed_range": (10.0, 15.0), "weight": 8},
@@ -166,14 +203,16 @@ def generate_track(
                 "imo_number": vessel["imo_number"],
                 "flag_state": vessel["flag_state"],
                 "timestamp": t,
-                "source": "marinecadastre_demo",
+                # Stamped in the row itself: a synthetic track stays labelled
+                # even after it has been copied into another table or CSV.
+                "source": PROVENANCE_SYNTHETIC,
             }
         )
     return positions
 
 
 async def try_download_sample() -> str | None:
-    print("[seed] Attempting MarineCadastre download...")
+    logger.info("Attempting MarineCadastre download: {}", MARINECADASTRE_SAMPLE_URL)
     try:
         req = urllib.request.Request(
             MARINECADASTRE_SAMPLE_URL,
@@ -181,10 +220,10 @@ async def try_download_sample() -> str | None:
         )
         with urllib.request.urlopen(req, timeout=10) as resp:
             data = resp.read()
-            print(f"[seed] Downloaded {len(data)} bytes")
+            logger.info("Downloaded {} bytes", len(data))
             return data.decode("utf-8", errors="replace")
     except Exception as e:
-        print(f"[seed] Download failed ({e}), using synthetic data")
+        logger.warning("MarineCadastre download failed: {}", e)
         return None
 
 
@@ -224,16 +263,37 @@ async def insert_positions(
             records,
         )
         total += len(batch)
-        print(f"[seed] Inserted {total}/{len(positions)} positions...")
+        logger.info("Inserted {}/{} positions", total, len(positions))
     return total
 
 
+def _assert_synthetic_permitted() -> None:
+    """Refuse to fabricate vessel tracks unless every gate is open."""
+    if not should_use_synthetic(DEMO_BBOX):
+        raise SystemExit(
+            f"refusing synthetic AIS: DEMO_BBOX={DEMO_BBOX} is not a no-coverage region "
+            "(it overlaps a coastal carve-out or lies outside NO_REAL_COVERAGE_BOXES)"
+        )
+    missing = [name for name in AIS_GATES if not env_flag(name)]
+    if missing:
+        raise SystemExit(
+            f"refusing synthetic AIS: MarineCadastre is unavailable and "
+            f"{', '.join(missing)} are not set. SENTINEL does not fabricate vessel "
+            f"tracks silently — set {' and '.join(AIS_GATES)} for a labelled demo."
+        )
+
+
 async def seed_synthetic(conn: asyncpg.Connection) -> None:
+    _assert_synthetic_permitted()
+    logger.warning(
+        "SYNTHETIC AIS: generating fabricated tracks ({}). Not real data — "
+        "must not be used as evidence.",
+        ", ".join(AIS_GATES),
+    )
     base_time = datetime(2020, 7, 25, 10, 0, tzinfo=UTC)
     n_vessels = 55
     mmsi_base = 200000000
 
-    print(f"[seed] Generating {n_vessels} synthetic vessel tracks...")
     all_positions = []
     vessels = [generate_vessel(mmsi_base, i) for i in range(n_vessels)]
 
@@ -290,7 +350,7 @@ async def main() -> None:
         else:
             await seed_synthetic(conn)
         count = await conn.fetchval("SELECT COUNT(*) FROM ais_positions")
-        print(f"[seed] Total AIS positions in database: {count}")
+        logger.info("Total AIS positions in database: {}", count)
     finally:
         await conn.close()
 
