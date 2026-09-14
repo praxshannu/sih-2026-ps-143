@@ -49,6 +49,8 @@ from typing import Any
 
 import numpy as np
 
+from .errors import MissingCurrentForcingError, MissingWindForcingError
+
 # OpenDrift prints a LOT; trim it.
 warnings.filterwarnings("ignore")
 os.environ.setdefault("OPENDRIFT_DISABLE_LOGGING", "1")
@@ -233,8 +235,15 @@ def run_backward_attribution(
     synthetic_wind_dir_from_deg: float = 110.0,
     synthetic_current_ms: float = 0.10,
     synthetic_current_dir_deg: float = 220.0,
+    allow_synthetic: bool = True,
 ) -> AttributionResult:
     """Run a TRUE backward OpenDrift integration and return an AttributionResult.
+
+    `allow_synthetic=False` makes a missing reader a hard, typed failure
+    (`MissingWindForcingError` / `MissingCurrentForcingError`) instead of the
+    constant synthetic field this function would otherwise substitute. The
+    default stays True so existing callers keep the labelled-synthetic
+    behaviour they already report to the UI.
 
     Method
     ------
@@ -269,6 +278,25 @@ def run_backward_attribution(
     hindcast and treat the whole AOI as open water.
     """
     cfg = cfg or EnsembleConfig()
+
+    # Fail BEFORE OpenDrift is imported or an ensemble is seeded: a refused
+    # field must not cost a 10-second import and must never reach o.run().
+    if not allow_synthetic:
+        if wind_reader is None:
+            raise MissingWindForcingError(
+                "No wind reader supplied and synthetic wind was refused "
+                "(allow_synthetic=False). Stage ERA5 or GFS wind before "
+                "running a hindcast.",
+                reason="wind_reader_absent_synthetic_refused",
+            )
+        if current_reader is None:
+            raise MissingCurrentForcingError(
+                "No current reader supplied and synthetic currents were "
+                "refused (allow_synthetic=False). Stage CMEMS currents "
+                "before running a hindcast.",
+                reason="current_reader_absent_synthetic_refused",
+            )
+
     _, OpenOil = _opendrift()
 
     # The reader may be ERA5 or GFS; it carries its own provenance so the
@@ -516,6 +544,7 @@ def run_forward_forecast(
     synthetic_current_ms: float = 0.10,
     synthetic_current_dir_deg: float = 220.0,
     use_landmask: bool = True,
+    allow_synthetic: bool = True,
 ) -> ForecastResult:
     """Project the slick FORWARD from a known origin and report shoreline risk.
 
@@ -536,9 +565,32 @@ def run_forward_forecast(
     the oil is demonstrably ashore. Verified: GSHHG itself correctly reports
     land at 57.705,-20.425, so a 0% reading is an action-setting bug, not a
     missing coastline.
+
+    `allow_synthetic=False` turns a missing reader into a typed failure
+    instead of the constant synthetic field this function would otherwise
+    substitute (see `run_backward_attribution`).
     """
     cfg = cfg or EnsembleConfig()
     cfg.duration_h = duration_h
+
+    # Same gate as the hindcast, before OpenDrift is touched — see
+    # run_backward_attribution for why it must precede the import.
+    if not allow_synthetic:
+        if wind_reader is None:
+            raise MissingWindForcingError(
+                "No wind reader supplied and synthetic wind was refused "
+                "(allow_synthetic=False). Stage ERA5 or GFS wind before "
+                "forecasting.",
+                reason="wind_reader_absent_synthetic_refused",
+            )
+        if current_reader is None:
+            raise MissingCurrentForcingError(
+                "No current reader supplied and synthetic currents were "
+                "refused (allow_synthetic=False). Stage CMEMS currents "
+                "before forecasting.",
+                reason="current_reader_absent_synthetic_refused",
+            )
+
     _, OpenOil = _opendrift()
 
     wind_src = (

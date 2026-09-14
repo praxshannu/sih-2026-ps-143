@@ -16,6 +16,11 @@ from fastapi import FastAPI, HTTPException
 from loguru import logger
 
 from .engine.backward_sde import RegimeInputs
+from .errors import (
+    EnvironmentalDataError,
+    MissingCurrentForcingError,
+    MissingWindForcingError,
+)
 from .schemas import (
     BackwardRequest,
     ConfidenceEllipse,
@@ -25,6 +30,7 @@ from .schemas import (
     FullPipelineRequest,
     FullPipelineResult,
     HealthResponse,
+    OceanDataRef,
 )
 
 # Configure loguru
@@ -116,6 +122,16 @@ def _build_fields(spill_lon: float, spill_lat: float, req_ocean, now, allow_synt
             lats = ocean_ds["latitude"].values
             times = _numeric_times(ocean_ds["time"].values)
             K_field = np.zeros((u_field.shape[0], u_field.shape[1], u_field.shape[2], 2, 2))
+            # `is_real` must mean the bytes are on disk, not merely that a path
+            # was typed into the request.
+            era5_staged = bool(era5_base) and Path(era5_base).exists()
+            if not era5_staged and not allow_synthetic:
+                raise MissingWindForcingError(
+                    "Wind forcing is unavailable for this run: no local ERA5 file "
+                    "is staged and synthetic wind was refused. Stage an ERA5 (or "
+                    "GFS) dataset, or allow synthetic forcing explicitly.",
+                    reason="wind_not_staged_synthetic_refused",
+                )
             provenance = dict(
                 provenance,
                 forcing_source="local_files",
@@ -131,13 +147,15 @@ def _build_fields(spill_lon: float, spill_lat: float, req_ocean, now, allow_synt
                 },
                 wind={
                     "field": "wind",
-                    "source": "era5_local_file" if era5_base else "not_staged",
+                    "source": "era5_local_file" if era5_staged else "not_staged",
                     "provider": "local_netcdf",
-                    "is_real": bool(era5_base),
-                    "status": "real_staged" if era5_base else "unavailable",
-                    "coverage_start_utc": _iso_time(req_ocean.time_start) if era5_base else None,
-                    "coverage_end_utc": _iso_time(req_ocean.time_end) if era5_base else None,
-                    "reason": "Local ERA5 file staged" if era5_base else "No local ERA5 file",
+                    "is_real": bool(era5_staged),
+                    "status": "real_staged" if era5_staged else "unavailable",
+                    "coverage_start_utc": _iso_time(req_ocean.time_start) if era5_staged else None,
+                    "coverage_end_utc": _iso_time(req_ocean.time_end) if era5_staged else None,
+                    "reason": "Local ERA5 file staged"
+                    if era5_staged
+                    else "No local ERA5 file staged",
                 },
             )
             return (
@@ -150,6 +168,10 @@ def _build_fields(spill_lon: float, spill_lat: float, req_ocean, now, allow_synt
                 provider,
                 _normalise_provenance(provenance),
             )
+    except EnvironmentalDataError:
+        # A refused field is a verdict, not a load error — never fall through
+        # to the factory grid, which would silently serve the mock anyway.
+        raise
     except Exception as e:
         logger.warning("Local NetCDF load failed, using forcing factory: {}", e)
 
@@ -170,6 +192,14 @@ def _build_fields(spill_lon: float, spill_lat: float, req_ocean, now, allow_synt
         u2 = np.asarray(u_s, dtype=np.float64).reshape(9, 9)
         v2 = np.asarray(v_s, dtype=np.float64).reshape(9, 9)
     except Exception as e:
+        if not allow_synthetic:
+            # A constant analytic substitute IS synthetic data, so serving it
+            # here would be exactly the silent fallback the caller refused.
+            raise MissingCurrentForcingError(
+                f"Current provider {type(provider).__name__} could not be sampled "
+                f"onto the model grid and synthetic substitution was refused: {e}",
+                reason="current_sampling_failed_synthetic_refused",
+            ) from e
         logger.warning("Provider current sampling failed, analytic fallback: {}", e)
         u2 = np.full((9, 9), 0.15)
         v2 = np.full((9, 9), 0.05)
@@ -253,6 +283,16 @@ def _normalise_provenance(prov: dict, extra_notes: list[str] | None = None) -> d
     out = selection.to_dict()
     out["forcing_detail"] = dict(prov)
     return out
+
+
+def _http_forcing_unavailable(exc: EnvironmentalDataError) -> HTTPException:
+    """503 carrying the typed error's machine-readable payload.
+
+    A missing forcing field is not a server crash and must not masquerade as
+    one: 500 + a prose string forces the UI to guess. 503 + ``to_dict()``
+    lets it render an explicit "wind unavailable" state with the reason code.
+    """
+    return HTTPException(status_code=503, detail=exc.to_dict())
 
 
 def _numeric_times(times: np.ndarray) -> np.ndarray:
@@ -454,6 +494,9 @@ async def drift_backward(req: BackwardRequest):
 
         return result
 
+    except EnvironmentalDataError as exc:
+        logger.error("Backward drift refused: {} ({})", exc.reason, exc.code)
+        raise _http_forcing_unavailable(exc) from exc
     except Exception as e:
         logger.error("Backward drift failed: {}", str(e))
         raise HTTPException(status_code=500, detail=f"Drift computation failed: {str(e)}")
@@ -483,7 +526,11 @@ async def drift_forward(req: ForwardRequest):
 
         # Load ocean data (local NetCDF if present, else forcing factory).
         u_field, v_field, K_field, lons, lats, times, provider, provenance = _build_fields(
-            req.origin_lon, req.origin_lat, req.ocean_data, _dt2.now()
+            req.origin_lon,
+            req.origin_lat,
+            req.ocean_data,
+            _dt2.now(),
+            allow_synthetic=req.allow_synthetic,
         )
 
         u_interp, v_interp, K_interp = make_interpolators(
@@ -537,6 +584,9 @@ async def drift_forward(req: ForwardRequest):
 
         return result
 
+    except EnvironmentalDataError as exc:
+        logger.error("Forward forecast refused: {} ({})", exc.reason, exc.code)
+        raise _http_forcing_unavailable(exc) from exc
     except Exception as e:
         logger.error("Forward forecast failed: {}", str(e))
         raise HTTPException(status_code=500, detail=f"Forecast computation failed: {str(e)}")
@@ -574,7 +624,11 @@ async def drift_full_pipeline(req: FullPipelineRequest):
 
         # Load data (local NetCDF if present, else forcing factory).
         u_field, v_field, K_field, lons, lats, times, provider, provenance = _build_fields(
-            req.spill_lon, req.spill_lat, req.ocean_data, _dt3.now()
+            req.spill_lon,
+            req.spill_lat,
+            req.ocean_data,
+            _dt3.now(),
+            allow_synthetic=req.allow_synthetic,
         )
 
         u_interp, v_interp, K_interp = make_interpolators(
@@ -660,6 +714,9 @@ async def drift_full_pipeline(req: FullPipelineRequest):
 
         return result
 
+    except EnvironmentalDataError as exc:
+        logger.error("Full pipeline refused: {} ({})", exc.reason, exc.code)
+        raise _http_forcing_unavailable(exc) from exc
     except Exception as e:
         logger.error("Full pipeline failed: {}", str(e))
         raise HTTPException(status_code=500, detail=f"Pipeline computation failed: {str(e)}")
