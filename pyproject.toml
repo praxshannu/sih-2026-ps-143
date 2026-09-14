@@ -72,7 +72,3 @@ disallow_untyped_defs = false
 no_implicit_optional = true
 warn_redundant_casts = true
 warn_unused_ignores = false
-
-[[tool.mypy.overrides]]
-module = "tests.*"
-ignore_errors = true

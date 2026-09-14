@@ -12,7 +12,18 @@ from fastapi.responses import JSONResponse
 from loguru import logger
 
 from app.middleware.rate_limit import RateLimitMiddleware
-from app.routers import alerts, archive, attribution, cases, detect, drift, results, vessels, ws
+from app.routers import (
+    alerts,
+    archive,
+    attribution,
+    cases,
+    detect,
+    drift,
+    persistence,
+    results,
+    vessels,
+    ws,
+)
 from app.routers.ws import get_ws_manager
 from app.schemas import (
     HealthResponse,
@@ -70,6 +81,9 @@ app.include_router(detect.router, prefix="/api/v1")
 # Live OpenDrift hindcast engine. Separate from `drift.router`, which is the
 # case-scoped /cases/{id}/drift/* stub.
 app.include_router(attribution.router, prefix="/api/v1")
+# Durable case persistence. Additive to `cases.router`, whose CRUD is still
+# backed by an in-memory dict; these routes are the ones that survive a restart.
+app.include_router(persistence.router, prefix="/api/v1")
 
 
 @app.exception_handler(Exception)
