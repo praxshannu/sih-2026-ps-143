@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import Enum
 from typing import Any, Literal
 
@@ -270,6 +270,185 @@ class HealthResponse(BaseModel):
     status: Literal["healthy", "degraded", "unhealthy"]
     services: list[ServiceHealth]
     uptime_seconds: float
+
+
+# ---------- Suspects (wire contract: the API is the source of truth) ----------
+
+CoverageState = Literal["real", "synthetic", "none"]
+
+
+class PipelineSuspect(BaseModel):
+    """One ranked suspect as served by ``GET /api/v1/cases/{id}/suspects``.
+
+    Mirrors ``services/attribute/app/schemas.py:PipelineSuspect`` exactly. The
+    UI's TypeScript ``PipelineSuspect`` must match this field-for-field;
+    where it currently differs (optional lat/lon, no audit fields) the API
+    wins and the UI is aligned to it.
+
+    ``latitude``/``longitude`` are nullable, never defaulted to 0: 0°N 0°E is
+    a real place, and a silent default would put a vessel in the Gulf of
+    Guinea. Wilson 95% CI always accompanies ``composite_score``.
+    """
+
+    mmsi: str
+    vessel_name: str = "UNKNOWN"
+    composite_score: float = Field(ge=0.0, le=1.0)
+    confidence_lower: float = Field(ge=0.0, le=1.0)
+    confidence_upper: float = Field(ge=0.0, le=1.0)
+    confidence_method: str = "wilson_95"
+    fuzzy_score: float = Field(default=0.0, ge=0.0, le=1.0)
+    xgb_score: float | None = None
+    xgb_method: str = "unavailable"
+    shap_breakdown: dict[str, float] = Field(default_factory=dict)
+    score_proximity: float = Field(default=0.0, ge=0.0, le=1.0)
+    score_temporal: float = Field(default=0.0, ge=0.0, le=1.0)
+    score_trajectory: float = Field(default=0.0, ge=0.0, le=1.0)
+    score_anomaly: float = Field(default=0.0, ge=0.0, le=1.0)
+    score_vessel_type: float = Field(default=0.0, ge=0.0, le=1.0)
+    score_history: float = Field(default=0.0, ge=0.0, le=1.0)
+    ais_gap_minutes: float = Field(default=0.0, ge=0.0)
+    is_dark_vessel: bool = False
+    rank: int = Field(default=1, ge=1)
+    timestamp: datetime | None = None
+    latitude: float | None = None
+    longitude: float | None = None
+    speed_knots: float | None = None
+    course_deg: float | None = None
+    closest_approach_nm: float | None = None
+    matched_ping_count: int = Field(default=0, ge=0)
+    ais_provenance: str = "unknown"
+
+
+class PersistenceInfo(BaseModel):
+    """Where a result is actually stored — never let a fallback look like a DB.
+
+    ``backend`` is ``postgres`` or ``json_fallback``. The fallback is durable
+    on disk but it is NOT the database, and the response says so.
+    """
+
+    backend: Literal["postgres", "json_fallback"]
+    durable: bool = True
+    path: str | None = None
+    reason: str | None = None
+
+
+class CaseSuspectsResponse(BaseModel):
+    """Response of ``GET /api/v1/cases/{id}/suspects``.
+
+    When AIS coverage is not ``real`` the suspect list is empty and
+    ``coverage_reason`` carries a machine-readable code. Never a ranking
+    built on synthetic or unverified AIS.
+    """
+
+    case_id: str
+    suspects: list[PipelineSuspect] = Field(default_factory=list)
+    total: int = 0
+    coverage: CoverageState = "none"
+    coverage_reason: str | None = None
+    coverage_message: str | None = None
+    ais_provenance: str = "unknown"
+    weights: dict[str, float] = Field(default_factory=dict)
+    persistence: PersistenceInfo | None = None
+
+
+# ---------- Scene persistence ----------
+
+
+class SceneMetadata(BaseModel):
+    """Which scene this result came from, and how to verify the bytes."""
+
+    scene_id: str | None = None
+    label: str | None = None
+    platform: str | None = None
+    product_id: str | None = None
+    acquisition_time: datetime | None = None
+    source: str | None = None
+    checksum: str | None = None
+
+
+class DetectionResult(BaseModel):
+    """Detection stage: method, geometry, confidence, model version."""
+
+    method: str | None = None
+    model_version: str | None = None
+    confidence: float | None = Field(default=None, ge=0.0, le=1.0)
+    confidence_lower: float | None = Field(default=None, ge=0.0, le=1.0)
+    confidence_upper: float | None = Field(default=None, ge=0.0, le=1.0)
+    area_km2: float | None = None
+    polygon: dict[str, Any] | None = Field(
+        default=None, description="GeoJSON geometry of the detected slick"
+    )
+    payload: dict[str, Any] = Field(default_factory=dict)
+
+
+class DriftResult(BaseModel):
+    """Drift stage: origin ellipse + the raw runner payload."""
+
+    origin_ellipse: dict[str, Any] | None = Field(
+        default=None, description="GeoJSON polygon or {center_lon, center_lat, ...}"
+    )
+    payload: dict[str, Any] = Field(default_factory=dict)
+
+
+class ForcingProvenance(BaseModel):
+    """Which forcing actually drove the drift run (never assumed)."""
+
+    wind_source: str = "unavailable"
+    current_source: str = "unavailable"
+    synthetic: bool = False
+    payload: dict[str, Any] = Field(default_factory=dict)
+
+
+class AisProvenance(BaseModel):
+    """Which AIS the suspects were scored from, and whether it is real."""
+
+    coverage: CoverageState = "none"
+    provenance: str = "unknown"
+    reason: str | None = None
+    message: str | None = None
+    payload: dict[str, Any] = Field(default_factory=dict)
+
+
+class ProcessedScene(BaseModel):
+    """Everything one processed scene must persist.
+
+    Every field here exists so a result can be challenged later: where the
+    pixels came from (source + checksum), what was detected (polygon +
+    confidence + CI), how the drift was forced, which AIS the suspects were
+    scored from, and what the model version was.
+    """
+
+    case_id: str
+    scene: SceneMetadata = Field(default_factory=SceneMetadata)
+    detection: DetectionResult = Field(default_factory=DetectionResult)
+    drift: DriftResult = Field(default_factory=DriftResult)
+    forcing: ForcingProvenance = Field(default_factory=ForcingProvenance)
+    ais: AisProvenance = Field(default_factory=AisProvenance)
+    suspects: list[PipelineSuspect] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+    model_version: str | None = None
+    confidence: float | None = Field(default=None, ge=0.0, le=1.0)
+    confidence_lower: float | None = Field(default=None, ge=0.0, le=1.0)
+    confidence_upper: float | None = Field(default=None, ge=0.0, le=1.0)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+
+# Fields that must survive a round-trip. Used by the persistence tests and by
+# the store's own completeness check — an incomplete record is a failed
+# record, not a partially true one.
+REQUIRED_PERSISTED_FIELDS: tuple[str, ...] = (
+    "case_id",
+    "scene",
+    "detection",
+    "drift",
+    "forcing",
+    "ais",
+    "suspects",
+    "model_version",
+    "confidence",
+    "warnings",
+)
 
 
 # ---------- Pipeline ----------
