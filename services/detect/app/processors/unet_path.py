@@ -204,18 +204,15 @@ def gradcam_heatmap(
             raise RuntimeError("Grad-CAM hooks captured nothing — check the target layer")
 
         weights = gradients.mean(dim=tuple(range(2, gradients.dim())), keepdim=True)
-        cam = torch.relu((weights * activations).sum(dim=1, keepdim=True))
+        cam_tensor = torch.relu((weights * activations).sum(dim=1, keepdim=True))
         h, w = output_size or tuple(input_tensor.shape[-2:])
-        cam = F.interpolate(cam, size=(h, w), mode="bilinear", align_corners=False)
-        cam = cam.squeeze().detach().cpu().numpy().astype("float32")
+        cam_tensor = F.interpolate(cam_tensor, size=(h, w), mode="bilinear", align_corners=False)
+        cam = cam_tensor.squeeze().detach().cpu().numpy().astype("float32")
     finally:
         handle.remove()
 
     lo, hi = float(cam.min()), float(cam.max())
-    if hi - lo > 1e-12:
-        cam = (cam - lo) / (hi - lo)
-    else:
-        cam = cam * 0.0
+    cam = (cam - lo) / (hi - lo) if hi - lo > 1e-12 else cam * 0.0
     return cam
 
 

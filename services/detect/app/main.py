@@ -12,6 +12,7 @@ import os
 import time
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
+from typing import TypedDict
 
 import numpy as np
 import rasterio
@@ -52,7 +53,20 @@ _age_estimator: AgeEstimator | None = None
 _device: torch.device | None = None
 
 # Metrics counters
-_metrics = {
+class _Metrics(TypedDict):
+    """Typed view of the counters served by /metrics.
+
+    A plain dict literal infers ``dict[str, object]``, which makes every
+    ``+=`` and ``.append`` below an "unsupported operand"/"no attribute"
+    error. Naming each key's real type fixes the reads and the writes.
+    """
+
+    requests_total: int
+    spills_detected_total: int
+    inference_times_ms: list[float]
+
+
+_metrics: _Metrics = {
     "requests_total": 0,
     "spills_detected_total": 0,
     "inference_times_ms": [],
@@ -177,7 +191,6 @@ async def detect(request: DetectRequest):
         raise HTTPException(status_code=503, detail="Model not loaded")
 
     _metrics["requests_total"] += 1
-    start = time.perf_counter()
 
     try:
         # Run inference in thread pool to avoid blocking event loop
@@ -189,10 +202,10 @@ async def detect(request: DetectRequest):
         )
         return result
     except FileNotFoundError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        raise HTTPException(status_code=404, detail=str(e)) from e
     except Exception as e:
         logger.exception(f"Detection failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Detection failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Detection failed: {e}") from e
 
 
 @app.post("/detect/analyze", response_model=AnalyzeResponse)
@@ -206,7 +219,6 @@ async def analyze(request: AnalyzeRequest):
         raise HTTPException(status_code=503, detail="Model not loaded")
 
     _metrics["requests_total"] += 1
-    total_start = time.perf_counter()
 
     try:
         loop = asyncio.get_event_loop()
@@ -217,10 +229,10 @@ async def analyze(request: AnalyzeRequest):
         )
         return result
     except FileNotFoundError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        raise HTTPException(status_code=404, detail=str(e)) from e
     except Exception as e:
         logger.exception(f"Analysis failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Analysis failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Analysis failed: {e}") from e
 
 
 # ---------------------------------------------------------------------------
@@ -250,8 +262,6 @@ def _run_detection(request: DetectRequest) -> DetectResponse:
     # Post-process to polygons
     with rasterio.open(request.image_path) as src:
         transform = src.transform
-        crs_epsg = int(src.crs.to_epsg()) if src.crs and src.crs.to_epsg() else 4326
-
     _post_processor.confidence_threshold = request.confidence_threshold
     polygons, geojson_dict = _post_processor.process(logits, transform=transform)
 
@@ -330,7 +340,6 @@ def _run_full_analysis(request: AnalyzeRequest) -> AnalyzeResponse:
     # Post-process
     with rasterio.open(request.image_path) as src:
         transform = src.transform
-        crs_epsg = int(src.crs.to_epsg()) if src.crs and src.crs.to_epsg() else 4326
 
     _post_processor.confidence_threshold = request.confidence_threshold
     _post_processor.min_area_m2 = request.min_area_m2
@@ -343,9 +352,8 @@ def _run_full_analysis(request: AnalyzeRequest) -> AnalyzeResponse:
     # Lookalike filtering per polygon
     lookalike_results: list[LookalikeAnalysis] = []
     filtered_polygons = []
-    filtered_geojson_features = []
 
-    for i, poly in enumerate(polygons):
+    for poly in polygons:
         geom = poly["geometry"]
 
         # Extract patch around polygon for texture analysis
@@ -396,7 +404,6 @@ def _run_full_analysis(request: AnalyzeRequest) -> AnalyzeResponse:
     spills = []
     for i, poly in enumerate(filtered_polygons):
         geom = poly["geometry"]
-        age = age_estimates[i] if i < len(age_estimates) else None
         conf = 1.0 - (lookalike_results[i].score if i < len(lookalike_results) else 0.0)
         spill = DetectedSpill(
             id=f"spill_{i:04d}",

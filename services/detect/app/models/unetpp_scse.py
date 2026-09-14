@@ -42,6 +42,7 @@ class SpatialSE(nn.Module):
     def __init__(self, channels: int) -> None:
         super().__init__()
         self.conv = nn.Conv2d(channels, 1, kernel_size=1, bias=True)
+        assert self.conv.bias is not None  # bias=True above; narrows Tensor | None
         nn.init.constant_(self.conv.bias, 0.0)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -78,6 +79,9 @@ class AttentionDecoderBlock(nn.Module):
         self.scse = SCSEBlock(out_channels)
         self.relu = nn.ReLU(inplace=True)
 
+        # Either a projection conv (channel mismatch) or a no-op identity, so
+        # the attribute is genuinely a plain Module, not always a Conv2d.
+        self.skip_proj: nn.Module
         if in_channels + skip_channels != out_channels:
             self.skip_proj = nn.Conv2d(in_channels + skip_channels, out_channels, 1, bias=False)
         else:
@@ -153,7 +157,13 @@ class UNetPlusPlusSCSE(nn.Module):
             out_indices=(0, 1, 2, 3, 4),
         )
 
-        encoder_channels = self.encoder.feature_info.channels()
+        # torch types `nn.Module.__getattr__` as returning `Tensor | Module` and
+        # timm annotates `create_model` as bare `Module`, so the real
+        # `feature_info` attribute is invisible to mypy. Narrow ignore for a
+        # third-party stub gap — at runtime this is a timm feature extractor.
+        encoder_channels = (
+            self.encoder.feature_info.channels()  # type: ignore[union-attr, operator]
+        )
         # ResNet bottleneck: channels = [64, 128, 256, 512, 1024] (for resnet50+)
         # ResNet basic:     channels = [64, 64, 128, 256, 512]
         decoder_channels_full = list(decoder_channels) + [decoder_channels[-1]]
