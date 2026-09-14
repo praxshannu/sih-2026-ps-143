@@ -69,7 +69,6 @@ class LSTMDecoder(nn.Module):
     def forward(
         self, encoder_output: torch.Tensor, h_n: torch.Tensor, c_n: torch.Tensor
     ) -> torch.Tensor:
-        batch_size = encoder_output.size(0)
         decoder_input = encoder_output[:, -1:, :].repeat(1, self.seq_len, 1)
         output, _ = self.lstm(decoder_input, (h_n, c_n))
         return self.output_proj(output)

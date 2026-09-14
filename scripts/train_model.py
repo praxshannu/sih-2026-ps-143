@@ -88,7 +88,7 @@ def main():
         model.train()
         train_loss = 0.0
 
-        for batch_idx, (images, masks) in enumerate(train_loader, 1):
+        for images, masks in train_loader:
             images = images.to(device, non_blocking=True)
             masks = masks.to(device, non_blocking=True)
 

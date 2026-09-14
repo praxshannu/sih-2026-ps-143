@@ -83,10 +83,7 @@ def read_raster(path: Path) -> np.ndarray:
 
             with Image.open(path) as img:
                 array = np.asarray(img, dtype=np.float32)
-                if array.ndim == 2:
-                    array = array[np.newaxis, ...]
-                else:
-                    array = array.transpose(2, 0, 1)
+                array = array[np.newaxis, ...] if array.ndim == 2 else array.transpose(2, 0, 1)
     if array.ndim == 2:
         array = array[np.newaxis, ...]
     if array.ndim != 3:

@@ -196,7 +196,7 @@ class SplitAssignment:
 
 def scene_rank(scene: str, seed: int) -> str:
     """Deterministic, process-stable ranking key for a scene id."""
-    return hashlib.sha256(f"{seed}|{scene}".encode("utf-8")).hexdigest()
+    return hashlib.sha256(f"{seed}|{scene}".encode()).hexdigest()
 
 
 def assign_scene_splits(
@@ -220,7 +220,7 @@ def assign_scene_splits(
 
     forced_test = {str(s) for s in test_only_scenes} | {str(s) for s in test_scenes}
     pool = sorted({str(s) for s in scene_ids} - forced_test)
-    by_scene: dict[str, str] = {scene: SPLIT_TEST for scene in sorted(forced_test)}
+    by_scene: dict[str, str] = dict.fromkeys(sorted(forced_test), SPLIT_TEST)
 
     warnings: list[str] = []
     n_val = int(round(len(pool) * val_fraction))
@@ -293,7 +293,7 @@ def limit_scenes(
     ``pinned`` (e.g. held-out test scenes) survive the cut; the remainder is
     taken from the sorted scene list so the subset is reproducible.
     """
-    ordered = sorted(set(str(s) for s in scene_ids))
+    ordered = sorted({str(s) for s in scene_ids})
     if limit is None or limit <= 0 or limit >= len(ordered):
         return ordered
     keep = {str(s) for s in pinned}

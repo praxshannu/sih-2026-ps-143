@@ -168,7 +168,9 @@ def metrics_from_counts(counts: BinaryCounts) -> dict[str, float]:
     perfect = 1.0
     precision = _safe_ratio(counts.tp, counts.tp + counts.fp, perfect if degenerate else 0.0)
     recall = _safe_ratio(counts.tp, counts.tp + counts.fn, perfect if degenerate else 0.0)
-    f1 = _safe_ratio(2 * counts.tp, 2 * counts.tp + counts.fp + counts.fn, perfect if degenerate else 0.0)
+    f1 = _safe_ratio(
+        2 * counts.tp, 2 * counts.tp + counts.fp + counts.fn, perfect if degenerate else 0.0
+    )
     return {
         "iou": _safe_ratio(counts.tp, union, perfect),
         "precision": precision,
@@ -272,7 +274,9 @@ class SceneStatistics:
             std=tuple(float(v) for v in payload["std"]),
             percentiles=tuple(tuple(float(v) for v in row) for row in payload["percentiles"]),
             band_names=tuple(str(v) for v in payload["band_names"]),
-            percentile_levels=tuple(float(v) for v in payload.get("percentile_levels", (1, 50, 99))),
+            percentile_levels=tuple(
+                float(v) for v in payload.get("percentile_levels", (1, 50, 99))
+            ),
         )
 
     def unavailable(self) -> bool:
@@ -321,8 +325,10 @@ def compute_scene_statistics(
         stds.append(float(finite.std()))
         pcts.append(tuple(float(v) for v in np.percentile(finite, percentiles)))
 
-    names = band_names if len(band_names) == arr.shape[0] else tuple(
-        f"band_{i}" for i in range(arr.shape[0])
+    names = (
+        band_names
+        if len(band_names) == arr.shape[0]
+        else tuple(f"band_{i}" for i in range(arr.shape[0]))
     )
     return SceneStatistics(
         mean=tuple(means),

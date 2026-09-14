@@ -44,7 +44,7 @@ import shutil
 import sys
 import warnings
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -59,8 +59,8 @@ from splits import (  # noqa: E402
     SPLIT_TRAIN,
     SPLIT_VAL,
     TEST_ONLY_PARTS,
-    assign_scene_splits,
     assert_no_scene_leakage,
+    assign_scene_splits,
     default_scene_id,
     limit_scenes,
     normalise_part,
@@ -149,7 +149,7 @@ def sha256_file(path: Path) -> str:
 
 
 def utc_now() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def is_mask_candidate(path: Path, mask_suffixes: tuple[str, ...]) -> bool:
@@ -475,7 +475,9 @@ def prepare(
         sample.split = assignment.by_scene[sample.scene_id]
 
     assert_no_scene_leakage((s.scene_id, s.split) for s in all_samples)
-    leaked_parts = sorted({s.part for s in all_samples if s.part in TEST_ONLY_PARTS and s.split != SPLIT_TEST})
+    leaked_parts = sorted(
+        {s.part for s in all_samples if s.part in TEST_ONLY_PARTS and s.split != SPLIT_TEST}
+    )
     if leaked_parts:
         raise PreparationError(
             f"Part III ({', '.join(leaked_parts)}) leaked into a non-test split. "
@@ -548,7 +550,8 @@ def prepare(
         "dry_run": dry_run,
     }
     report["scene_leakage"] = {
-        scene: sorted(splits) for scene, splits in scene_leakage((s.scene_id, s.split) for s in all_samples).items()
+        scene: sorted(splits)
+        for scene, splits in scene_leakage((s.scene_id, s.split) for s in all_samples).items()
     }
 
     if dry_run:

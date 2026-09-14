@@ -135,7 +135,8 @@ def train_one_epoch(
 
         if batch_idx % 20 == 0:
             print(
-                f"  [Batch {batch_idx}/{len(loader)}] loss={loss.item():.4f} iou={compute_iou(logits.detach(), masks):.4f}"
+                f"  [Batch {batch_idx}/{len(loader)}] loss={loss.item():.4f} "
+                f"iou={compute_iou(logits.detach(), masks):.4f}"
             )
 
     return {"loss": total_loss / n_batches, "iou": total_iou / n_batches}
@@ -318,7 +319,8 @@ def main() -> None:
 
         print(f"[train] Train Loss={train_metrics['loss']:.4f} IoU={train_metrics['iou']:.4f}")
         print(
-            f"[train] Val   Loss={val_metrics['loss']:.4f} IoU={val_metrics['iou']:.4f} F1={val_metrics['f1']:.4f}"
+            f"[train] Val   Loss={val_metrics['loss']:.4f} "
+            f"IoU={val_metrics['iou']:.4f} F1={val_metrics['f1']:.4f}"
         )
 
         checkpoint = {
