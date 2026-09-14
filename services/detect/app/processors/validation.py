@@ -164,8 +164,7 @@ def validate_scene(
             if min(width, height) < min_side_px:
                 return _invalid(
                     "scene_too_small",
-                    f"scene is {width}x{height} px; the smallest usable side is "
-                    f"{min_side_px} px",
+                    f"scene is {width}x{height} px; the smallest usable side is {min_side_px} px",
                     width=width,
                     height=height,
                     min_side_px=min_side_px,

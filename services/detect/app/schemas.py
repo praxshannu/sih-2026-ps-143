@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -13,20 +13,20 @@ from pydantic import BaseModel, Field
 # ---------------------------------------------------------------------------
 
 
-class ConfidenceLevel(str, Enum):
+class ConfidenceLevel(StrEnum):
     HIGH = "high"
     MEDIUM = "medium"
     LOW = "low"
 
 
-class SpillAgeCategory(str, Enum):
+class SpillAgeCategory(StrEnum):
     FRESH = "fresh"
     MILD = "mild"
     WEATHERED = "weathered"
     HEAVY = "heavy"
 
 
-class ProcessingStatus(str, Enum):
+class ProcessingStatus(StrEnum):
     SUCCESS = "success"
     PARTIAL = "partial"
     FAILED = "failed"

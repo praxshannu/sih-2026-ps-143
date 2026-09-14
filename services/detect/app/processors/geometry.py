@@ -64,8 +64,7 @@ def measurement_crs(crs: CRS, lon0: float, lat0: float) -> CRS:
     if not is_geographic(crs):
         return crs
     return CRS.from_proj4(
-        f"+proj=aeqd +lat_0={lat0:.6f} +lon_0={lon0:.6f} "
-        f"+datum=WGS84 +units=m +no_defs"
+        f"+proj=aeqd +lat_0={lat0:.6f} +lon_0={lon0:.6f} +datum=WGS84 +units=m +no_defs"
     )
 
 
@@ -150,17 +149,13 @@ class SceneGeometry:
         """Reproject a polygon from the raster CRS to EPSG:4326."""
         if self.crs == WGS84:
             return poly
-        projected = shapely_transform(
-            lambda x, y: self._to_wgs84.transform(x, y), poly
-        )
+        projected = shapely_transform(lambda x, y: self._to_wgs84.transform(x, y), poly)
         return _ensure_polygon(projected)
 
     def crs_to_metric_polygon(self, poly: Polygon) -> Polygon:
         if self.metric_crs == self.crs:
             return poly
-        projected = shapely_transform(
-            lambda x, y: self._to_metric.transform(x, y), poly
-        )
+        projected = shapely_transform(lambda x, y: self._to_metric.transform(x, y), poly)
         return _ensure_polygon(projected)
 
     # ── measurement ────────────────────────────────────────────────────────

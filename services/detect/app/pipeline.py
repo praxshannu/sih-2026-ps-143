@@ -244,9 +244,7 @@ class DetectPipeline:
         path = Path(tif_path)
         model = self.model_status.as_dict()
 
-        validation = validate_scene(
-            path, min_valid_fraction=opts.min_valid_fraction
-        )
+        validation = validate_scene(path, min_valid_fraction=opts.min_valid_fraction)
         if not validation.valid:
             logger.warning("scene rejected: {} ({})", path, validation.reason_code)
             return InferenceResult(
@@ -328,7 +326,15 @@ class DetectPipeline:
         valid_fraction = float(ocean.sum() / max(ocean.size, 1))
         if not ocean.any():
             return self._no_detection_result(
-                path, opts, validation, geometry, active_plan, started, vv_db, ocean, 0.0,
+                path,
+                opts,
+                validation,
+                geometry,
+                active_plan,
+                started,
+                vv_db,
+                ocean,
+                0.0,
                 reason="no finite, unmasked ocean pixels after speckle filtering",
             )
 
@@ -374,7 +380,14 @@ class DetectPipeline:
         labelled, n_blobs = ndi.label(cleaned)
         if n_blobs == 0:
             return self._no_detection_result(
-                path, opts, validation, geometry, active_plan, started, vv_db, ocean,
+                path,
+                opts,
+                validation,
+                geometry,
+                active_plan,
+                started,
+                vv_db,
+                ocean,
                 dark_fraction,
                 reason="no connected dark formation passed both threshold gates",
                 extra_scene=self._scene_stats(
@@ -669,8 +682,7 @@ class DetectPipeline:
         if n_detections == 0:
             return (
                 STATE_NO_DETECTION,
-                "scene is valid and was fully processed; no formation passed both "
-                "threshold gates",
+                "scene is valid and was fully processed; no formation passed both threshold gates",
             )
         if best_high < ci_high_threshold:
             return (
@@ -746,9 +758,7 @@ class DetectPipeline:
             {
                 "valid_fraction": round(float(ocean.sum() / max(ocean.size, 1)), 4),
                 "dark_fraction": round(float(dark_fraction), 4),
-                "median_ocean_db": (
-                    float(np.nanmedian(vv_db[ocean])) if ocean.any() else None
-                ),
+                "median_ocean_db": (float(np.nanmedian(vv_db[ocean])) if ocean.any() else None),
                 "crs": geometry.crs.to_string(),
                 "pixel_size_m": [float(v) for v in geometry.pixel_size_m],
             }
@@ -867,9 +877,7 @@ def _fill_nan(values: np.ndarray, valid: np.ndarray) -> np.ndarray:
     if not bad.any():
         return out
     if valid.any():
-        local_mean = masked_box_filter(
-            np.where(valid, out, np.nan), valid, 15
-        )
+        local_mean = masked_box_filter(np.where(valid, out, np.nan), valid, 15)
         fallback = float(np.nanmean(out[valid])) if valid.any() else 0.0
         fill = np.where(np.isfinite(local_mean), local_mean, fallback)
     else:

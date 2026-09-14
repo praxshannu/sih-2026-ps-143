@@ -29,12 +29,11 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from app.pipeline import DETECTOR_ID, DetectPipeline, PipelineOptions
 from fastapi import APIRouter, Header, HTTPException, Query, Request
 from loguru import logger
 from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
-
-from app.pipeline import DETECTOR_ID, DetectPipeline, PipelineOptions
 
 router = APIRouter(prefix="/detect/scene", tags=["detect:scene"])
 

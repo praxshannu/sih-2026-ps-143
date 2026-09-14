@@ -86,8 +86,7 @@ def test_real_sentinel1_scene_completes_inference(pipeline):
     result = pipeline.run(scene, PipelineOptions(with_evidence=True))
 
     assert result["state"] != "invalid_scene", (
-        f"{scene.name} failed inference: {result['state_reason']} "
-        f"(flags={result['flags']})"
+        f"{scene.name} failed inference: {result['state_reason']} (flags={result['flags']})"
     )
     assert result["state"] in {
         "ok",

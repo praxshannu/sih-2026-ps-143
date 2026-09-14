@@ -52,6 +52,7 @@ _lookalike_filter: LookalikeFilter | None = None
 _age_estimator: AgeEstimator | None = None
 _device: torch.device | None = None
 
+
 # Metrics counters
 class _Metrics(TypedDict):
     """Typed view of the counters served by /metrics.

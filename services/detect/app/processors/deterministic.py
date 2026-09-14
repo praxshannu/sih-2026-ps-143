@@ -88,9 +88,7 @@ class PolygonFeature:
 # ── Speckle filtering ─────────────────────────────────────────────────────
 
 
-def lee_sigma_filter(
-    linear: np.ndarray, win: int = 7, sigma_v: float | None = None
-) -> np.ndarray:
+def lee_sigma_filter(linear: np.ndarray, win: int = 7, sigma_v: float | None = None) -> np.ndarray:
     """Lee-sigma speckle filter, the standard SAR smoothing operator.
 
     Reduces multiplicative speckle by replacing each pixel with a weighted
