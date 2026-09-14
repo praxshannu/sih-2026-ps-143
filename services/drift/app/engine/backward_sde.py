@@ -20,8 +20,9 @@ Order of operations (AGENTS.md hard rule)
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Callable
+from typing import Any
 
 import numpy as np
 from loguru import logger
@@ -29,7 +30,9 @@ from loguru import logger
 from ..schemas import ConfidenceEllipse
 from .kij_tensor import k_eigenvalues
 from .regime_classifier import (
+    REGIME_LABELS,
     OceanRegime,
+    RegimeLabel,
     RegimeSelection,
     regime_k_params,
     select_regime,
@@ -70,8 +73,8 @@ class BackwardResult:
     n_steps: int = 0
 
     @property
-    def regime_label(self) -> str | None:
-        return self.regime.value if self.regime else None
+    def regime_label(self) -> RegimeLabel | None:
+        return REGIME_LABELS[self.regime] if self.regime is not None else None
 
 
 def rk4_step_backward(
@@ -100,6 +103,7 @@ def rk4_step_backward(
     -------
     x_new, y_new : (N,) positions after one RK4 step
     """
+
     def drift(px: np.ndarray, py: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         """Backward drift: a = -(u - div_K)"""
         return -(u - div_K[:, 0]), -(v - div_K[:, 1])
@@ -218,10 +222,7 @@ def integrate_backward(
     BackwardResult with the particle cloud, the selected regime (or None) and
     the WMC bookkeeping.
     """
-    if random_seed is not None:
-        rng = np.random.default_rng(random_seed)
-    else:
-        rng = np.random.default_rng()
+    rng = np.random.default_rng(random_seed) if random_seed is not None else np.random.default_rng()
 
     total_seconds = spill_age_hours * 3600.0
     n_steps = max(int(np.ceil(total_seconds / dt_seconds)), 1)

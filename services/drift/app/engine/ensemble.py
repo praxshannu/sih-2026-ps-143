@@ -117,7 +117,6 @@ def make_interpolators(
         return v_field[ti, yi, xi]
 
     def K_interp(t, x, y):
-        n = len(x)
         ti = np.argmin(np.abs(time_grid - t))
         xi = np.clip(np.searchsorted(lon_grid, x), 0, len(lon_grid) - 1)
         yi = np.clip(np.searchsorted(lat_grid, y), 0, len(lat_grid) - 1)

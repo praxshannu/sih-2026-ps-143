@@ -237,9 +237,7 @@ def divergence_K_scattered(
     for name, comp in (("Kxx", K[:, 0, 0]), ("Kxy", K[:, 0, 1]), ("Kyy", K[:, 1, 1])):
         coef, *_ = np.linalg.lstsq(design, np.asarray(comp, dtype=np.float64), rcond=None)
         coefs[name] = coef
-        residuals.append(
-            float(np.max(np.abs(design @ coef - np.asarray(comp, dtype=np.float64))))
-        )
+        residuals.append(float(np.max(np.abs(design @ coef - np.asarray(comp, dtype=np.float64)))))
 
     div_x = coefs["Kxx"][1] + coefs["Kxy"][2]
     div_y = coefs["Kxy"][1] + coefs["Kyy"][2]

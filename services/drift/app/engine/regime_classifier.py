@@ -3,17 +3,30 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
-from enum import Enum
-from typing import Any
+from enum import StrEnum
+from typing import Any, Literal
 
 import numpy as np
 from loguru import logger
 
 
-class OceanRegime(str, Enum):
+class OceanRegime(StrEnum):
     MARKOV1 = "markov1"
     REDI = "redi"
     SMAGORINSKY = "smagorinsky"
+
+
+#: The wire labels for OceanRegime. Pinned as a Literal so the response schemas
+#: can constrain their `regime` field without importing the enum.
+RegimeLabel = Literal["markov1", "redi", "smagorinsky"]
+
+#: Enum -> wire label. An explicit mapping keeps the Literal type through the
+#: lookup, where `OceanRegime.value` would collapse it to plain `str`.
+REGIME_LABELS: dict[OceanRegime, RegimeLabel] = {
+    OceanRegime.MARKOV1: "markov1",
+    OceanRegime.REDI: "redi",
+    OceanRegime.SMAGORINSKY: "smagorinsky",
+}
 
 
 @dataclass
@@ -88,16 +101,15 @@ def select_regime(
     regime = classify_regime(depth, coast, speed, lat_a)
     votes = {
         OceanRegime.MARKOV1.value: int(((depth > 200.0) & (coast > 50.0)).sum()),
-        OceanRegime.REDI.value: int(
-            (((depth > 50.0) & (depth <= 200.0)) | (coast <= 50.0)).sum()
-        ),
+        OceanRegime.REDI.value: int((((depth > 50.0) & (depth <= 200.0)) | (coast <= 50.0)).sum()),
         OceanRegime.SMAGORINSKY.value: int(
             ((depth <= 50.0) | (speed > 0.5) | (np.abs(lat_a) < 60.0)).sum()
         ),
     }
     return RegimeSelection(
         regime=regime,
-        reason=f"classified from {size} sample(s): " + ", ".join(f"{k}={v}" for k, v in votes.items()),
+        reason=f"classified from {size} sample(s): "
+        + ", ".join(f"{k}={v}" for k, v in votes.items()),
         votes=votes,
         inputs_available=available,
     )
@@ -175,7 +187,6 @@ def classify_regime(
     -------
     OceanRegime : the dominant regime (majority vote over particles)
     """
-    n = len(depth_m)
     votes = np.zeros(3, dtype=np.int64)
 
     # Conditions

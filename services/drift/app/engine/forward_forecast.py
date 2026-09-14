@@ -69,7 +69,7 @@ def integrate_forward(
     *,
     dt_seconds: float = 1800.0,
     random_seed: int | None = None,
-) -> dict[str, np.ndarray]:
+) -> dict[str, Any]:
     """Run forward Lagrangian simulation from origin distribution.
 
     Parameters
@@ -88,10 +88,7 @@ def integrate_forward(
         'lats': (N, n_timesteps+1) latitude history
         'times': (n_timesteps+1,) time in hours from origin
     """
-    if random_seed is not None:
-        rng = np.random.default_rng(random_seed)
-    else:
-        rng = np.random.default_rng()
+    rng = np.random.default_rng(random_seed) if random_seed is not None else np.random.default_rng()
 
     total_seconds = forecast_hours * 3600.0
     n_steps = int(np.ceil(total_seconds / dt_seconds))
@@ -211,9 +208,7 @@ def compute_forecast_spread(
             cx = float(np.nanmean(L[ok])) if center_lon is None else float(center_lon)
             cy = float(np.nanmean(A[ok])) if center_lat is None else float(center_lat)
             last_cx, last_cy = cx, cy
-            km_per_deg_lon = km_per_deg_lat * float(
-                np.cos(np.radians(np.clip(cy, -89.0, 89.0)))
-            )
+            km_per_deg_lon = km_per_deg_lat * float(np.cos(np.radians(np.clip(cy, -89.0, 89.0))))
             dx = (L[ok] - cx) * km_per_deg_lon
             dy = (A[ok] - cy) * km_per_deg_lat
             radii = np.sqrt(dx * dx + dy * dy)

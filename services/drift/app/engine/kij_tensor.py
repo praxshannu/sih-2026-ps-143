@@ -101,7 +101,6 @@ def k_tensor_assembly(
     #    K_R = Kr_h * (1, 1/aspect) where aspect = H/L (depth/shelf width)
     #    Off-diagonal terms from isopycnal slope coupling (simplified here)
     aspect = np.maximum(depth_m, 1.0) / 1000.0  # rough scale
-    kr_v = kr_h / np.maximum(kr_kv_ratio, 1.0)
 
     K_redi = np.zeros((n, 2, 2), dtype=np.float64)
     K_redi[:, 0, 0] = kr_h
@@ -140,7 +139,6 @@ def _enforce_positive_definite(K: np.ndarray) -> None:
 
     Operates in-place on (N, 2, 2) tensor.
     """
-    n = K.shape[0]
 
     # For each 2x2 symmetric tensor, enforce eigenvalues > 0
     a = K[:, 0, 0]
@@ -152,7 +150,6 @@ def _enforce_positive_definite(K: np.ndarray) -> None:
     det = a * d - b * b
     discriminant = np.maximum(trace**2 - 4.0 * det, 0.0)
     eig_min = 0.5 * (trace - np.sqrt(discriminant))
-    eig_max = 0.5 * (trace + np.sqrt(discriminant))
 
     # Clamp minimum eigenvalue
     min_eig = K_MOLECULAR
