@@ -1,0 +1,263 @@
+# ============================================================================
+# SENTINEL — lightweight profile for a 16 GB Apple Silicon machine
+# ============================================================================
+#
+# STANDALONE FILE. Run it on its own:
+#
+#     docker compose -f docker-compose.lite.yml up --build
+#
+# It is deliberately NOT an override for docker-compose.txt. Compose overrides
+# can add or change services but cannot remove them, so `-f docker-compose.txt
+# -f docker-compose.lite.yml` would still start Prometheus, Grafana, the Celery
+# worker and the intel service — the four things this profile exists to drop.
+#
+# ── What is here, and what is not ─────────────────────────────────────────
+#
+#   IN   postgres+postgis, redis, api, ingest, detect, drift, attribute, ui
+#   OUT  prometheus, grafana, celery worker, intel (LLM narrative)
+#
+# Budget: the eight services below are capped at roughly 8.4 GB combined, which
+# leaves headroom on a 16 GB machine for Docker, the browser and the map.
+#
+# ── Why the commands are overridden ───────────────────────────────────────
+#
+#   detect  -> app.main_det:app
+#     The default `app.main:app` loads the UNet++ stack (torch + timm) at import
+#     time. On this hardware there is no checkpoint to load, so that is ~2 GB of
+#     image and startup time spent on a code path that reports "untrained" and
+#     emits nothing. main_det is the torch-free Tier-A detector and is the
+#     production entry point on this machine (docs/VERIFICATION.md §7).
+#
+#   drift   -> app.main_attribution:app
+#     The verified OpenDrift/OpenOil path (docs/VERIFICATION.md §9-§11) lives
+#     behind this entry point. `app.main` is the older SDE variant.
+#
+# ── Known limitation, stated rather than hidden ───────────────────────────
+#
+# The drift service needs `cfgrib`/`eccodes` to read ERA5 GRIB. On arm64 Linux
+# that requires the eccodes system library, which is NOT installed in the
+# current drift image. If the drift container starts but every forecast fails
+# with an eccodes error, either add `libeccodes0` to the drift Dockerfile or run
+# drift natively (see docs/RUNBOOK.md) — on macOS, Homebrew's eccodes works and
+# that is how the numbers in docs/VERIFICATION.md were produced.
+
+name: sentinel-lite
+
+services:
+  db:
+    image: postgis/postgis:15-3.4
+    environment:
+      POSTGRES_DB: sentinel
+      POSTGRES_USER: ${DB_USER:-sentinel}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-sentinel_secret}
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # Migrations are applied in filename order on first initialisation.
+      - ./database/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-sentinel} -d sentinel"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+
+  sentinel-ingest:
+    build:
+      context: ./services/ingest
+    ports:
+      - "8001:8001"
+    env_file:
+      - .env
+    environment:
+      # Compose service DNS, not 127.0.0.1. `.env` carries the native
+      # (127.0.0.1) values because that is how this box normally runs, so they
+      # are overridden here rather than trusted.
+      INGEST_SERVICE_URL: http://sentinel-ingest:8001
+      DETECT_SERVICE_URL: http://sentinel-detect:8002
+      DRIFT_SERVICE_URL: http://sentinel-drift:8003
+      ATTRIBUTE_SERVICE_URL: http://sentinel-attribute:8004
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8001/health', timeout=5).status == 200 else 1)\""]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 768m
+
+  sentinel-detect:
+    build:
+      context: ./services/detect
+    # Torch-free Tier-A entry point. See the header note.
+    command: ["uvicorn", "app.main_det:app", "--host", "0.0.0.0", "--port", "8002"]
+    ports:
+      - "8002:8002"
+    env_file:
+      - .env
+    environment:
+      DETECT_SERVICE_URL: http://sentinel-detect:8002
+    volumes:
+      # Real SAR GeoTIFFs and their inference sidecars live here. Mounted
+      # read-write because the analyst upload endpoint writes into data/sar/.
+      - ./data:/app/data
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8002/health', timeout=5).status == 200 else 1)\""]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          # Tiled inference on a 2048x2048 scene with a 1024 px tile and a
+          # 192 px halo holds several float32 working arrays at once.
+          memory: 3g
+
+  sentinel-drift:
+    build:
+      context: ./services/drift
+    # Verified OpenDrift/OpenOil entry point. See the header note.
+    command: ["uvicorn", "app.main_attribution:app", "--host", "0.0.0.0", "--port", "8003"]
+    ports:
+      - "8003:8003"
+    env_file:
+      - .env
+    environment:
+      DRIFT_SERVICE_URL: http://sentinel-drift:8003
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8003/health', timeout=5).status == 200 else 1)\""]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
+    deploy:
+      resources:
+        limits:
+          # A 64-member ensemble over a multi-day window is the peak here.
+          memory: 2g
+
+  sentinel-attribute:
+    build:
+      context: ./services/attribute
+    ports:
+      - "8004:8004"
+    env_file:
+      - .env
+    environment:
+      ATTRIBUTE_SERVICE_URL: http://sentinel-attribute:8004
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8004/health', timeout=5).status == 200 else 1)\""]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+
+  sentinel-api:
+    build:
+      context: ./services/api
+    ports:
+      - "${API_PORT:-8000}:8000"
+    env_file:
+      - .env
+    environment:
+      # The gateway is the only thing the UI talks to (AGENTS.md), so it is the
+      # one place that must know every upstream.
+      INGEST_SERVICE_URL: http://sentinel-ingest:8001
+      DETECT_SERVICE_URL: http://sentinel-detect:8002
+      DRIFT_SERVICE_URL: http://sentinel-drift:8003
+      ATTRIBUTE_SERVICE_URL: http://sentinel-attribute:8004
+      DATABASE_URL: postgresql+asyncpg://${DB_USER:-sentinel}:${DB_PASSWORD:-sentinel_secret}@db:5432/sentinel
+      REDIS_URL: redis://redis:6379/0
+    volumes:
+      - ./data:/app/data
+      - ./scripts:/app/scripts:ro
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      sentinel-detect:
+        condition: service_started
+      sentinel-drift:
+        condition: service_started
+      sentinel-attribute:
+        condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5).status == 200 else 1)\""]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 768m
+
+  sentinel-ui:
+    build:
+      context: ./services/ui
+    ports:
+      - "${UI_PORT:-3000}:3000"
+    depends_on:
+      sentinel-api:
+        condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/ >/dev/null 2>&1 || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          memory: 128m
+
+volumes:
+  pgdata:

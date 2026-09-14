@@ -13,9 +13,12 @@ MYPY_TARGETS := $(foreach s,$(SERVICES),mypy-$(s))
 dev:
 	docker compose -f docker-compose.txt -f docker-compose.override.yml up --build
 
-# 16 GB Apple Silicon profile: no CUDA, no Prometheus/Grafana/Flower.
+# 16 GB Apple Silicon profile: 8 services, no CUDA, no Prometheus/Grafana/
+# worker/intel. docker-compose.lite.yml is STANDALONE, not an override —
+# compose overrides can add or change services but cannot remove them, so
+# layering it on docker-compose.txt would still start everything it drops.
 dev-lite:
-	docker compose -f docker-compose.txt -f docker-compose.lite.yml up --build
+	docker compose -f docker-compose.lite.yml up --build
 
 lite:
 	$(MAKE) dev-lite
@@ -24,7 +27,7 @@ build:
 	docker compose -f docker-compose.txt build
 
 build-lite:
-	docker compose -f docker-compose.txt -f docker-compose.lite.yml build
+	docker compose -f docker-compose.lite.yml build
 
 up:
 	docker compose -f docker-compose.txt up -d
