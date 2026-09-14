@@ -13,6 +13,11 @@ Examples::
 
 The extracted archive still needs a dataset-layout preparation step before
 training. Never point the trainer at an empty directory: it now fails loudly.
+
+``--max-bytes`` caps the download so a laptop cannot be filled by accident;
+once an archive is extracted, prepare it with::
+
+    python scripts/prepare_zenodo_dataset.py --source-root data/zenodo --limit 20
 """
 
 from __future__ import annotations
@@ -84,10 +89,37 @@ def _md5(path: Path) -> str:
     return digest.hexdigest()
 
 
-def download(archive: Archive, output: Path, min_free_gb: float, extract: bool) -> None:
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _parse_bytes(value: str) -> int:
+    text = value.strip().lower().replace(" ", "")
+    for suffix, factor in (("gib", 1024**3), ("mib", 1024**2), ("kib", 1024), ("b", 1)):
+        if text.endswith(suffix):
+            return int(float(text[: -len(suffix)]) * factor)
+    return int(float(text))
+
+
+def download(
+    archive: Archive,
+    output: Path,
+    min_free_gb: float,
+    extract: bool,
+    max_bytes: int | None = None,
+) -> None:
     output.mkdir(parents=True, exist_ok=True)
     free = shutil.disk_usage(output).free
     required = archive.size + (5 * 1024**3 if extract else 0)
+    if max_bytes is not None and archive.size > max_bytes:
+        raise RuntimeError(
+            f"Refusing {archive.record}: archive is {_human(archive.size)}, "
+            f"over the --max-bytes budget of {_human(max_bytes)}."
+        )
     if free < required + int(min_free_gb * 1024**3):
         raise RuntimeError(
             f"Refusing {archive.record}: needs about {_human(required)} plus "
@@ -109,6 +141,9 @@ def download(archive: Archive, output: Path, min_free_gb: float, extract: bool) 
         target.unlink(missing_ok=True)
         raise RuntimeError(f"MD5 mismatch for {target.name}: {actual} != {archive.checksum}")
 
+    # SHA-256 is computed as well so scripts/prepare_zenodo_dataset.py can
+    # stamp per-row archive provenance into its manifest.
+    sha = _sha256(target)
     manifest = {
         "record": archive.record,
         "zenodo_record": archive.record_id,
@@ -116,10 +151,11 @@ def download(archive: Archive, output: Path, min_free_gb: float, extract: bool) 
         "file": archive.name,
         "bytes": archive.size,
         "md5": actual,
+        "sha256": sha,
         "downloaded_to": str(target),
     }
     (output / f"{archive.record}.manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
-    print(f"Verified {target} (md5 {actual})")
+    print(f"Verified {target} (md5 {actual}, sha256 {sha[:16]}…)")
 
     if extract:
         if shutil.which("7z") is None:
@@ -139,6 +175,12 @@ def main() -> int:
     parser.add_argument("--extract", action="store_true")
     parser.add_argument("--output-dir", type=Path, default=Path("data/zenodo"))
     parser.add_argument("--min-free-gb", type=float, default=5.0)
+    parser.add_argument(
+        "--max-bytes",
+        type=_parse_bytes,
+        default=None,
+        help="refuse archives larger than this budget, e.g. 2GiB (default: no cap)",
+    )
     args = parser.parse_args()
 
     if args.list:
@@ -149,7 +191,13 @@ def main() -> int:
     if not args.record or not args.download:
         parser.error("use --list, or provide --record NAME --download")
     try:
-        download(_archive(args.record), args.output_dir, args.min_free_gb, args.extract)
+        download(
+            _archive(args.record),
+            args.output_dir,
+            args.min_free_gb,
+            args.extract,
+            args.max_bytes,
+        )
     except (OSError, RuntimeError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
