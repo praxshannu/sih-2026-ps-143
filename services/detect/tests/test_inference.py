@@ -40,7 +40,25 @@ def _synthetic_sar(size: int = 256, seed: int = 0):
     return np.clip(img, 0.0, 1.0)
 
 
+# Loaded through the same helper so the module-level `app` namespace purge
+# above applies to it too.
+_unet_path = _load("sentinel_unet_path", "services/detect/app/processors/unet_path.py")
+
+
 def test_tiled_inference_shape_and_range():
+    """Tiling must preserve geometry and stay numerically finite.
+
+    The old version of this test also asserted ``-50 < logits < 50``. That was
+    never a real contract: it happened to hold for the initialisation the
+    network shipped with, and a randomly-initialised UNet++ (which is what
+    ``encoder_weights=None`` builds) has no bounded output range at all —
+    measured on this host the logits span roughly -4700..+5700. Replacing it
+    with a finiteness assertion keeps the property that actually matters
+    (no NaN, no Inf, no silent explosion) without pretending an untrained net
+    is calibrated.
+    """
+    import numpy as np
+
     image = _synthetic_sar()
     model = _unet.UNetPlusPlusSCSE(
         encoder_name="resnet34",
@@ -52,7 +70,25 @@ def test_tiled_inference_shape_and_range():
     engine = _tiled.TiledInference(model, tile_size=128, overlap=16, device="cpu")
     logits = engine.predict(image, batch_size=2)
     assert logits.shape == (1, 256, 256)
-    assert bool((logits > -50).all() and (logits < 50).all())
+    assert np.isfinite(logits).all(), "tiled inference produced NaN or Inf"
+
+
+def test_untrained_unet_emits_no_probabilities():
+    """The guard that makes the test above safe.
+
+    Raw logits from an untrained net are meaningless, so the service must
+    never surface them. ``resolve_unet_status`` reports ``untrained`` and
+    hands back ``probabilities=None`` when no checkpoint exists — not zeros,
+    not a forward pass of a random-init network.
+    """
+    status = _unet_path.resolve_unet_status()
+
+    assert status.model_status in ("untrained", "unavailable", "loaded")
+    assert status.trained is False, (
+        "a checkpoint appeared; update this test to assert LOADED semantics instead"
+    )
+    assert status.probabilities is None
+    assert status.reason, "an untrained model must explain itself"
 
 
 def test_channel_adapter_never_crashes():

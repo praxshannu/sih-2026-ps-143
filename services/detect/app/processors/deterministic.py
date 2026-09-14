@@ -88,12 +88,23 @@ class PolygonFeature:
 # ── Speckle filtering ─────────────────────────────────────────────────────
 
 
-def lee_sigma_filter(linear: np.ndarray, win: int = 7) -> np.ndarray:
+def lee_sigma_filter(
+    linear: np.ndarray, win: int = 7, sigma_v: float | None = None
+) -> np.ndarray:
     """Lee-sigma speckle filter, the standard SAR smoothing operator.
 
     Reduces multiplicative speckle by replacing each pixel with a weighted
     average between the local mean and the pixel value, with weights set by
     the local coefficient of variation.
+
+    Args:
+        linear: linear sigma0.
+        win: filter window (odd).
+        sigma_v: scene-level speckle coefficient. Left as ``None`` it is
+            estimated from the array, which is what the single-pass path does;
+            the tiled pipeline passes the *scene* value so every tile is
+            filtered with the same coefficient (otherwise a tile's threshold
+            would depend on where it was cut).
     """
     pad = win // 2
     padded = np.pad(linear, pad, mode="reflect")
@@ -104,7 +115,8 @@ def lee_sigma_filter(linear: np.ndarray, win: int = 7) -> np.ndarray:
     s = s[pad:-pad, pad:-pad]
     sq = sq[pad:-pad, pad:-pad]
     var = np.clip(sq - s * s, 0.0, None)
-    sigma_v = float(np.nanstd(linear)) or 1e-6  # scene speckle noise coefficient
+    if sigma_v is None:
+        sigma_v = float(np.nanstd(linear)) or 1e-6  # scene speckle noise coefficient
     cv = np.sqrt(var) / (s + 1e-6)
     k = (cv**2 - sigma_v**2) / (cv**2 * (1 + sigma_v**2) + 1e-6)
     k = np.clip(k, 0.0, 1.0)
@@ -127,6 +139,32 @@ def masked_box_filter(values: np.ndarray, valid: np.ndarray, win: int) -> np.nda
     cnt = ndi.uniform_filter(np_, size=win) + 1e-6
     out = s / cnt
     return out[pad:-pad, pad:-pad]
+
+
+def apply_two_gates(
+    dB: np.ndarray,
+    mask: np.ndarray,
+    local_bg: np.ndarray,
+    noise_sigma: float,
+    sea_baseline: float,
+    k: float,
+    min_scene_contrast: float,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Apply the Solberg two gates to pixels, given pre-computed statistics.
+
+    Split out of :func:`adaptive_threshold` so the tiled pipeline can compute
+    the *global* scene statistics once and then evaluate the same gates
+    tile-by-tile without re-deriving them per tile (which would make a tile's
+    threshold depend on where the tile was cut).
+
+    Returns:
+        dark — pixels passing BOTH gates
+        gate_local — pixels passing the local ``k·sigma`` gate
+        gate_scene — pixels passing the scene-baseline gate
+    """
+    gate_local = (dB < (local_bg - k * noise_sigma)) & mask & np.isfinite(dB)
+    gate_scene = (dB < (sea_baseline - min_scene_contrast)) & mask & np.isfinite(dB)
+    return gate_local & gate_scene, gate_local, gate_scene
 
 
 def adaptive_threshold(
@@ -157,11 +195,15 @@ def adaptive_threshold(
     noise_sigma = float(np.nanstd(residual[mask])) or 1.0
     sea_baseline = float(np.nanpercentile(dB[mask], baseline_pct))
 
-    # Gate 1: pixel is at least k·sigma below its local background.
-    gate_local = (dB < (local_bg - k * noise_sigma)) & mask & np.isfinite(dB)
-    # Gate 2: pixel is at least `min_scene_contrast` dB below the scene baseline.
-    gate_scene = (dB < (sea_baseline - min_scene_contrast)) & mask & np.isfinite(dB)
-    dark = gate_local & gate_scene
+    dark, _, _ = apply_two_gates(
+        dB,
+        mask,
+        local_bg,
+        noise_sigma,
+        sea_baseline,
+        k=k,
+        min_scene_contrast=min_scene_contrast,
+    )
     return dark, local_bg, noise_sigma
 
 
@@ -258,7 +300,8 @@ class DeterministicDetector:
         tif = Path(tif_path)
         with rasterio.open(tif) as src:
             vv = src.read(1)  # linear sigma0 VV
-            vh = src.read(2)  # linear sigma0 VH
+            # Band 2 (VH) is present in every scene but Tier-A thresholds VV only,
+            # so it is deliberately not read here.
             msk = src.read(3)  # 1 = valid, 0 = nodata/land
             transform = src.transform
             width, height = src.width, src.height
@@ -267,7 +310,6 @@ class DeterministicDetector:
         cfg = self.config
         # 1. Speckle filter on linear sigma0.
         vv_f = lee_sigma_filter(vv, win=cfg.lee_window)
-        vh_f = lee_sigma_filter(vh, win=cfg.lee_window)
 
         # 2. dB + land mask.
         with np.errstate(invalid="ignore", divide="ignore"):
@@ -297,11 +339,6 @@ class DeterministicDetector:
         if n_blobs == 0:
             return _empty_result(tif, vv_db, ocean)
 
-        # Compute per-blob stats in one pass.
-        blob_sums = ndi.sum(vv_db, labelled, index=np.arange(1, n_blobs + 1))
-        blob_counts = ndi.sum(ocean, labelled, index=np.arange(1, n_blobs + 1))
-        blob_mean_dB = blob_sums / np.maximum(blob_counts, 1)
-
         polygons = _vectorize(candidate, transform)
         feats: list[PolygonFeature] = []
         scene_area_km2 = abs((bounds.right - bounds.left) * (bounds.top - bounds.bottom)) * (
@@ -311,9 +348,8 @@ class DeterministicDetector:
 
         for poly in polygons:
             minx, miny, maxx, maxy = poly.bounds
-            area_m2 = float(poly.area)  # already in °² → convert via approximate scale
-            # Convert m² to km² using approximate local scale.
-            cx, cy = poly.centroid.x, poly.centroid.y
+            # Convert °² to km² using approximate local scale.
+            cy = poly.centroid.y
             km_per_deg_lon = 111.32 * math.cos(math.radians(cy))
             km_per_deg_lat = 110.57
             scale2 = km_per_deg_lon * km_per_deg_lat
