@@ -1,0 +1,760 @@
+<!DOCTYPE html>
+<html lang="en" data-page-node-id="UIiydUKaDZ0mHwiRQAbojQ">
+<head data-page-node-id="mWyjkgH0ga0uMnbS7v1f6o">
+<meta charset="UTF-8" data-page-node-id="q6s95p0wi8pDAndrFAUNVU" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" data-page-node-id="5Nvgx4ukkDEsNplI4XmUlG" />
+<title>SENTINEL — System Architecture & Design Documentation</title>
+<style>
+  :root{
+    --bg:#0d1117; --panel:#161b22; --panel2:#1c2230; --border:#30363d;
+    --text:#e6edf3; --muted:#9da7b3; --blue:#58a6ff; --green:#3fb950;
+    --amber:#d29922; --red:#f85149; --purple:#bc8cff; --cyan:#39c5cf;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    line-height:1.55;font-size:15px}
+  header{padding:32px 40px 24px;border-bottom:1px solid var(--border);
+    background:linear-gradient(180deg,#11161f,#0d1117)}
+  header h1{margin:0 0 6px;font-size:26px;letter-spacing:.3px}
+  header .sub{color:var(--muted);font-size:14px}
+  .wrap{max-width:1040px;margin:0 auto;padding:0 28px 80px}
+  nav.toc{background:var(--panel);border:1px solid var(--border);border-radius:10px;
+    padding:14px 20px;margin:24px 0;font-size:14px}
+  nav.toc b{display:block;margin-bottom:8px;color:var(--blue)}
+  nav.toc a{color:var(--text);text-decoration:none;margin-right:18px;white-space:nowrap}
+  nav.toc a:hover{color:var(--blue);text-decoration:underline}
+  section{margin:42px 0}
+  h2{font-size:21px;border-left:4px solid var(--blue);padding-left:12px;margin:0 0 14px}
+  h3{font-size:17px;color:var(--blue);margin:26px 0 10px}
+  h4{font-size:15px;color:var(--cyan);margin:18px 0 6px}
+  p{margin:10px 0}
+  code{background:#1f2630;border:1px solid var(--border);border-radius:5px;
+    padding:1px 6px;font-family:"SFMono-Regular",Consolas,monospace;font-size:13px;color:#ffd8a8}
+  pre{background:#11161f;border:1px solid var(--border);border-radius:10px;
+    padding:16px 18px;overflow:auto;font-size:13px;line-height:1.45}
+  pre code{background:none;border:none;padding:0;color:#c9d1d9}
+  .diagram{background:var(--panel);border:1px solid var(--border);border-radius:12px;
+    padding:18px;margin:18px 0;overflow:auto}
+  .diagram svg{display:block;margin:0 auto;max-width:100%;height:auto}
+  table{border-collapse:collapse;width:100%;margin:14px 0;font-size:13.5px}
+  th,td{border:1px solid var(--border);padding:8px 11px;text-align:left;vertical-align:top}
+  th{background:var(--panel2);color:var(--blue)}
+  tr:nth-child(even) td{background:#11161f}
+  .card{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:16px 18px;margin:14px 0}
+  .good{border-left:4px solid var(--green)}
+  .warn{border-left:4px solid var(--amber)}
+  .bad{border-left:4px solid var(--red)}
+  .tag{display:inline-block;font-size:11px;padding:1px 8px;border-radius:20px;
+    border:1px solid var(--border);margin-right:6px;color:var(--muted)}
+  .tag.r{color:var(--red);border-color:var(--red)}
+  .tag.g{color:var(--green);border-color:var(--green)}
+  .tag.a{color:var(--amber);border-color:var(--amber)}
+  .tag.b{color:var(--blue);border-color:var(--blue)}
+  ul{margin:8px 0 8px 4px;padding-left:20px}
+  li{margin:5px 0}
+  .note{color:var(--muted);font-size:13px;font-style:italic}
+  .kv{font-size:13.5px}
+  .kv b{color:var(--cyan)}
+  footer{border-top:1px solid var(--border);padding:20px 40px;color:var(--muted);font-size:12.5px}
+  .pill{display:inline-block;background:var(--panel2);border:1px solid var(--border);
+    border-radius:6px;padding:2px 9px;margin:3px 4px 3px 0;font-size:12.5px}
+</style>
+</head>
+<body data-page-node-id="XbILYxTCl1HVPg4vwLAyaS">
+<header data-page-node-id="ECr8y8Z44Q7IPrYhGr9dlO">
+  <h1 data-page-node-id="KPAtL7QIlZmBgJtAtS5Nhv">SENTINEL — System Architecture &amp; Design Documentation</h1>
+  <div class="sub" data-page-node-id="nVIGK674bqiB8LjhABFvFp">Autonomous Maritime Oil Spill Intelligence Platform &nbsp;·&nbsp; SIH26143 / NTRO &nbsp;·&nbsp; compiled from source at commit-era <code data-page-node-id="vSjzZJxuTY1acm9mph8HPd">4076c90</code></div>
+</header>
+
+<div class="wrap" data-page-node-id="EdTiM6B85QPlgtBsx1yCYz">
+
+<nav class="toc" data-page-node-id="WMSjPMsXqKsqPTEDSozXZt">
+  <b data-page-node-id="jayZqWbSRpwJ5df4aphRiS">Contents</b>
+  <a href="#overview" data-page-node-id="NAmisIBFd5009jLk0KYuUH">1 · Overview</a>
+  <a href="#context" data-page-node-id="9OUePcYbLfjPqsNKJEEM6o">2 · System Context</a>
+  <a href="#modules" data-page-node-id="K585ApnmagCh4fROCNHeqD">3 · Module Responsibilities</a>
+  <a href="#topology" data-page-node-id="lmXROykQVfB3huK6szPtIV">4 · Module Interaction</a>
+  <a href="#dataflow" data-page-node-id="0IbWrzFFORKyZ8zecam9xj">5 · End-to-End Data Flow</a>
+  <a href="#training" data-page-node-id="m8CE0hmPCFq7Vie18LHhNq">6 · Training &amp; Data-Source Pipeline</a>
+  <a href="#setup" data-page-node-id="eMAIcwHqAa6KWsvNWheYCl">7 · Setup, Dependencies &amp; Config</a>
+  <a href="#capabilities" data-page-node-id="8Oou5WCEQrAxOFZlGHvbFz">8 · Capabilities &amp; Features</a>
+  <a href="#limits" data-page-node-id="6RIFpuKvCgXuYz9Krvsbkp">9 · Limitations &amp; Technical Debt</a>
+  <a href="#fit" data-page-node-id="ktn5P1Df5ewFuBlY3E43t5">10 · Where It Excels vs. Where It Struggles</a>
+</nav>
+
+<!-- ============ 1. OVERVIEW ============ -->
+<section id="overview" data-page-node-id="JMQKkwoeBd0F3aQYomvlJA">
+  <h2 data-page-node-id="tOqe1FTHrTuPUjNzyS9rnE">1 · Overview</h2>
+  <p data-page-node-id="J5y1n2EIvzMOHeQ3VyAZ3b">SENTINEL is an end-to-end system that turns raw <b data-page-node-id="gCd5lTXgyh8YpFlasXFCoT">SAR satellite imagery</b> into
+  investigation-ready oil-spill case files. It ingests Sentinel-1 SAR, ocean forcing
+  (ERA5 winds, CMEMS / GLORYS12 currents, optional GFS), and AIS vessel tracks; detects
+  dark slicks; back-tracks them to a likely release point with Lagrangian drift; attributes
+  the spill to suspect vessels; and produces an LLM-written narrative with chain-of-custody
+  hashing.</p>
+
+  <p data-page-node-id="GwpJhJiVwIc0QoJGn8FSua">The system is built as a <b data-page-node-id="I6xt7665q2yAmrH6ohphFc">FastAPI microservice mesh</b> behind a single API gateway,
+  a React/Three.js globe UI, and a shared core library (<code data-page-node-id="H3f0Eqf93IJ87bmPhFDy7l">sentinel_core/</code>). A
+  separate, runtime-switchable training harness (<code data-page-node-id="cnzTNcYABSHzOoEsw1NfEK">scripts/train.py</code> +
+  <code data-page-node-id="CjVWWpxpBAAI21a9t66ncr">ml/</code>) trains the segmentation model, either against the real archive
+  <i data-page-node-id="OrmP94E8jvdOtVpEPKHesL">read in place</i> off an external disk or against a statistically-matched synthetic set.</p>
+
+  <div class="card warn" data-page-node-id="izFNabnBAJy5VnrPQzh4YG">
+    <b data-page-node-id="vxTedxrnNL8GegsoDQU2VI">Read this first — the architecture as built vs. as documented.</b> The README's
+    mermaid diagram is aspirational. The code diverges in ways that matter for anyone
+    operating or extending the system, and this document describes the <b data-page-node-id="FZlU1QxPWlWyhUB5Fycvup">actual</b> code:
+    <ul data-page-node-id="U36Mbrkcr9itPWvoBhyX2i">
+      <li data-page-node-id="09jdxbk6UWTzn8tolX8XsA"><code data-page-node-id="Zfc56LH5KjRwTcjY5F2g6J">sentinel_core</code> is <b data-page-node-id="wHXYEzoD5Tdb1zYWUJjxXk">not imported by any service</b> — each service re-implements its own <code data-page-node-id="nzRNE5wnbyoMtxAN9wTxd5">loguru</code> + <code data-page-node-id="XMw3bl2q9F95L3ENrCpu5U">os.getenv</code> config (a real duplication debt, see §9).</li>
+      <li data-page-node-id="FrhEE5AQbwCMnKDCRvKDKa"><code data-page-node-id="aE4h3hG4pnOomIl390JhMi">detect</code> ships <b data-page-node-id="EizZbwvtF0FAj2yPQ9NtHj">two</b> entry points: <code data-page-node-id="G79pl7aYJQynP3FyzPDvXB">app.main:app</code> (UNet++, needs torch + a checkpoint) and <code data-page-node-id="GRtHsTBXjIWGVRXAF3GSD4">app.main_det:app</code> (torch-free Tier-A deterministic operator). The lightweight profile runs <b data-page-node-id="C5oVy0LLGTGB3EHo3TJ0Sx">main_det</b> on 8002 — there is no trained model deployed.</li>
+      <li data-page-node-id="EjZjMIulBfBQCcow3ZBjCJ"><code data-page-node-id="uGRZaujerZxo5OsdoMstzh">attribute</code> and <code data-page-node-id="cdxjSmclHNYlQNH8L2RFqr">intel</code> are reached <b data-page-node-id="SeNGLGCXhaUT2sx96PYG2R">only via the Celery worker</b> (<code data-page-node-id="xMrrW7iF6jR9UhHoRQNJJR">tasks.py</code> HTTP fan-out), not by a REST proxy in the gateway.</li>
+      <li data-page-node-id="6hQYl2VN5Qc7iXoNcnNISb">The gateway keeps a <b data-page-node-id="gTkFd3J4o7E2ZhAPLwnSdH">legacy in-memory cases dict</b> for <code data-page-node-id="heAiiTLuNbfCtEbXtzVtwp">/api/v1/cases</code>; only <code data-page-node-id="8nSA1Z8fXqNDTW8mocRw5c">/api/v1/scenes/persist</code> is durable.</li>
+    </ul>
+  </div>
+
+  <div class="kv" data-page-node-id="aQUXDaI8FGWRu1jQEk926u">
+    <span class="pill" data-page-node-id="VkRgSrDZ3M04wz0iEIhKpF">Python 3.11 / 3.12 deploy, 3.13 dev</span>
+    <span class="pill" data-page-node-id="zktwFewZM4169Gzu3wrpUx">FastAPI + httpx + asyncpg</span>
+    <span class="pill" data-page-node-id="NAYHkMM3eGrRshYQNU8wdK">UNet++ + SCSE (Tier-B, untrained)</span>
+    <span class="pill" data-page-node-id="nh6aMIXuxcUMk0K02wYA6d">Deterministic Lee–Solberg (Tier-A, deployed)</span>
+    <span class="pill" data-page-node-id="xM4BbHfi4GE95MnLbrEBHk">OpenDrift / OpenOil</span>
+    <span class="pill" data-page-node-id="yeSorKXofpAG0ClxxGYOip">PostgreSQL + PostGIS / Redis</span>
+    <span class="pill" data-page-node-id="7Qb3WyFQAKdVZntfQ1AAGA">React + Three.js globe</span>
+    <span class="pill" data-page-node-id="kGCW0Pt2FlOeSeAdKKqh55">Apple M2, CPU/MPS, no CUDA</span>
+  </div>
+</section>
+
+<!-- ============ 2. SYSTEM CONTEXT ============ -->
+<section id="context" data-page-node-id="UDzTN5W7nVDzqDPAadU9qy">
+  <h2 data-page-node-id="mVYfFndY94Yr6vraMYTFKw">2 · System Context</h2>
+  <p data-page-node-id="dAh5V0KOFnxTL1DDlr4A4F">External actors and data sources, the SENTINEL boundary, and the consumer. Solid arrows
+  are data flows that work natively today; dashed arrows are documented-but-uncertain feeds.</p>
+
+  <div class="diagram" data-page-node-id="eGbAjW3iREAMWekUBQzT9C">
+<!-- System Context SVG -->
+<svg viewBox="0 0 680 400" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system,Segoe UI,Roboto,sans-serif" data-page-node-id="KF9PYgdcgoUkmbdFJConPs">
+  <defs data-page-node-id="B2yWKi4bUaCHGMPBdbVi6J">
+    <marker id="arr" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto" data-page-node-id="c8rTq4CumdUBBPMqab1Ufb">
+      <path d="M0,0 L7,3 L0,6 Z" fill="#7d8794" data-page-node-id="CkaWhXNjjqSVP4neCojXtG"/>
+    </marker>
+    <marker id="arrB" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto" data-page-node-id="bJ7Dfqv8zHM8Z24kKqoYAw">
+      <path d="M0,0 L7,3 L0,6 Z" fill="#58a6ff" data-page-node-id="XhbjK38rbESDq3I4cUDdLu"/>
+    </marker>
+  </defs>
+
+  <!-- External feeds -->
+  <rect x="14" y="40" width="150" height="78" rx="8" fill="#161b22" stroke="#3fb950" data-page-node-id="OdcVnNaf9zozFvSxViKrYJ"/>
+  <text x="89" y="66" fill="#e6edf3" font-size="13" text-anchor="middle" font-weight="700" data-page-node-id="JikU1VLlEPCC8vPT0vECnX">External Data</text>
+  <text x="89" y="86" fill="#9da7b3" font-size="11" text-anchor="middle" data-page-node-id="9FMXmZOoxGCyj7pZozExKA">Sentinel-1 SAR</text>
+  <text x="89" y="101" fill="#9da7b3" font-size="11" text-anchor="middle" data-page-node-id="syfdYUEDPuCeGKBB34ZOwK">ERA5 / CMEMS / GFS</text>
+
+  <rect x="14" y="150" width="150" height="64" rx="8" fill="#161b22" stroke="#d29922" stroke-dasharray="4 3" data-page-node-id="kKmjxuGgW4brSBYd25ktyN"/>
+  <text x="89" y="174" fill="#e6edf3" font-size="13" text-anchor="middle" font-weight="700" data-page-node-id="GlAEMH0zMUV9eEVKBQXIgC">AIS Feeds</text>
+  <text x="89" y="194" fill="#9da7b3" font-size="10.5" text-anchor="middle" data-page-node-id="1jMoQlm1JPtMrc67DAh7sF">AISStream (WS) —</text>
+  <text x="89" y="207" fill="#9da7b3" font-size="10.5" text-anchor="middle" data-page-node-id="fd8ZJ0HBx2cZMl6xbjHHSd">no open-ocean coverage</text>
+
+  <rect x="14" y="248" width="150" height="56" rx="8" fill="#161b22" stroke="#7d8794" stroke-dasharray="4 3" data-page-node-id="TMwGZpdl98uPdDCLWGOtXI"/>
+  <text x="89" y="272" fill="#e6edf3" font-size="13" text-anchor="middle" font-weight="700" data-page-node-id="N7dCQcVVE5YFWZrO5C4sNW">LLM</text>
+  <text x="89" y="290" fill="#9da7b3" font-size="10.5" text-anchor="middle" data-page-node-id="kWZ3RgHAWG1Xl7igjbflvb">OpenAI / Ollama</text>
+
+  <!-- SENTINEL boundary -->
+  <rect x="200" y="26" width="312" height="300" rx="12" fill="#0f1620" stroke="#30363d" stroke-width="1.5" data-page-node-id="puRpwC7EOMOJUo2txHrXGc"/>
+  <text x="356" y="46" fill="#58a6ff" font-size="13" text-anchor="middle" font-weight="700" data-page-node-id="cuE9LJGnSQSWxeaFSZeZig">SENTINEL SYSTEM</text>
+
+  <rect x="226" y="62" width="260" height="40" rx="8" fill="#1c2230" stroke="#58a6ff" data-page-node-id="HX0MFT7DBHMAy7BvegroyA"/>
+  <text x="356" y="87" fill="#e6edf3" font-size="12.5" text-anchor="middle" font-weight="700" data-page-node-id="HpMPyxeYIajBIxYW825zpv">API Gateway (8000)</text>
+
+  <rect x="226" y="118" width="120" height="34" rx="7" fill="#161b22" stroke="#7d8794" data-page-node-id="6GQBwBTCfwBEUQqs7hKa5f"/>
+  <text x="286" y="139" fill="#e6edf3" font-size="11" text-anchor="middle" data-page-node-id="2N2TiG3xlyxHCqwXX3COfQ">ingest 8001</text>
+  <rect x="366" y="118" width="120" height="34" rx="7" fill="#161b22" stroke="#7d8794" data-page-node-id="CAfNBHtrusGp2pNVBX19t7"/>
+  <text x="426" y="139" fill="#e6edf3" font-size="11" text-anchor="middle" data-page-node-id="jWqlr6uPZ8mUuFcc6H7CUc">detect 8002</text>
+  <rect x="226" y="160" width="120" height="34" rx="7" fill="#161b22" stroke="#7d8794" data-page-node-id="loa84fuIOEseukyaK5tL5n"/>
+  <text x="286" y="181" fill="#e6edf3" font-size="11" text-anchor="middle" data-page-node-id="eRQVpKgrbmZXrrR8XGS2dD">drift 8003</text>
+  <rect x="366" y="160" width="120" height="34" rx="7" fill="#161b22" stroke="#7d8794" data-page-node-id="VZ3XMq014SXkbDDplCKesq"/>
+  <text x="426" y="181" fill="#e6edf3" font-size="11" text-anchor="middle" data-page-node-id="PGpMJxsGHAsF3i5eGkKvft">attribute 8004</text>
+  <rect x="296" y="202" width="120" height="34" rx="7" fill="#161b22" stroke="#7d8794" data-page-node-id="DRGpGFuADAHR7FYsAVJDCJ"/>
+  <text x="356" y="223" fill="#e6edf3" font-size="11" text-anchor="middle" data-page-node-id="TCorS0PjD2fNoqQMpvPTf9">intel 8005</text>
+
+  <rect x="226" y="252" width="120" height="34" rx="7" fill="#161b22" stroke="#3fb950" data-page-node-id="xm66kI9AgHjYSUEAE7KddP"/>
+  <text x="286" y="273" fill="#e6edf3" font-size="10.5" text-anchor="middle" data-page-node-id="C0d9itU2ZHW1eSWNaqHgXK">Postgres</text>
+  <rect x="366" y="252" width="120" height="34" rx="7" fill="#161b22" stroke="#3fb950" data-page-node-id="tFn0V41x6dBh8Pe7hqF6ja"/>
+  <text x="426" y="273" fill="#e6edf3" font-size="10.5" text-anchor="middle" data-page-node-id="JlwFIKtbEy4RW3jBciapSv">Redis</text>
+
+  <!-- arrows external -> gateway/services -->
+  <line x1="164" y1="78" x2="226" y2="84" stroke="#7d8794" stroke-width="1.6" marker-end="url(#arr)" data-page-node-id="Bmf16lQ9uYtxBZQyUfnsS7"/>
+  <line x1="164" y1="182" x2="226" y2="135" stroke="#d29922" stroke-width="1.4" stroke-dasharray="4 3" marker-end="url(#arr)" data-page-node-id="rKGcEybCGXumOYRZ8CCDcZ"/>
+  <line x1="164" y1="276" x2="226" y2="216" stroke="#7d8794" stroke-width="1.4" stroke-dasharray="4 3" marker-end="url(#arr)" data-page-node-id="xmjHfHunjNIkwoIFY9mNBF"/>
+
+  <!-- Consumer UI -->
+  <rect x="540" y="110" width="128" height="96" rx="10" fill="#161b22" stroke="#bc8cff" data-page-node-id="oMwAbG3IyKcoGBDxDE8Chw"/>
+  <text x="604" y="138" fill="#e6edf3" font-size="13" text-anchor="middle" font-weight="700" data-page-node-id="3EJYuIvmhuNKVWLipZrc4V">Analyst UI</text>
+  <text x="604" y="158" fill="#9da7b3" font-size="10.5" text-anchor="middle" data-page-node-id="RDJRpI0ZEwE1h1cq8E9tDT">React + Three.js</text>
+  <text x="604" y="172" fill="#9da7b3" font-size="10.5" text-anchor="middle" data-page-node-id="wSeK1ag7VN5wLA4lp9WslB">globe (3000)</text>
+  <text x="604" y="190" fill="#9da7b3" font-size="10" text-anchor="middle" data-page-node-id="S3xdMt0f6oKpvvY4YwANDD">/intake</text>
+  <line x1="486" y1="82" x2="540" y2="150" stroke="#58a6ff" stroke-width="1.6" marker-end="url(#arrB)" data-page-node-id="opJLS1mcUlWRH4mZ7TRFy9"/>
+  <text x="512" y="106" fill="#58a6ff" font-size="10" text-anchor="middle" data-page-node-id="zGVmVkgitepCveMGvQfht8">HTTP/WS</text>
+</svg>
+  </div>
+</section>
+
+<!-- ============ 3. MODULE RESPONSIBILITIES ============ -->
+<section id="modules" data-page-node-id="ZhJB6vTtXWOAKhJVBwIGuO">
+  <h2 data-page-node-id="F3E8m99D0gi7SI26niNxWu">3 · Module Responsibilities</h2>
+
+  <h3 data-page-node-id="Nab04WV8aVt7SCtBynlkvf">3.1 Shared core — <code data-page-node-id="pGN6xD9iBboQwYLEBK979l">sentinel_core/</code></h3>
+  <p data-page-node-id="jlyvzcQepDrWxehyEbZ09q">Despite its name, <b data-page-node-id="S7zNs3wAKMKz4eqOHFcyFY">no service imports this package</b> (see §9). It is the canonical
+  reference implementation of config, logging, errors, provenance and the data-source
+  resolver, and it is used directly by the training harness. Its intended contract:</p>
+  <table data-page-node-id="QspVYoXzt6z625SlFY3C3u">
+    <tr data-page-node-id="tFgYbfCHKVnoXV2HMPbIe5"><th data-page-node-id="w8fii8Sew1DlqpjBiGJ73G">Module</th><th data-page-node-id="TY6q8lnewdn856YvmjHGjH">Responsibility</th></tr>
+    <tr data-page-node-id="VDXZiOxwlUEJsZUQeA64G1"><td data-page-node-id="PJWumSd70U8BwK4Cq2lxvw"><code data-page-node-id="Xt5tPHT07vnniGbvNtiu6x">config.py</code></td><td data-page-node-id="9cGn9cgUuxxyVtoSM8zTel">Single pydantic-settings <code data-page-node-id="EGRQEEI6TmHz3BJgR5Ah03">Settings</code> (prefix <code data-page-node-id="L7ekHmsxW4ZQxfrgkjpvEd">SENTINEL_</code>, <code data-page-node-id="HvEzkwCyjrbH3Ybl7wwI1i">__</code> nested). Embeds <code data-page-node-id="2WZDy63q4mzzXJgcmuZeFz">PathSettings</code>, <code data-page-node-id="ntua3M7OXhKLjZbrE77wZp">DataSourceSettings</code>, <code data-page-node-id="erJWsWyYw9nlDvA1gEU23U">TrainingSettings</code>, <code data-page-node-id="MgVtETZw8ogefuyAbWUMKy">LoggingSettings</code>. Key switches: <code data-page-node-id="9Ar6WmCP8crEf70czFZGW9">data_source</code> (real|synthetic), <code data-page-node-id="OGS7hOXOHg1QWC4gDZScrD">scene_grouping</code> (per_file|grid|footprint), <code data-page-node-id="nmyy863hFGYs6mNDe6KScG">image_size</code> (÷32), <code data-page-node-id="QG6uwr08JRcrSzvjkxVqo6">epochs</code>, <code data-page-node-id="io8EMZXH7OMrP6mYp0FB5n">test_fraction</code>.</td></tr>
+    <tr data-page-node-id="RmeEF79jejm0w4fjgCxE2S"><td data-page-node-id="Xv3DMUb0GYFaL3Mkt6YdGq"><code data-page-node-id="q6oKEMyJvlTHVbpgcXxYj8">datasource.py</code></td><td data-page-node-id="wQ7dymWUB9WfHowCjqcLyB">The data-source switch. <code data-page-node-id="h1lj1lFLJM6TddbFwPxvPS">resolve_source / switch_source / active_source / source_report</code> map a kind to a <code data-page-node-id="D5xcV1kdV65xPU8nix1k1D">DataSourceSpec</code>. Builds the manifest index, performs leak-free <b data-page-node-id="ttNrmeRsYIMAEc4QeuDWtt">footprint</b> scene grouping (union-find over tile bounding boxes). Real index lives at <code data-page-node-id="JcPrAPTKAHBgWikOIN3Q5q">data/index/real/manifest.jsonl</code> and stores <b data-page-node-id="lB1DNOIJz1pyt6tT2OtCHO">absolute</b> external-disk paths.</td></tr>
+    <tr data-page-node-id="vwEnv8sic75ga1CQ6A1VCt"><td data-page-node-id="jX7V7kHttHWqv0qlFQBFxt"><code data-page-node-id="tDvGg5DmrnmSv4PlbGeaTw">errors.py</code></td><td data-page-node-id="ZILFpVC5mCTwzcEjJUN8AB">Typed <code data-page-node-id="ZFn3E1fqe35zoZrIMjGWL3">SentinelError</code> hierarchy with machine-readable <code data-page-node-id="SwT2A80YrF486OdPlgDIv6">reason</code> codes and <code data-page-node-id="HKQM0n4CDBni6QtePlEdC9">context</code>. Missing input is an error, never a silent fallback.</td></tr>
+    <tr data-page-node-id="COLuqXx7u71fBVbHBvhnUu"><td data-page-node-id="RVvNXbCYtyrhPNuoYbLxWO"><code data-page-node-id="CBjiob8F7CUermMQ3sdLQO">logging.py</code></td><td data-page-node-id="ouMEcXoN4aLAuRzV2DwSxq">loguru structured logging (stderr + JSON file), binds <code data-page-node-id="7OairmIdgr4Ch5DrTFFIEx">service / run_id / data_source</code>. Intercepts stdlib logging.</td></tr>
+    <tr data-page-node-id="bfhZKY5ptLCTgjNHeLwTSE"><td data-page-node-id="wCpZzxlljSZtPQTFSmb1vX"><code data-page-node-id="Y6kHrju5B674IyJSqdqjAE">provenance.py</code></td><td data-page-node-id="Yiwut21fuhkjcbLeydM22G"><code data-page-node-id="r65AiHt8kIazHzzfqY8RX1">DataProvenance</code> enum (real | synthetic_mock | unavailable | no_real_coverage) and the <code data-page-node-id="1uCCaVMYVhrhyIZmyVxI1K">supports_scientific_claim</code> gate. Synthetic metrics are explicitly "not evidence."</td></tr>
+    <tr data-page-node-id="OzbTdS1hKAWwQJ1B25igDG"><td data-page-node-id="Hiy6iAsoDaIX70HJioXYYZ"><code data-page-node-id="shFI8cwGVnniIvwOjbCN7l">raster.py</code></td><td data-page-node-id="M4zCYnvAVPJBajiSnBrF0f">GDAL I/O with <code data-page-node-id="9ssPXxuUotNGcQHP8UahYv">GDAL_DISABLE_READDIR_ON_OPEN=EMPTY_DIR</code> (≈150× header-scan speedup); <code data-page-node-id="9FtHbHEF5k5TTBUIwSgyGR">header_info()</code> reads bands/CRS/bounds without pixels.</td></tr>
+  </table>
+
+  <h3 data-page-node-id="lsyCiwdYkVF2Ne9wV09QBd">3.2 Services — <code data-page-node-id="n7k78QClhkfEOP7VFp0EdG">services/</code></h3>
+  <table data-page-node-id="sBtGr3fNKM7FRGBLWA70I9">
+    <tr data-page-node-id="HlVTHB3T8rW3kWYuQNNy1V"><th data-page-node-id="NLQpBn5fxq6gUD1pr4CJAn">Service</th><th data-page-node-id="A2CPqFcc45xDctBI0NqMGu">Port</th><th data-page-node-id="lXgJw8fmvAdHGfJdT0XsTE">Domain responsibility</th><th data-page-node-id="FMnsdXmMuuRuZHN99GkzAp">Key endpoints</th></tr>
+    <tr data-page-node-id="VjZfkiy9XkRI1bIqQhGt2T">
+      <td data-page-node-id="GpEZN4GKEb0CFhvf0SVHGT"><b data-page-node-id="JcVAjleWrXCILjrHCJSpWT">api</b><br data-page-node-id="isDDCyVYWY6dHBD5OxDKyO"/>(gateway)</td><td data-page-node-id="VQiSDmGu5glIfyD0DCKwpU">8000</td>
+      <td data-page-node-id="viGsYcY7udIOr7Zvn9T8kN">Single ingress. Proxies detect/drift/attribute via <code data-page-node-id="JggOcVjUeXopse8IvZi3YD">httpx</code>; orchestrates the full pipeline through the <b data-page-node-id="XW0NCSA0zsUzpXQoaSAbBe">Celery worker</b>. Owns the case store (Postgres with durable-JSON fallback).</td>
+      <td data-page-node-id="KkXVgJ4lEyFa9W6RIZyJvJ"><code data-page-node-id="rt2e0FFgvkpbp0SPbE7M5z">POST /api/v1/detect/scene</code>, <code data-page-node-id="H1CAE62S1PRpQXCrZhmrvq">/api/v1/drift/attribution</code>, <code data-page-node-id="vB7akRcAT9i2ev5YYyUZWf">/api/v1/persist</code>, <code data-page-node-id="QsMJz03VsNWZBxGfKlSw1R">/api/v1/cases</code>, <code data-page-node-id="akDQKND22a7r39QF2w3oJc">POST /api/v1/pipeline/trigger</code>, <code data-page-node-id="pjYnRw7TFBP2JmlaW0smEL">WS /api/v1/ws</code></td>
+    </tr>
+    <tr data-page-node-id="3gjKsnEAoC3srMrTlBsDjn">
+      <td data-page-node-id="LYuhl7ODorXBho4P4p8Tkr"><b data-page-node-id="PwYKvNc2YA7TZ7H1gfiPcH">ingest</b></td><td data-page-node-id="IQ8k3mLjWVI6Yvu5qDQHgE">8001</td>
+      <td data-page-node-id="73SjeKEEgAIlUwRjf83vuE">Autonomous ingestion daemon. Pulls SAR metadata/GeoTIFFs (CDSE Process API), ocean forcing (CMEMS, ERA5 via cfgrib, GFS), AIS; writes Postgres. APScheduler-driven. <b data-page-node-id="uBN18SoLJ2gIpEvyM7xtee">Leaf service — calls no siblings.</b></td>
+      <td data-page-node-id="tlS4F3DepKiTlNVmByIn1s"><code data-page-node-id="2WARn56mb7H7xcQ4sKtStj">GET /api/v1/archive/search</code>, <code data-page-node-id="GjkNxziR57Vj8h1c8A0G2E">POST /ingest/{sentinel1,ais,ocean}</code>, <code data-page-node-id="qvGIdl7RYZPk9h6IgB3QfK">/ingest/status</code></td>
+    </tr>
+    <tr data-page-node-id="E0ZhFk2LwpEmWToAm3811M">
+      <td data-page-node-id="vIagCpCvBQLNWQBPiyGfU1"><b data-page-node-id="HnoNI5jNp5s0YnAfV98W7Y">detect</b></td><td data-page-node-id="3JeCmFDLYpqlbIiksAaFPE">8002</td>
+      <td data-page-node-id="JzSi7NA5VkHKr3J7xq7zX7">Oil-spill detection from a SAR GeoTIFF. <b data-page-node-id="13YfIuxjPri3U0XJPUF5Ca">Tier-A</b> deterministic operator (Lee-sigma → Solberg two-gate → morphology → connected components, torch-free) is the deployed path (<code data-page-node-id="X3MK1H2QQ4iy10ZbduyRBE">app.main_det:app</code>). <b data-page-node-id="uHcGxLtGMhMjAHwFaUV2Ai">Tier-B</b> UNet++/SCSE (<code data-page-node-id="ajfv2BNEzsEdNE8XvngjDo">app.main:app</code>) exists but is <code data-page-node-id="1fKIEUj5zeAobu6B4rrrYr">untrained</code> and emits no probabilities.</td>
+      <td data-page-node-id="EPGFvOzpVrNA1GB5BWfJ9a"><code data-page-node-id="VpABGHoST7U2ZBDtoqDPQg">POST /detect/deterministic</code>, <code data-page-node-id="uDm9KuHwSp1k4rlDgf44DV">/detect/scene</code>, <code data-page-node-id="l71mEWUKFibFM4yCNNN5x3">GET /deterministic/results</code></td>
+    </tr>
+    <tr data-page-node-id="pFapaCQfgd9nCYER1ZeO21">
+      <td data-page-node-id="DMyF9JBnc17mXIsAV3Hgln"><b data-page-node-id="fjjthsJMVp24qUARLj9YsU">drift</b></td><td data-page-node-id="fZWUIngC8iwmThaa1HVhiY">8003</td>
+      <td data-page-node-id="fZ1mWRuKEE8m8Y0tuNddpE">Lagrangian drift &amp; origin-finding. <code data-page-node-id="eGC2M1NwH7YbD2314KOFFs">app.main_attribution:app</code> (the verified OpenDrift/OpenOil path) back-tracks to an origin ellipse; <code data-page-node-id="ETZhbBwmCZiYCbbr1kUlbN">app.main:app</code> is the older SDE variant. Loads an XGBoost residual model; fetches ERA5/GFS forcing.</td>
+      <td data-page-node-id="avYweNDVFIPSqzGYOh85IJ"><code data-page-node-id="WmBF9iUu5Aqa3cuvW2e9DF">POST /drift/backward</code>, <code data-page-node-id="ADDSP4vge4zCc3CeNVGlD5">/drift/full</code>, <code data-page-node-id="RqD60cqRvJTKBwekD5kP30">/drift/attribution</code></td>
+    </tr>
+    <tr data-page-node-id="Nab06r250Pxgu3fhzkRe7w">
+      <td data-page-node-id="5MycL98Lli66cxWO0oWgu3"><b data-page-node-id="NYQVtOy1mCzF17Lk0ARoup">attribute</b></td><td data-page-node-id="MnRrNJcs9lo8Bb4UUAdKTz">8004</td>
+      <td data-page-node-id="GNAv6zMz0RZ1sbldKOCCAe">Vessel attribution. Scores suspect vessels with the <code data-page-node-id="YJD8v45pfpV8GTiiVhCKtv">K_ij</code> tensor (fuzzy membership + XGBoost residual). Dual duckdb/fuzzy scorers, AIS coverage slicer, anomaly detector, suspect ranker. <b data-page-node-id="jQ3xdbmY7yPGBjwq6Gm80S">Reached only via Celery</b>, not a gateway REST proxy.</td>
+      <td data-page-node-id="HQckSO8vS5ZIv0aNi522J6"><code data-page-node-id="HlqUBlLs0ojLM9oBaKA7lQ">POST /attribute</code>, <code data-page-node-id="bPOihI8IxBa8eg7uIZwqy5">/attribute/score</code>, <code data-page-node-id="hXXGAPi0oFP6fVLk7fJecP">/attribute/rank</code></td>
+    </tr>
+    <tr data-page-node-id="0CseIMLTzZnbXz0cpPu0FL">
+      <td data-page-node-id="FPS6A9Zn3E2MYQuikp7feI"><b data-page-node-id="zrVyjU1UJUeunvwhpEHC7G">intel</b></td><td data-page-node-id="IOT37bwJ5zbtAizWNXlFvY">8005</td>
+      <td data-page-node-id="Br6inE1vQU4j0y8HkPCRLs">LLM narrative + legal PDF case-file + chain-of-custody hashing. <code data-page-node-id="xdjUHX8inDh1QhsPRna7Ue">LLM_PROVIDER</code> defaults to <b data-page-node-id="WBKD9OmE7Bo6ijDEFC6Add">OpenAI</b> (not Ollama). Falls back to a deterministic template and labels it. <b data-page-node-id="ZSvTulKcYlGhQpmILta3eY">Reached only via Celery.</b></td>
+      <td data-page-node-id="6Ll65m35TjBmn8ytDXSVB9"><code data-page-node-id="X9suBUs1JiYU9BlH5czoib">POST /intel/narrative</code>, <code data-page-node-id="13RoyJRwcuM5uKrTuzMZ1p">/intel/case-file</code>, <code data-page-node-id="SXHNOw7vxZ7AbvWWP0SnET">/intel/hash</code>, <code data-page-node-id="yIlolLKbfeF0P9sjd5KEjP">GET /health/llm</code></td>
+    </tr>
+    <tr data-page-node-id="a7fhAnPL4XmG5FDTWIApHx">
+      <td data-page-node-id="D8McwjEaNNoisCO6XpqKnQ"><b data-page-node-id="AX3DrSCOa2QY4SqNACfH9v">ui</b></td><td data-page-node-id="AlfPtDQGLuBZbOuMPQ780e">3000</td>
+      <td data-page-node-id="sNxcnK2GEAvh4IyXYBr7nA">React + Three.js / deck.gl globe. Dark theme only; the globe is the hero. State banner distinguishes six detection verdicts. Drives <code data-page-node-id="LSDNFpzOSG7Akaqja8k2II">/intake</code>.</td>
+      <td data-page-node-id="xrIUnTp6pG7PAeXM2UESxI">(SPA, talks to gateway)</td>
+    </tr>
+  </table>
+
+  <h3 data-page-node-id="DwJj6ftGfGFTm8d4sPE9LU">3.3 ML &amp; synthetic — <code data-page-node-id="vsPzUAjeAp652eEh51w7BL">ml/</code> and <code data-page-node-id="8q0PaWlkQKglPVbI0ZjRAo">scripts/</code></h3>
+  <table data-page-node-id="zmxCzUS8pJdHCWcFdibz7y">
+    <tr data-page-node-id="TRKcxNRVWHllRAwBkIxKFw"><th data-page-node-id="5Ku8YC2rdbPEiOTIyHLjVH">Component</th><th data-page-node-id="GzESlzHGxyxbpsJYvyGtzl">Responsibility</th></tr>
+    <tr data-page-node-id="cSURmFxtocGwsdGAKZdn3Q"><td data-page-node-id="MXxRDJitaoRCT1DFEabt9F"><code data-page-node-id="n64QgYiGeJtFyafInB4EkE">ml/training/transforms.py</code></td><td data-page-node-id="iHrg8nntBkDHhHF4MROgis">SAR-aware augmentations (crop, flip, 90° rotate, speckle, radiometric jitter) operating in dB; mask moved by identical index math (last-two spatial axes).</td></tr>
+    <tr data-page-node-id="yyJjDPEz0E1ZPxbqa1krRZ"><td data-page-node-id="D8VYsjYfNKYEBKJN4XLQ7s"><code data-page-node-id="u51Oqmohzco7Z7btNKrYo0">ml/training/dataset.py</code></td><td data-page-node-id="BUVNI8ri2JHpEHSbuEqEYW"><code data-page-node-id="5ziHsIVV6llosNfjOlvdLs">SAROilSpillDataset</code> — reads 2-band (VV/VH) images + paired masks <b data-page-node-id="7A5j2lg74F8xEY4PZmDHkS">from the manifest</b> (scene_id comes from the manifest, not the path). Computes <code data-page-node-id="9vGD3Aw1DGB4gsPYKbEOzh">NormalizationStats</code>.</td></tr>
+    <tr data-page-node-id="KXGzc07ArhFB6fHfXz1Zhc"><td data-page-node-id="qrE6I8FTgDoF2hClLOFigw"><code data-page-node-id="lChk2iJmHWzvfbehHvVUtT">ml/training/splits.py</code></td><td data-page-node-id="qxNCJ1vwkVbVL3HIrETaWw"><code data-page-node-id="IpExfLrESucx92OgA8cTMR">assign_scene_splits</code>, <code data-page-node-id="MKVaPWVgFbASjgCUmdxLgN">default_scene_id</code>, and the <code data-page-node-id="WGQQFFZ2G9Fu4kwvRhMgBB">scene_leakage</code> guard that refuses any scene_id appearing in more than one split.</td></tr>
+    <tr data-page-node-id="VFvbGBnRjoWCKYdInW28WT"><td data-page-node-id="owo9EjKncz5sNfW8Tp83lh"><code data-page-node-id="loQyDPhrkhFqQkKbmHhDPA">ml/training/metrics.py</code></td><td data-page-node-id="Eb5TxCrSY2SXvTm4RBFUs9">Pure IoU / precision / recall / F1, <code data-page-node-id="y4DouvQpq78z2Y3Yoaybci">SceneStatistics</code>, 3σ out-of-distribution check.</td></tr>
+    <tr data-page-node-id="6IZqA2awHuQH3LHQqcBENo"><td data-page-node-id="pgUr5FYh8StPsAR10RrtO2"><code data-page-node-id="lBaruxv0bhiMXnORynsUZr">ml/training/train_detector.py</code></td><td data-page-node-id="te3uQlIaNzHM382jBotBpB">Production training pipeline; <code data-page-node-id="rDOIskYorheBpo8O7ECriJ">RunReport</code>; atomic checkpoint save/load; <code data-page-node-id="iGtITRzRM9AD7VVhczk1GN">--resume</code>.</td></tr>
+    <tr data-page-node-id="igYcIEqA0ut6SC4cfFFA6I"><td data-page-node-id="TlNMFGZI62G2aMKWdr5lTD"><code data-page-node-id="vWhhMlHYitBsfQUvbshk6E">ml/training/train_anomaly.py</code></td><td data-page-node-id="PDoRh347Fl7EEN32SjbPcP">LSTM autoencoder for AIS behavioural anomalies. <b data-page-node-id="oeYI0nGvreBy9E90GTMban">Not trained</b>; refuses empty input.</td></tr>
+    <tr data-page-node-id="m2RwOajVHjXUItZHKPakJ1"><td data-page-node-id="hoCySHaEJG1OXGq13B7zuI"><code data-page-node-id="SHBUKNRmLH643QqJopCC2j">ml/synth/{profile,generate}.py</code></td><td data-page-node-id="AxmwNeZQB2QOn6qNu1Mvnv">Profile real scenes → generate a statistically-matched synthetic set → re-profile → <code data-page-node-id="5O3V83HgqxGKhpC3gAh0PI">match_report.json</code> (26/28 checks pass).</td></tr>
+    <tr data-page-node-id="w6NTTJF1XCXvhgHG3HWdG7"><td data-page-node-id="ISesbmvmL0FL5HeSxsDVwI"><code data-page-node-id="aJhHU2Ghgn1MlCWjYR7wRS">scripts/train.py</code></td><td data-page-node-id="mjBCRSRcZWs4sXcBp54BY2">The documented training entry point. Flags: <code data-page-node-id="QTErnhvarnS0FWyXFjCNBC">--data-source</code>, <code data-page-node-id="iSnDHUCGIBrVAuyZMnoHCY">--epochs</code>, <code data-page-node-id="9oQFrzHOGXDAZqid0Y6rz7">--max-pairs</code> (alias <code data-page-node-id="V4FeoyGSebi5bZoQbhhqW1">--max-scenes</code>), <code data-page-node-id="a7X0dcD0KBCCKwbEcXbxcS">--max-steps-per-epoch</code>, <code data-page-node-id="dxqqNlqSt09VCWpedyQLeA">--rebuild-index</code>, <code data-page-node-id="BoBw1z6Q3CFFptYUD8zG3l">--resume</code>.</td></tr>
+  </table>
+</section>
+
+<!-- ============ 4. MODULE INTERACTION ============ -->
+<section id="topology" data-page-node-id="hPD9naxdxeD6rlPbeLeGHe">
+  <h2 data-page-node-id="6uV573KjVbVWvm12heU5UA">4 · Module Interaction Topology</h2>
+  <p data-page-node-id="sluLq2jzbb3XMaAH49Wk0E">Inter-service calls follow one rule from <code data-page-node-id="c8jjM1BtuIKo5FmjZjyOzX">AGENTS.md</code>: <b data-page-node-id="8bxILeXybM9LwE4IV7zBnG">each service owns one
+  domain; cross-service calls go through the gateway.</b> In practice the gateway is the only
+  node that talks to siblings — and only detect/drift/attribute are REST-proxied; attribute
+  and intel are invoked by the <b data-page-node-id="fQ1gXvr1WXniqrBMlUVeo0">Celery worker</b> fanning out over HTTP. Leaf services
+  never call each other; drift accepts a vessel list in its request body rather than querying
+  ingest.</p>
+
+  <div class="diagram" data-page-node-id="QVrDhWM72CKlYu7zVLNAdO">
+<!-- Topology SVG -->
+<svg viewBox="0 0 680 540" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system,Segoe UI,Roboto,sans-serif" data-page-node-id="JZ3wa4gBISMTE2iOAh6WWp">
+  <defs data-page-node-id="dmwqzsUZSCwNWqYzzJONSF">
+    <marker id="a1" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto" data-page-node-id="lZHMSI82rLoX3Y6fDccJU4"><path d="M0,0 L7,3 L0,6 Z" fill="#58a6ff" data-page-node-id="SArUQXxACrzmZiSdTiWAEl"/></marker>
+    <marker id="a2" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto" data-page-node-id="MTAX4OuwSXoMcGGC093AVj"><path d="M0,0 L7,3 L0,6 Z" fill="#bc8cff" data-page-node-id="Adt5ovAoqncCtULWWKPV4R"/></marker>
+    <marker id="a3" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto" data-page-node-id="CEyJgIV0RBNFtkO8uuOCcs"><path d="M0,0 L7,3 L0,6 Z" fill="#3fb950" data-page-node-id="K8jSQKSGcOf4SJrbcR2a1Q"/></marker>
+  </defs>
+
+  <!-- API gateway -->
+  <rect x="250" y="20" width="180" height="48" rx="10" fill="#1c2230" stroke="#58a6ff" stroke-width="1.6" data-page-node-id="ymz4MlBN8ltxs4yCuTojEk"/>
+  <text x="340" y="42" fill="#e6edf3" font-size="13.5" text-anchor="middle" font-weight="700" data-page-node-id="iC9yD4EVIbzcekFO1xgPo8">API Gateway :8000</text>
+  <text x="340" y="59" fill="#9da7b3" font-size="10" text-anchor="middle" data-page-node-id="Ktu9Cy1CkzgsRTG3HAFA9z">httpx proxies · Celery orchestrator</text>
+
+  <!-- Leaf services -->
+  <rect x="20" y="150" width="120" height="44" rx="8" fill="#161b22" stroke="#7d8794" data-page-node-id="7Rwit2p5F0FhBawbnW8PZE"/>
+  <text x="80" y="172" fill="#e6edf3" font-size="12" text-anchor="middle" font-weight="700" data-page-node-id="Ft73RpD5bNhrhgLGedBDan">ingest</text>
+  <text x="80" y="187" fill="#9da7b3" font-size="10" text-anchor="middle" data-page-node-id="xq4zd9av0WtyMem94hwId0">:8001</text>
+
+  <rect x="170" y="150" width="120" height="44" rx="8" fill="#161b22" stroke="#7d8794" data-page-node-id="pG6HhEa5g4OvzkhZTqSVUP"/>
+  <text x="230" y="172" fill="#e6edf3" font-size="12" text-anchor="middle" font-weight="700" data-page-node-id="Dt3ZhIuNVfpuX4DDBxaz9v">detect</text>
+  <text x="230" y="187" fill="#9da7b3" font-size="10" text-anchor="middle" data-page-node-id="vupybKpbyiuxO1BjngGUh7">:8002</text>
+
+  <rect x="320" y="150" width="120" height="44" rx="8" fill="#161b22" stroke="#7d8794" data-page-node-id="AxYv8z0XiYvxcqB9aG1PdQ"/>
+  <text x="380" y="172" fill="#e6edf3" font-size="12" text-anchor="middle" font-weight="700" data-page-node-id="k2e159nAFrkc2cLVSaoKxe">drift</text>
+  <text x="380" y="187" fill="#9da7b3" font-size="10" text-anchor="middle" data-page-node-id="YYuay2xBprTNX0lhqJxfYz">:8003</text>
+
+  <rect x="470" y="150" width="120" height="44" rx="8" fill="#161b22" stroke="#7d8794" data-page-node-id="bi6tAlokSkl0NwCJZJpvNH"/>
+  <text x="530" y="172" fill="#e6edf3" font-size="12" text-anchor="middle" font-weight="700" data-page-node-id="fKO8bPGPLD5DjwgIHotRjd">attribute</text>
+  <text x="530" y="187" fill="#9da7b3" font-size="10" text-anchor="middle" data-page-node-id="00AOBw176a05tUVb0lzEew">:8004</text>
+
+  <rect x="470" y="250" width="120" height="44" rx="8" fill="#161b22" stroke="#7d8794" data-page-node-id="7856FQ9mnwnUFCmalCyS0u"/>
+  <text x="530" y="272" fill="#e6edf3" font-size="12" text-anchor="middle" font-weight="700" data-page-node-id="KBDuSVU377iKNOfRs8EDUo">intel</text>
+  <text x="530" y="287" fill="#9da7b3" font-size="10" text-anchor="middle" data-page-node-id="gwBdFiKuS2Dms7Na0dw7YI">:8005</text>
+
+  <!-- DB / Redis -->
+  <rect x="20" y="420" width="120" height="44" rx="8" fill="#161b22" stroke="#3fb950" data-page-node-id="6naZQEZTl33ee5O50msWEh"/>
+  <text x="80" y="447" fill="#e6edf3" font-size="11.5" text-anchor="middle" font-weight="700" data-page-node-id="H5fwzUoBeR6W6IjqddChmf">PostgreSQL</text>
+  <text x="80" y="462" fill="#9da7b3" font-size="10" text-anchor="middle" data-page-node-id="PbPOHw7zXSlMHwafCJBDmj">+PostGIS 5432</text>
+
+  <rect x="170" y="420" width="120" height="44" rx="8" fill="#161b22" stroke="#3fb950" data-page-node-id="4ZZAiSPP0pZIG9TIOlalmD"/>
+  <text x="230" y="447" fill="#e6edf3" font-size="11.5" text-anchor="middle" font-weight="700" data-page-node-id="BryvUaP5LDNIzNwnSe42Fa">Redis</text>
+  <text x="230" y="462" fill="#9da7b3" font-size="10" text-anchor="middle" data-page-node-id="WwLMMVJicVeBga5V84FRRo">broker 6379</text>
+
+  <!-- Celery worker -->
+  <rect x="250" y="320" width="180" height="46" rx="9" fill="#1c2230" stroke="#bc8cff" stroke-width="1.4" data-page-node-id="CiGuyg6jG8frl3cPyAUCVL"/>
+  <text x="340" y="342" fill="#e6edf3" font-size="12.5" text-anchor="middle" font-weight="700" data-page-node-id="2KPZiKORz4gl6cPCHJijnJ">Celery Worker</text>
+  <text x="340" y="357" fill="#9da7b3" font-size="10" text-anchor="middle" data-page-node-id="SCnzUgQtGYCCCYUDxSZV0l">sentinel_pipeline · 5 queues</text>
+
+  <!-- UI -->
+  <rect x="540" y="420" width="120" height="44" rx="8" fill="#161b22" stroke="#bc8cff" data-page-node-id="GViLmO17z6HGF5SUZFfhFU"/>
+  <text x="600" y="447" fill="#e6edf3" font-size="11.5" text-anchor="middle" font-weight="700" data-page-node-id="kCIAgiDjILbNTYEf8Mc0Rl">Analyst UI</text>
+  <text x="600" y="462" fill="#9da7b3" font-size="10" text-anchor="middle" data-page-node-id="jgb6q9Nl71NDQOEGxpzxxh">:3000</text>
+
+  <!-- gateway -> detect/drift/attribute (REST proxy, blue) -->
+  <line x1="270" y1="68" x2="230" y2="150" stroke="#58a6ff" stroke-width="1.6" marker-end="url(#a1)" data-page-node-id="Zo83SuKrI8MNcXWv25WxzJ"/>
+  <line x1="320" y1="68" x2="380" y2="150" stroke="#58a6ff" stroke-width="1.6" marker-end="url(#a1)" data-page-node-id="EF00t0xVzymksmZuzM7y3H"/>
+  <line x1="370" y1="68" x2="530" y2="150" stroke="#58a6ff" stroke-width="1.6" marker-end="url(#a1)" data-page-node-id="6FnTrfdLaJJHodCxP8TeYE"/>
+  <text x="430" y="105" fill="#58a6ff" font-size="10" text-anchor="middle" data-page-node-id="6tUzB0X3BH6h8rozSzm4qj">REST proxy</text>
+
+  <!-- gateway -> celery (purple) -->
+  <line x1="340" y1="68" x2="340" y2="320" stroke="#bc8cff" stroke-width="1.6" stroke-dasharray="5 3" marker-end="url(#a2)" data-page-node-id="OSrSdu1Mpla75woM2cf0BB"/>
+  <text x="360" y="200" fill="#bc8cff" font-size="10" data-page-node-id="Yi78UfbCmLObAferjlDaNR">trigger</text>
+
+  <!-- celery -> detect/drift/attribute/intel (purple fan-out) -->
+  <line x1="300" y1="320" x2="230" y2="194" stroke="#bc8cff" stroke-width="1.4" marker-end="url(#a2)" data-page-node-id="bD5IHHnYi0dAh1tDAepoR5"/>
+  <line x1="330" y1="320" x2="380" y2="194" stroke="#bc8cff" stroke-width="1.4" marker-end="url(#a2)" data-page-node-id="6QCTSAjXD7MfY1A8c97QCC"/>
+  <line x1="370" y1="340" x2="530" y2="194" stroke="#bc8cff" stroke-width="1.4" marker-end="url(#a2)" data-page-node-id="zO2dx57Jej3IQaDVwg61Qt"/>
+  <line x1="400" y1="340" x2="530" y2="250" stroke="#bc8cff" stroke-width="1.4" marker-end="url(#a2)" data-page-node-id="HdO5TgZQA0Ns7iyX9HuMJb"/>
+  <text x="455" y="285" fill="#bc8cff" font-size="10" text-anchor="middle" data-page-node-id="oDZXScjYG0U0oZz7sjtvO5">HTTP fan-out</text>
+
+  <!-- gateway -> db/redis -->
+  <line x1="280" y1="68" x2="80" y2="420" stroke="#3fb950" stroke-width="1.3" marker-end="url(#a3)" data-page-node-id="CckkuBK1UDphAPMYDLlHWk"/>
+  <line x1="300" y1="68" x2="230" y2="420" stroke="#3fb950" stroke-width="1.3" marker-end="url(#a3)" data-page-node-id="AYLfvXu0s0NtmGAoleuFTz"/>
+  <text x="150" y="250" fill="#3fb950" font-size="10" transform="rotate(-80 150 250)" data-page-node-id="YU29sCTOq5dB6FAyjeBefS">case store</text>
+
+  <!-- UI -> gateway -->
+  <line x1="600" y1="420" x2="400" y2="68" stroke="#58a6ff" stroke-width="1.4" marker-end="url(#a1)" data-page-node-id="D4dvcMRgDJsq6Hs59ECE6Z"/>
+  <text x="520" y="250" fill="#58a6ff" font-size="10" text-anchor="middle" data-page-node-id="EzgSs3RDJH19waZTdgEdp7">HTTP / WS</text>
+
+  <!-- external to ingest -->
+  <text x="80" y="135" fill="#9da7b3" font-size="10" text-anchor="middle" data-page-node-id="De9WkOtRWTtqA4YKc7GMr1">← CDSE / ERA5 / CMEMS / AIS</text>
+  <text x="80" y="478" fill="#9da7b3" font-size="10" text-anchor="middle" data-page-node-id="gmANdmfK1FrplxxH5shAZq">← external data writes</text>
+</svg>
+  </div>
+  <div class="card" data-page-node-id="rPNaKiMBCej5loEMKkqqT4">
+    <b data-page-node-id="RFnORS6vW9CEdvATkO0Ans">Two paths through the system.</b>
+    <ul data-page-node-id="kVeaTOTNeeu1t9jNRuV2iN">
+      <li data-page-node-id="ZCGNTyxLrk6UqZF7BxWo6Z"><b data-page-node-id="D9XDhYLQfxgTMc3JZ0d9Hm">Synchronous per-stage API</b> — a client posts a SAR scene to the gateway, which proxies to <code data-page-node-id="CoOE8zgHxkCQyj5qWhs39Z">detect</code> directly; drift/attribute are proxied too (drift via a circuit-breaker). Good for interactive single-stage calls.</li>
+      <li data-page-node-id="YlK1G7Oh5KyepH3F1J9FWh"><b data-page-node-id="a91mtL6kqgGwkZ0c8Tnlcq">Asynchronous full pipeline</b> — <code data-page-node-id="KU06LPMOEGOXh21nL58qA2">POST /api/v1/pipeline/trigger</code> enqueues a Celery task that fans out over HTTP to <code data-page-node-id="Y4p1rTofza1Eflh9OwA2Yz">detect → drift → attribute → intel</code> in order, each stage consuming the previous stage's output. This is how a complete case file is produced.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ============ 5. DATA FLOW ============ -->
+<section id="dataflow" data-page-node-id="gKZCEb42eUurEisWCzE5bY">
+  <h2 data-page-node-id="yl2AkFTjcYGvzM66HhsW9a">5 · End-to-End Data Flow (Input → Output)</h2>
+  <p data-page-node-id="9ZG23DQUkeSOy8X5Gk0Ahr">From a raw SAR GeoTIFF to a citable case file. Each stage is tagged with its
+  provenance and uncertainty posture so the next stage — and the analyst — cannot
+  mistake a flag for a fact.</p>
+
+  <div class="diagram" data-page-node-id="wrHOmtjnsD2cFBFTb4W7Iv">
+<!-- Data flow SVG -->
+<svg viewBox="0 0 680 560" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system,Segoe UI,Roboto,sans-serif" data-page-node-id="GtAo3tjqX3cnid94kZjmii">
+  <defs data-page-node-id="aiOYDmZsoX5gRqd1O0Rpdy">
+    <marker id="d1" markerWidth="10" markerHeight="10" refX="7" refY="3" orient="auto" data-page-node-id="A5jXdzPXGdQT6Lq6WC61ib"><path d="M0,0 L7,3 L0,6 Z" fill="#7d8794" data-page-node-id="5yJMekj1mmI8F0cFIDrSIf"/></marker>
+  </defs>
+
+  <!-- Stage 0 input -->
+  <rect x="20" y="20" width="150" height="50" rx="9" fill="#161b22" stroke="#3fb950" data-page-node-id="8yOe2JMcKdMPGbII9a00Sb"/>
+  <text x="95" y="42" fill="#e6edf3" font-size="12" text-anchor="middle" font-weight="700" data-page-node-id="nspkhRHme9jJIgnmGS3u7K">SAR GeoTIFF</text>
+  <text x="95" y="58" fill="#9da7b3" font-size="10" text-anchor="middle" data-page-node-id="O7AqUiceFoiO5i5e8DNBBO">2-band dB, EPSG:4326</text>
+
+  <!-- Stage 1 detect -->
+  <rect x="20" y="110" width="150" height="74" rx="9" fill="#1c2230" stroke="#58a6ff" data-page-node-id="6LRslwp0Trlk2xuHhfo3YC"/>
+  <text x="95" y="132" fill="#e6edf3" font-size="12" text-anchor="middle" font-weight="700" data-page-node-id="QjQK50wwsUhxLcpTB6HRNy">detect</text>
+  <text x="95" y="149" fill="#9da7b3" font-size="10" text-anchor="middle" data-page-node-id="SodPnahMAV81pX6Q2mO2K2">Tier-A: Lee→Solberg</text>
+  <text x="95" y="163" fill="#9da7b3" font-size="10" text-anchor="middle" data-page-node-id="D8iDNBro3jlIRC7FAA6Ezh">→gate→morph→CC</text>
+  <text x="95" y="178" fill="#9da7b3" font-size="9.5" text-anchor="middle" data-page-node-id="vHV0RjrFOiD2Y9a2XjGpGl">Wilson 95% CI / blob</text>
+
+  <!-- Stage 2 drift -->
+  <rect x="20" y="230" width="150" height="74" rx="9" fill="#1c2230" stroke="#58a6ff" data-page-node-id="WPFn0w0lyZLI4BcueHU4nA"/>
+  <text x="95" y="252" fill="#e6edf3" font-size="12" text-anchor="middle" font-weight="700" data-page-node-id="Yks292rnL3G2vVfJDONGGf">drift</text>
+  <text x="95" y="269" fill="#9da7b3" font-size="10" text-anchor="middle" data-page-node-id="ss9cx6DgKAqWCmSAmXIJ30">OpenDrift backtrack</text>
+  <text x="95" y="283" fill="#9da7b3" font-size="10" text-anchor="middle" data-page-node-id="KdmBLBQ9ckvZ6OsCo1plYS">ERA5+CMEMS forcing</text>
+  <text x="95" y="298" fill="#9da7b3" font-size="9.5" text-anchor="middle" data-page-node-id="8S3LLoo0fiGoTPZ216xzLh">origin ellipse + WMC</text>
+
+  <!-- Stage 3 attribute -->
+  <rect x="20" y="350" width="150" height="74" rx="9" fill="#1c2230" stroke="#58a6ff" data-page-node-id="QAvd3axeZFsvaMb6GwMVK8"/>
+  <text x="95" y="372" fill="#e6edf3" font-size="12" text-anchor="middle" font-weight="700" data-page-node-id="xMZb6rhmOBImpQv52UFFNy">attribute</text>
+  <text x="95" y="389" fill="#9da7b3" font-size="10" text-anchor="middle" data-page-node-id="p24UV3o13oBdekNS1UDqJZ">K_ij fuzzy + XGB</text>
+  <text x="95" y="403" fill="#9da7b3" font-size="10" text-anchor="middle" data-page-node-id="JVhznWWSYEoElFELU8gDVs">AIS proximity/temp</text>
+  <text x="95" y="418" fill="#9da7b3" font-size="9.5" text-anchor="middle" data-page-node-id="S2H8NyltXY9NuyEHnMsNAs">suspect ranking</text>
+
+  <!-- Stage 4 intel -->
+  <rect x="20" y="470" width="150" height="64" rx="9" fill="#1c2230" stroke="#58a6ff" data-page-node-id="q3cUCwHSJvs52mFG36qPV9"/>
+  <text x="95" y="492" fill="#e6edf3" font-size="12" text-anchor="middle" font-weight="700" data-page-node-id="jfKyCB13a5k57H3Fd3TXsD">intel</text>
+  <text x="95" y="509" fill="#9da7b3" font-size="10" text-anchor="middle" data-page-node-id="225sXSFeT843b2YtRGy4bD">LLM narrative</text>
+  <text x="95" y="523" fill="#9da7b3" font-size="10" text-anchor="middle" data-page-node-id="MvEWV75Ckf2k8gyqwNDSnC">PDF + CoC hash</text>
+
+  <!-- Output -->
+  <rect x="500" y="470" width="160" height="64" rx="9" fill="#161b22" stroke="#bc8cff" data-page-node-id="mN1DjkcdMpF16hxAO8SC2v"/>
+  <text x="580" y="492" fill="#e6edf3" font-size="12" text-anchor="middle" font-weight="700" data-page-node-id="66xfdgapnZ9IDIvxbvE78L">Case File</text>
+  <text x="580" y="509" fill="#9da7b3" font-size="10" text-anchor="middle" data-page-node-id="QlQbEgGUwocCortFaGpi9D">evidence package</text>
+  <text x="580" y="523" fill="#9da7b3" font-size="9.5" text-anchor="middle" data-page-node-id="oRzXi8dDxsrZUQxHy9546A">+ provenance tags</text>
+
+  <!-- arrows downward -->
+  <line x1="95" y1="70" x2="95" y2="110" stroke="#7d8794" stroke-width="1.6" marker-end="url(#d1)" data-page-node-id="zTrQitsyxLIY3Dko0skvX5"/>
+  <line x1="95" y1="184" x2="95" y2="230" stroke="#7d8794" stroke-width="1.6" marker-end="url(#d1)" data-page-node-id="knwZWGR1vWHFOQ6mG7qf6k"/>
+  <line x1="95" y1="304" x2="95" y2="350" stroke="#7d8794" stroke-width="1.6" marker-end="url(#d1)" data-page-node-id="3RBzeYpMjuyr907UnkuZMF"/>
+  <line x1="95" y1="424" x2="95" y2="470" stroke="#7d8794" stroke-width="1.6" marker-end="url(#d1)" data-page-node-id="emKSSjJbV1yOkf8QQW4sZ5"/>
+  <line x1="170" y1="502" x2="500" y2="502" stroke="#bc8cff" stroke-width="1.6" marker-end="url(#d1)" data-page-node-id="gNTNRtkOqaRnpwduA9ckvx"/>
+  <text x="335" y="497" fill="#bc8cff" font-size="10" text-anchor="middle" data-page-node-id="PmL8yXa2pITss3oQEcNYKC">assembled + hashed</text>
+
+  <!-- Output payload annotations -->
+  <rect x="210" y="110" width="220" height="50" rx="8" fill="#11161f" stroke="#30363d" data-page-node-id="P1qKliePI0tGS4rMR8nZLL"/>
+  <text x="320" y="128" fill="#e6edf3" font-size="10.5" text-anchor="middle" data-page-node-id="bD10wFgOKNjzGfPPoERrVp">→ GeoJSON polygons</text>
+  <text x="320" y="144" fill="#9da7b3" font-size="10" text-anchor="middle" data-page-node-id="xyEROEUitninw7CDAXZeCD">area, contrast, Fay age, Wilson CI</text>
+
+  <rect x="210" y="232" width="220" height="50" rx="8" fill="#11161f" stroke="#30363d" data-page-node-id="VyXqIUQ0IoJFsv5o1TnCVd"/>
+  <text x="320" y="250" fill="#e6edf3" font-size="10.5" text-anchor="middle" data-page-node-id="ybjEmvbq9Z0pdimufunxyD">→ origin center + 2σ / p95</text>
+  <text x="320" y="266" fill="#9da7b3" font-size="10" text-anchor="middle" data-page-node-id="Fb5hMNwWyN26Ng5WykfILa">PCA Gaussian + quantile radii</text>
+
+  <rect x="210" y="352" width="220" height="50" rx="8" fill="#11161f" stroke="#30363d" data-page-node-id="tU9XlwQHukOlnTY6VsoxWq"/>
+  <text x="320" y="370" fill="#e6edf3" font-size="10.5" text-anchor="middle" data-page-node-id="6VWxgUCUCzPIcQSjGlaRLq">→ suspect vessels w/ K_ij</text>
+  <text x="320" y="386" fill="#9da7b3" font-size="10" text-anchor="middle" data-page-node-id="cAFHuQkCXDdjGNasp87AbP">Wilson CI; empty if no AIS</text>
+
+  <rect x="210" y="472" width="220" height="50" rx="8" fill="#11161f" stroke="#30363d" data-page-node-id="o8ql91N8IXYbmogiMEuCF7"/>
+  <text x="320" y="490" fill="#e6edf3" font-size="10.5" text-anchor="middle" data-page-node-id="sA5zJ7iDLKR6ExkOS3CUIV">→ narrative + annexes</text>
+  <text x="320" y="506" fill="#9da7b3" font-size="10" text-anchor="middle" data-page-node-id="sQh0Aibbc7vEVVM2mPX3Aq">or deterministic template</text>
+
+  <line x1="170" y1="135" x2="210" y2="135" stroke="#7d8794" stroke-width="1.3" marker-end="url(#d1)" data-page-node-id="E7akPYDMtH5JxcsQa7oTgB"/>
+  <line x1="170" y1="257" x2="210" y2="257" stroke="#7d8794" stroke-width="1.3" marker-end="url(#d1)" data-page-node-id="KWEeotdETgWN0D7eCQuZv5"/>
+  <line x1="170" y1="377" x2="210" y2="377" stroke="#7d8794" stroke-width="1.3" marker-end="url(#d1)" data-page-node-id="JF9rzU0HaXb5kHss0K0SH7"/>
+  <line x1="170" y1="497" x2="210" y2="497" stroke="#7d8794" stroke-width="1.3" marker-end="url(#d1)" data-page-node-id="0Vc4YWcJcoX9f5Ns8Ibflo"/>
+
+  <text x="580" y="40" fill="#9da7b3" font-size="10" text-anchor="middle" data-page-node-id="cQDNMm6RSjOXKrmY0HgBGc">Persistence:</text>
+  <text x="580" y="56" fill="#9da7b3" font-size="10" text-anchor="middle" data-page-node-id="ID9Brio8OlrnWYa9yKyJmo">Postgres or JSON</text>
+  <text x="580" y="72" fill="#9da7b3" font-size="10" text-anchor="middle" data-page-node-id="zPosLItGXRNgVgmijNNURn">(fallback)</text>
+</svg>
+  </div>
+
+  <h4 data-page-node-id="dp3gdGTXJybyVGXGAZB2ek">5.1 What each stage emits</h4>
+  <ul data-page-node-id="SrW8zIb8dLXgbF0nJUdF9y">
+    <li data-page-node-id="OIRjaFXpXjMEa1LFouAzag"><b data-page-node-id="6INmuEwdI65OGS8sviqYaY">detect</b> → GeoJSON polygons (EPSG:4326) + per-blob metrics (area, compactness, elongation, mean dB, contrast) + a <b data-page-node-id="86KQvM2d1H3kfM4BGtLoTu">Wilson 95% CI</b> per polygon + a per-pixel evidence map. Not a trained model in production (Tier-B is <code data-page-node-id="A3APJdGqN8Tc0HcrCVKQtg">untrained</code> and emits <code data-page-node-id="o0BrhN8Sm1ecVO8n5p1AFN">probabilities: null</code>).</li>
+    <li data-page-node-id="NLI4Mfu2vdLRF75FmUodi9"><b data-page-node-id="RUFczapdhbzmBiu1ixZkw3">drift</b> → an inferred origin: center lon/lat, PCA 2σ ellipse (<code data-page-node-id="34SWpGJDZxMbI04zMmTKOo">semi_major/semi_minor_km</code>) and non-parametric <code data-page-node-id="990DIY2Rr6v4JIPTwRyhwH">p50/p95_radius_km</code>, particle count, and a stated note on the WMC ∇·K correction (a no-op here because K is spatially constant — reported, not faked).</li>
+    <li data-page-node-id="AHhUa0WFoQxr60k8pGHiRk"><b data-page-node-id="QyZUJ8FLqcTctCMW82cmaK">attribute</b> → ranked suspect vessels with <code data-page-node-id="mlCsxGLGDaabJYJTWZsF6J">K_ij</code> composite score and Wilson CI. With no real AIS coverage the API returns an <b data-page-node-id="OSsIe8hqfLk7X9Lsil9hgy">empty ranking with a reason</b> — it never fabricates suspects.</li>
+    <li data-page-node-id="XNd2OQKaLhjB2Wauok6PCC"><b data-page-node-id="lXGTGi6ACrqcBQtuAcLV6P">intel</b> → an LLM-written narrative + legal PDF case file + chain-of-custody hash. With no model available it falls back to a deterministic template and labels it as such.</li>
+  </ul>
+
+  <h4 data-page-node-id="l2FaYdZHPkpImHHzH1dCuT">5.2 Provenance is carried end-to-end</h4>
+  <p data-page-node-id="OjrHQU4OvUrCVWNlzYcDaQ">Every datum carries a provenance tag (<code data-page-node-id="HpDaIcHnDwUbz3o5EZthza">REAL</code> / <code data-page-node-id="hVcHFBTVjAAAwC9wgtcCW4">SYNTHETIC</code> /
+  <code data-page-node-id="eHivczaLiWPe6QirebWgt9">UNAVAILABLE</code> / <code data-page-node-id="Wpv4pqOf0xduGBCybUwRAB">FAILED</code>) and every uncertainty carries a confidence
+  interval, never a lone point estimate. This is the project's core design principle:
+  <b data-page-node-id="dCCkkdQIIZz7TTHVsXFGhO">the system reports what it does not know.</b></p>
+</section>
+
+<!-- ============ 6. TRAINING PIPELINE ============ -->
+<section id="training" data-page-node-id="wRXFQThKHfDuCeWfDkT1cu">
+  <h2 data-page-node-id="ltPHjldjdyFwAmrD1LbidB">6 · Training &amp; Data-Source Pipeline</h2>
+  <p data-page-node-id="FHR3GzmmqHnR0X9XTc6jQJ">The trainer is runtime-switchable between the real archive and a synthetic set; both
+  read <b data-page-node-id="DNFoPr5z51bK9kwCw1DIyt">in place</b> (nothing is copied to the local machine). The leak-free
+  <code data-page-node-id="3OoEGQ9unTNRbYd5oEQ696">footprint</code> grouping is what makes the evaluation trustworthy.</p>
+
+  <div class="diagram" data-page-node-id="t2pbd8cUsHicmucMIE3ZNU">
+<!-- Training SVG -->
+<svg viewBox="0 0 680 470" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system,Segoe UI,Roboto,sans-serif" data-page-node-id="Ei7ulxZAeVOAfHbQL3j4UF">
+  <defs data-page-node-id="ljrxkxoN9r9oABWP8IlEZa">
+    <marker id="t1" markerWidth="10" markerHeight="10" refX="7" refY="3" orient="auto" data-page-node-id="JuygbXaWafCum12wrBFnp5"><path d="M0,0 L7,3 L0,6 Z" fill="#7d8794" data-page-node-id="XIrbirM8gYtz9RoxAa3hWM"/></marker>
+  </defs>
+
+  <!-- Real branch -->
+  <rect x="20" y="20" width="200" height="56" rx="9" fill="#161b22" stroke="#3fb950" data-page-node-id="SsrxL608d6vPIJFr3X9uKE"/>
+  <text x="120" y="42" fill="#e6edf3" font-size="12" text-anchor="middle" font-weight="700" data-page-node-id="lXYPUgjYUyCqIk4mVfFb4Z">Real archive (in place)</text>
+  <text x="120" y="60" fill="#9da7b3" font-size="10" text-anchor="middle" data-page-node-id="qWNXxXVx5G4fgJGng8LsAh">/Volumes/Ventoy/Oil · 1200 TIFFs</text>
+
+  <!-- Synthetic branch -->
+  <rect x="20" y="100" width="200" height="56" rx="9" fill="#161b22" stroke="#d29922" data-page-node-id="rpREunqiz5yeoOIjX75Cg7"/>
+  <text x="120" y="122" fill="#e6edf3" font-size="12" text-anchor="middle" font-weight="700" data-page-node-id="NgACtRpSulaF3GAgV0fysy">Synthetic set</text>
+  <text x="120" y="140" fill="#9da7b3" font-size="10" text-anchor="middle" data-page-node-id="V1GDB9jPywnQiQABQM6guM">profile→generate→re-profile→match</text>
+
+  <!-- index -->
+  <rect x="260" y="20" width="170" height="56" rx="9" fill="#1c2230" stroke="#58a6ff" data-page-node-id="0GWvOlfOateBIL0ltPOHvD"/>
+  <text x="345" y="42" fill="#e6edf3" font-size="11.5" text-anchor="middle" font-weight="700" data-page-node-id="JsFKzFENA8UiBSdQoMIeNR">manifest.jsonl</text>
+  <text x="345" y="60" fill="#9da7b3" font-size="10" text-anchor="middle" data-page-node-id="Pe1iFKeCQmZPxGCMODSNq4">footprint grouping (195 areas)</text>
+
+  <!-- splits -->
+  <rect x="260" y="100" width="170" height="56" rx="9" fill="#1c2230" stroke="#58a6ff" data-page-node-id="ZE1Hj96iEURuiE1RUdHm2S"/>
+  <text x="345" y="122" fill="#e6edf3" font-size="11.5" text-anchor="middle" font-weight="700" data-page-node-id="NGSFG12pZDxoZ81i3ZWBT2">leak-free splits</text>
+  <text x="345" y="140" fill="#9da7b3" font-size="10" text-anchor="middle" data-page-node-id="94FNqehW4FiTre6ERAOlXk">train/val/test · scene_leakage guard</text>
+
+  <!-- dataset/dataloader -->
+  <rect x="260" y="180" width="170" height="56" rx="9" fill="#1c2230" stroke="#58a6ff" data-page-node-id="7ZoqHOCJLohUHicTcipOq7"/>
+  <text x="345" y="202" fill="#e6edf3" font-size="11.5" text-anchor="middle" font-weight="700" data-page-node-id="aAGyzKUUN8AxPFB1iwcCmZ">SAROilSpillDataset</text>
+  <text x="345" y="220" fill="#9da7b3" font-size="10" text-anchor="middle" data-page-node-id="We38u2CENTAI8cL6HWYx7g">DB transforms · DataLoader</text>
+
+  <!-- model -->
+  <rect x="260" y="260" width="170" height="56" rx="9" fill="#1c2230" stroke="#bc8cff" data-page-node-id="jBlGgvqBi3zIFMdbAWxCZR"/>
+  <text x="345" y="282" fill="#e6edf3" font-size="11.5" text-anchor="middle" font-weight="700" data-page-node-id="EHEAMvUomQvVWGOYOKzcHZ">UNet++ / SCSE</text>
+  <text x="345" y="300" fill="#9da7b3" font-size="10" text-anchor="middle" data-page-node-id="KFdrNQ0EvrhC5DphJNB7y1">resnet34 · BCEDiceLoss · MPS</text>
+
+  <!-- artifacts -->
+  <rect x="260" y="340" width="170" height="56" rx="9" fill="#161b22" stroke="#3fb950" data-page-node-id="bdsdComghTX0Np6uTIxe8k"/>
+  <text x="345" y="362" fill="#e6edf3" font-size="11.5" text-anchor="middle" font-weight="700" data-page-node-id="5QMrDWlAA8AlUzza1wI1cm">Artifacts</text>
+  <text x="345" y="380" fill="#9da7b3" font-size="10" text-anchor="middle" data-page-node-id="J0MIeTzj1Rvs6DCH4a8LM0">run_report.json · metrics.jsonl · .pth</text>
+
+  <!-- arrows -->
+  <line x1="220" y1="48" x2="260" y2="48" stroke="#7d8794" stroke-width="1.5" marker-end="url(#t1)" data-page-node-id="LdxGjHmX3fkziZgezNgJD1"/>
+  <line x1="220" y1="128" x2="260" y2="128" stroke="#7d8794" stroke-width="1.5" marker-end="url(#t1)" data-page-node-id="aKc7UAFE0KQumbZRnNT83c"/>
+  <line x1="345" y1="76" x2="345" y2="100" stroke="#7d8794" stroke-width="1.5" marker-end="url(#t1)" data-page-node-id="uIA3DwpJnblhp7feMjL45j"/>
+  <line x1="345" y1="156" x2="345" y2="180" stroke="#7d8794" stroke-width="1.5" marker-end="url(#t1)" data-page-node-id="XaeedeFUYo7yzCnHlsC30C"/>
+  <line x1="345" y1="236" x2="345" y2="260" stroke="#7d8794" stroke-width="1.5" marker-end="url(#t1)" data-page-node-id="DwxLz45thLFqC6SjkK4EWo"/>
+  <line x1="345" y1="316" x2="345" y2="340" stroke="#7d8794" stroke-width="1.5" marker-end="url(#t1)" data-page-node-id="fwhBTQ8CzNaRFchdec6gB8"/>
+
+  <!-- right column: notes -->
+  <rect x="470" y="20" width="190" height="120" rx="9" fill="#11161f" stroke="#30363d" data-page-node-id="TZezfp3szSnsBwHYr89iG9"/>
+  <text x="565" y="42" fill="#d29922" font-size="11" text-anchor="middle" font-weight="700" data-page-node-id="b0nH4aZR8n8zup0USKzg3O">SourceFingerprint</text>
+  <text x="565" y="62" fill="#9da7b3" font-size="10" text-anchor="middle" data-page-node-id="16ucbvVz5uUWFrwvMZ8D9b">mtime_ns / entry count /</text>
+  <text x="565" y="76" fill="#9da7b3" font-size="10" text-anchor="middle" data-page-node-id="i7P0PUyDG3y51Jmp0qX3n4">st_dev checked before &amp; after</text>
+  <text x="565" y="92" fill="#9da7b3" font-size="10" text-anchor="middle" data-page-node-id="UsJvnzDdX4JC6o8OM2sPxy">→ source_unchanged:True</text>
+  <text x="565" y="110" fill="#9da7b3" font-size="10" text-anchor="middle" data-page-node-id="UfeCTTLwr1C8cUUqRpPoT2">SHA-256 either side is</text>
+  <text x="565" y="124" fill="#9da7b3" font-size="10" text-anchor="middle" data-page-node-id="AsgEnGKBt1gNp58eu8RVB6">byte-identical</text>
+
+  <rect x="470" y="160" width="190" height="120" rx="9" fill="#11161f" stroke="#30363d" data-page-node-id="KiF97LCLOkFMVXRcHYagVV"/>
+  <text x="565" y="182" fill="#f85149" font-size="11" text-anchor="middle" font-weight="700" data-page-node-id="xxN5sVVSEZswtiAXZ91Gw8">The leakage lesson</text>
+  <text x="565" y="202" fill="#9da7b3" font-size="10" text-anchor="middle" data-page-node-id="ikYIjCPF0Lu3ETnszcbnvR">per_file split → val IoU 0.8050</text>
+  <text x="565" y="216" fill="#9da7b3" font-size="10" text-anchor="middle" data-page-node-id="ot8GGdsFARo1t5KbYbFafY">(63% leakage, upper bound)</text>
+  <text x="565" y="232" fill="#9da7b3" font-size="10" text-anchor="middle" data-page-node-id="VKPPkFGWxifU2G4ovNksEw">footprint split → val 0.2981</text>
+  <text x="565" y="248" fill="#9da7b3" font-size="10" text-anchor="middle" data-page-node-id="UHdfFMIHvhh24gbuYDfpWn">held-out test → 0.1447  ⬅ quote</text>
+  <text x="565" y="266" fill="#3fb950" font-size="9.5" text-anchor="middle" data-page-node-id="YX85DxwT1qiPLN9iJSjUpT">guard can now FAIL</text>
+
+  <rect x="470" y="300" width="190" height="96" rx="9" fill="#11161f" stroke="#30363d" data-page-node-id="T91clREV6IhH2whWHHpFig"/>
+  <text x="565" y="322" fill="#58a6ff" font-size="11" text-anchor="middle" font-weight="700" data-page-node-id="iDxXGuYYTCWPWWwoapdvCQ">Atomic writes</text>
+  <text x="565" y="342" fill="#9da7b3" font-size="10" text-anchor="middle" data-page-node-id="h1VkjnNBNhr3aKRGcxGHoP">checkpoints via os.replace</text>
+  <text x="565" y="358" fill="#9da7b3" font-size="10" text-anchor="middle" data-page-node-id="SnTvZAHhesEH1fgoBYnNAg">--resume reloads best</text>
+  <text x="565" y="374" fill="#9da7b3" font-size="10" text-anchor="middle" data-page-node-id="6faFVycYGjnsf7JvmnIUxu">val IoU, not last epoch</text>
+</svg>
+  </div>
+
+  <div class="card warn" data-page-node-id="4iu9WgZOOXTXTPRXIsso8U">
+    <b data-page-node-id="PMFbFCkEbWiIFi5J7I0l48">Why the training numbers are what they are.</b> The same 10-epoch budget, two splits:
+    <ul data-page-node-id="sDzdMXGWrN1Eeba4LHR9VA">
+      <li data-page-node-id="3bpnA5INdsKXUCqFxGBUfN"><code data-page-node-id="BWKXTXb1a84IGMaYDBDqSx">per_file</code> split → <b data-page-node-id="LMs4RrqU3C1AwTZrtzhHeO">val IoU 0.8050</b> — leaked; tiles from one acquisition landed on both sides. ~63% of that number was leakage.</li>
+      <li data-page-node-id="gcmbJwYgbqBYu9G73QMeLn"><code data-page-node-id="6sVmAOhJZkFT2Lm4GZEBgh">footprint</code> split → <b data-page-node-id="jijzg1UziiLqKNE6fYnsTx">val IoU 0.2981</b> — leak-free but still only 8 acquisitions, val-selected.</li>
+      <li data-page-node-id="8XkWKNDV6TtchLf2RXUvaY"><code data-page-node-id="tSVqXHBouCkUzLOObBoCFH">footprint</code> + held-out test → <b data-page-node-id="N3cGtBSvEwK86DlOcEzZqO">test IoU 0.1447</b> — the number to quote. On unseen acquisitions the model over-predicts (precision 0.15, recall 0.76): 333k false-positive pixels vs 59k true. <b data-page-node-id="uUyNa9gfzBSGGDo3m5U3ne">No trained model is deployed.</b></li>
+    </ul>
+  </div>
+</section>
+
+<!-- ============ 7. SETUP ============ -->
+<section id="setup" data-page-node-id="Q9qrjL2By18GeX1solexvg">
+  <h2 data-page-node-id="sSyyXK3y56hyiXKZQo3GiV">7 · Setup, Dependencies &amp; Configuration</h2>
+
+  <h3 data-page-node-id="31Sb1MFMRZQCodofPSSCiZ">7.1 Runtime &amp; interpreter</h3>
+  <ul data-page-node-id="PlhcncnQ9v0GXZWvWFeuvY">
+    <li data-page-node-id="byr2toqR4QiBAyQOVoisup">One managed venv targeted by <code data-page-node-id="yoWY3xvnF2zX1Wvdq4z9eP">pyproject.toml</code>; deployment images are Python <b data-page-node-id="5n9VBP8lVdX7KouR2mvKG1">3.11</b> (detect, drift) / <b data-page-node-id="j8NXzjo4zXZpwd6cZ9W2VE">3.12</b> (api); mypy type-checks under <b data-page-node-id="5YMXHhcWxUF0fScPGKGlH5">3.13</b> (see comment in <code data-page-node-id="Pq0YgRa8iGmlTw9kEDqIGZ">pyproject.toml</code> for why).</li>
+    <li data-page-node-id="4LKcoUa8rXQbJEAotQ7ktb">Apple M2, <b data-page-node-id="pljggi7zoRzSoRN9G871xu">no CUDA</b>; MPS used for torch where available. Docker is <b data-page-node-id="08a13iqEYSDROZv6PHoKOS">not installed</b> on the build machine — compose <code data-page-node-id="oMBRbSYKiNWGvF11tjiObN">config</code> validates but images are unbuilt (B1/B10).</li>
+  </ul>
+
+  <h3 data-page-node-id="vqPzQVD670JF0020ShPwzO">7.2 Dependencies</h3>
+  <p data-page-node-id="OvOZqYKpEFRDYe0CT5l7qh">Two deliberately separate lists (so the serving image and the trainer aren't pinned to something nobody ran):</p>
+  <ul data-page-node-id="YldrVLx74er3gEst8tMhr6">
+    <li data-page-node-id="omV42bXugbFk8YXLHJnG7r"><b data-page-node-id="ea3xG0gUD9A0toVOGmFnws">ML / training</b> (<code data-page-node-id="tiB0lefhOFNedbKpd0yZ39">ml/requirements.txt</code>, verified set): <code data-page-node-id="L86VUS8CFHHHuvWXHAULGd">torch&gt;=2.2</code>, <code data-page-node-id="EUyo0fO5hVTQfBCNdkujzy">torchvision&gt;=0.17</code>, <code data-page-node-id="d1qC3jWZP9lqDUGjjnPhQ6">timm&gt;=1.0</code>, <code data-page-node-id="Ew3X6NZCqhgeV9HTtkFSAb">numpy&gt;=1.26</code>, <code data-page-node-id="Oe8otdEt1MZWkBb6inEWd1">scipy&gt;=1.11</code>, <code data-page-node-id="KmUcZRNApoU8x3tzPZm3kU">rasterio&gt;=1.3</code>, <code data-page-node-id="vlcUmzAqrmuxvnbymCAOOJ">pydantic&gt;=2.7</code>, <code data-page-node-id="izxKsqaWWClg8Z4Lsf1OGY">pydantic-settings&gt;=2.3</code>, <code data-page-node-id="T1blnrbYhFh6J3WXyj9X6F">loguru</code>, <code data-page-node-id="q7JP5UqFFaTbAg2HgAV2P6">python-dotenv</code>.</li>
+    <li data-page-node-id="3WMch1RKfOYbBSSoAKBHyy"><b data-page-node-id="H9KKKAerU7AGbAZzEPCpc3">Services</b>: <code data-page-node-id="lzlhn8fUjl1qIzQYdRASJn">fastapi</code>, <code data-page-node-id="02l9ByPqVwEauyidtlx7PL">httpx</code>, <code data-page-node-id="YOADRrlAD9SGIsVWwYvtvU">pydantic v2</code>, <code data-page-node-id="LwFkOUb0gANfNcukbqAnaF">asyncpg</code>, <code data-page-node-id="WlcfdyH8fcCLBQusvn81ru">celery</code> + Redis broker, plus per-service domain libs: <code data-page-node-id="hpvcseVZK28CHLkh3KGGzO">opendrift 1.14.11</code> &amp; <code data-page-node-id="iSsIbAHjW3KmU6glvHnF1D">cfgrib</code> &amp; <code data-page-node-id="lQlwFZrjPtFsBtNMJTbSQz">xarray</code> &amp; <code data-page-node-id="xViVMPnvU2ItSSAV85lQdQ">netCDF4</code> (drift), <code data-page-node-id="2D1RSLWDuHRtpFToH2iMj0">copernicusmarine 2.4.1</code> (ingest), <code data-page-node-id="BPdBhBKnTAbNwfF0ZJt34m">rasterio</code>/<code data-page-node-id="kBI3woWbgM52KBnJpOWRwf">shapely</code>/<code data-page-node-id="VXdtDvRScFdNl7sFuOxJfA">scikit-image</code> (detect Tier-A).</li>
+    <li data-page-node-id="JcrxhkQWxhqZhZZ7U6fJDP"><b data-page-node-id="Wrwudj8xm9fvAumVhK4jHP">Frontend</b>: Node + React 18, Three.js/deck.gl, Tailwind, zustand, vitest. <code data-page-node-id="bs2CSyuHn1lWOZQoGCmWj6">strict</code>, no <code data-page-node-id="dC0YfX98zb7T1AaJcIYOHC">any</code>.</li>
+  </ul>
+
+  <h3 data-page-node-id="lqLc0rtUbkHsJqpbkowpYt">7.3 The fast, self-contained loop (verified)</h3>
+  <pre data-page-node-id="hi1ArhIHNbgjFbQ4kP3VXJ"><code data-page-node-id="YTNCeEfqgTd1DoCpYZJFRz"># one managed venv
+PY=/Users/praxsmac/.workbuddy-ai/binaries/python/envs/default/bin/python
+cd /Users/praxsmac/projects/claude1/sentinel
+python -m venv .venv && . .venv/bin/activate && pip install -r ml/requirements.txt
+cp .env.example .env          # defaults work on the synthetic path
+
+make test                     # expect 302 passed (297 + 5 skipped on fresh clone)
+python scripts/train.py --data-source synthetic --epochs 2 --max-pairs 24</code></pre>
+
+  <h3 data-page-node-id="Mg4LPwF7uJuyixQzZnR7NV">7.4 Running the services (native, recommended here)</h3>
+  <pre data-page-node-id="h0zigR5xPJQ2R6etsmYgYQ"><code data-page-node-id="1EKLnP63e98NWtvJFh13nM">set -a; . ./.env; set +a      # REQUIRED — without it ERA5 silently loses its key
+cd services/ingest    &amp;&amp; $PY -m uvicorn app.main:app             --port 8001 &amp;
+cd services/detect    &amp;&amp; $PY -m uvicorn app.main_det:app         --port 8002 &amp;
+cd services/drift     &amp;&amp; $PY -m uvicorn app.main_attribution:app --port 8003 &amp;
+cd services/attribute &amp;&amp; $PY -m uvicorn app.main:app            --port 8004 &amp;
+cd services/api       &amp;&amp; $PY -m uvicorn app.main:app            --port 8000 &amp;
+cd services/ui        &amp;&amp; npm run dev                            # :3000</code></pre>
+  <p class="note" data-page-node-id="wl0jaAAw99qug9Z9goTax6">Entry points matter: <code data-page-node-id="qiYLvMO4USJbGbUqlYpytS">detect</code> → <code data-page-node-id="QwiFyZPCwZefzLqoCuMtpa">app.main_det:app</code> (torch-free Tier-A); <code data-page-node-id="9FMZLb7sXdJnF84sxNo098">app.main:app</code> needs torch + a checkpoint. <code data-page-node-id="QNSnESvQeXguVcgdUNABFG">.env</code> must hold <code data-page-node-id="3P2Iy1CRunY2q7Yl2lH9hA">127.0.0.1</code> URLs natively — <code data-page-node-id="lgg2UuFMQGsCGeTfZmVguB">sentinel-*</code> only resolves inside compose (which overrides them).</p>
+
+  <h3 data-page-node-id="vPNuLxjrCVQAHkTy44Wc69">7.5 Docker</h3>
+  <pre data-page-node-id="oDvLUp83LO5jqqzTCiqSUY"><code data-page-node-id="zVW7mA08hsF8JwrKPSUdnX">make dev-lite     # docker compose -f docker-compose.lite.yml up --build  (8 svc, ~8.4 GB, no CUDA/Prom/Grafana/worker/intel)
+make dev          # full stack — NOT verified end-to-end here (images unbuilt)</code></pre>
+
+  <h3 data-page-node-id="PIKbQvBSwuJIGM0z7INmrz">7.6 Configuration keys (<code data-page-node-id="pzF3HSwgvWaR4KRTZ4fzGL">.env</code>)</h3>
+  <table data-page-node-id="ElnmzdV1oI6d1c7gLRw3V3">
+    <tr data-page-node-id="LN1yiwfbq98WC9920zOoBi"><th data-page-node-id="bQKkBPOqjFCnVf95B1g01Z">Key</th><th data-page-node-id="DAZ3YxTypHoW0NRw8f5Z2n">Purpose</th></tr>
+    <tr data-page-node-id="5SmPnlL9rGgA8Db380tUnW"><td data-page-node-id="vr93GixNhW5qI8J26DuVRn"><code data-page-node-id="avoIlTDpj2W4UAvAEoV9bx">DATABASE_URL</code>, <code data-page-node-id="wkWk1G6XGeG3xYzcoL5uoi">REDIS_*</code></td><td data-page-node-id="sjdxaAOLteDxST8Yce9Bi5">Postgres + Redis broker/result backends.</td></tr>
+    <tr data-page-node-id="i1zDzBloU6OGqzny9BHh4a"><td data-page-node-id="BEYIZI2kVsI22ra417osyS"><code data-page-node-id="6FHzDGBHe676iUxfEMKpaD">*_SERVICE_URL</code> (INGEST/DETECT/DRIFT/ATTRIBUTE/INTEL)</td><td data-page-node-id="BBFGrb3WWsLjO136vTpqmE">Gateway→service URLs. <code data-page-node-id="q8RhUkJcPisUHUyZM9YexV">127.0.0.1</code> native, <code data-page-node-id="ejA7O8lgdfUBJSFfHLJlpj">sentinel-*</code> in compose.</td></tr>
+    <tr data-page-node-id="GS6pA1OE0Y9E08ecTq3b8W"><td data-page-node-id="FFINJhk2TM7RN9HpLIlOCj"><code data-page-node-id="wWg5YB6L5BMU8WJdgUD182">CDSE_CLIENT_ID/SECRET</code></td><td data-page-node-id="fjKp7TH8yIDDx6CPFJiyLS">Copernicus Data Space — archive search + GeoTIFF ingest (Process API).</td></tr>
+    <tr data-page-node-id="4mYoHsMxD58TeYRc0HwQBb"><td data-page-node-id="Gae8Xa1AZYpAHHW6tx1udy"><code data-page-node-id="6ZPkd1YIF6BkHiu0o02k1E">CDSAPI_URL/KEY</code></td><td data-page-node-id="diLJdO7IokEJRpZDqB3fjt">ERA5 winds — drift fails closed without them (never substitutes synthetic wind).</td></tr>
+    <tr data-page-node-id="GQLxDQAKSMw9KCbcsedmAA"><td data-page-node-id="Ckpf2bygEJ9o75BIXPzBHo"><code data-page-node-id="pZFasC4UaxAbpQeaAMYVa3">COPERNICUSMARINE_*</code></td><td data-page-node-id="Gdl6HBxQIH3XoxLuuJvMmM">CMEMS GLORYS12 currents.</td></tr>
+    <tr data-page-node-id="jhPIDgBzccqASroSYN5WHw"><td data-page-node-id="QSaBF7iBDlsyFVl7XS0gLK"><code data-page-node-id="W5y6wC1F6i1mWHsXJh0CdR">SENTINEL_DATASOURCES__SCENE_GROUPING</code></td><td data-page-node-id="eOYdQmItT84od5b4Q4egNE"><code data-page-node-id="nRHUptlJpx3GJUZxMc6dJB">footprint</code> (leak-free) vs <code data-page-node-id="bxCoYDmDnYS1ZkFOfvl8NB">per_file</code>/<code data-page-node-id="A0QMb3ahve9aVxuN0gFSeQ">grid</code>.</td></tr>
+    <tr data-page-node-id="OlQTCOMnhID4xuTYG15a0t"><td data-page-node-id="2YC1qIE6vTPfHndgdwsRdL"><code data-page-node-id="O3chenYt5J6tS5dRt3htKb">SENTINEL_TRAINING__TEST_FRACTION</code></td><td data-page-node-id="FAzAWjjRxyyzpx4UnNVXzV">Enables a held-out test split (default 0).</td></tr>
+    <tr data-page-node-id="AifwmvPIGRvqMjzksZBF5i"><td data-page-node-id="OIvZC2cmo5nBzFJ5JSTGic"><code data-page-node-id="SIOlNTudzVZ3Hsra2Fvpga">LLM_PROVIDER</code></td><td data-page-node-id="bCKa63gChXDQ5hW3c6DgTS">Default <b data-page-node-id="2M2aAdIFEfQc8eAO0zhRdk">OpenAI</b>; Ollama not running here → deterministic template fallback.</td></tr>
+  </table>
+  <p class="note" data-page-node-id="QOYQSaWxgrxKOk8DETdnTZ"><code data-page-node-id="mzF6pClRkmnxQC0J2ltzQB">.env</code> is gitignored and must never be committed — it holds live Copernicus credentials. Training reads external-disk paths from the index; assert no checkpoint/log path lands inside a source dir.</p>
+</section>
+
+<!-- ============ 8. CAPABILITIES ============ -->
+<section id="capabilities" data-page-node-id="JfOEmx4Q7k4msO1tzrBr3R">
+  <h2 data-page-node-id="paGO8kD1fN2R6RMP129w1b">8 · Key Capabilities &amp; Features</h2>
+  <div class="card good" data-page-node-id="JDbz1jqPsdQpSsfaIXpZNE">
+    <h4 class="good" style="color:#3fb950;margin-top:0" data-page-node-id="K5Q8ZWCIHmHI7RGpWEy1iG">Scientific honesty (the headline differentiator)</h4>
+    <ul data-page-node-id="fbOLf5KURCZXznEDiJJx8g">
+      <li data-page-node-id="B8xRGOUO1T0u01KcDULSZ3">Every metric carries a provenance tag and a confidence interval — never a lone point estimate.</li>
+      <li data-page-node-id="zsR973BbqxaRFYOFtI5mRE">Limitations are <b data-page-node-id="nhhCW8j34KEEOr3BOdQ9EP">registered, not buried</b> (<code data-page-node-id="Yzq701RWx3c0y7xtHB5Q5u">docs/LIMITATIONS.md</code>, 40+ entries).</li>
+      <li data-page-node-id="G0eXVCbF64SEpua2VNBicJ">The deployed detector is reproducible and explainable (no weights, no black box).</li>
+    </ul>
+  </div>
+  <div class="card good" data-page-node-id="PTJEOAymEn02Lge6vaaQI5">
+    <h4 class="good" style="color:#3fb950;margin-top:0" data-page-node-id="VH4m6qlVhIcTN5JLVbJHiQ">Leak-free evaluation engineering</h4>
+    <ul data-page-node-id="AQ3ZEFLxOQODBwAikm56SR">
+      <li data-page-node-id="qb5AdyJeRBRspodeRzkbNH">Footprint scene grouping (union-find over tile ground) removes near-duplicate ground; the <code data-page-node-id="FTAhnegtffv1sLKki8TA8G">scene_leakage</code> guard can actually fail now.</li>
+      <li data-page-node-id="F0RI6VuKPmdIG09nGO4fqc">Real archive read <b data-page-node-id="McIkyCQOaHAj17Zn10iJiM">in place</b> — proven by SHA-256 either side of a 10-epoch run; zero bytes copied.</li>
+      <li data-page-node-id="g5LTIQBX1eW8254LyaMFUB">Atomic checkpoints; <code data-page-node-id="HmgL0ZFqbi9DK6g4OVH9cY">--resume</code> restores the checkpoint's own best val.</li>
+    </ul>
+  </div>
+  <div class="card good" data-page-node-id="EpgI12PCKXBT6PJXCUsvZI">
+    <h4 class="good" style="color:#3fb950;margin-top:0" data-page-node-id="upFipfpOfKA144XEXr3BX8">Deterministic detection verified on real data</h4>
+    <ul data-page-node-id="I64p2S8zmPRjHI5OhUHVBv">
+      <li data-page-node-id="0UYpEeZH18ywGe52EiCiRS">On the Wakashio 10 Aug peak: 3.347 km² slick at −9.79 dB, confidence 0.934, Wilson CI [0.902, 0.956] — a textbook SAR signature, corroborated against published imagery.</li>
+      <li data-page-node-id="2HEfMgPu4hodfUyxJnaxFC">Tiled inference with halo merging; out-of-distribution scenes are flagged, not silently scored.</li>
+    </ul>
+  </div>
+  <div class="card good" data-page-node-id="GA7Y6ichIiRLsYkoyfBHKE">
+    <h4 class="good" style="color:#3fb950;margin-top:0" data-page-node-id="3c1n300eHYIb9mw3swhFpQ">Modular, domain-isolated services</h4>
+    <ul data-page-node-id="1L8aDvikdq6XZgfSge9Zv5">
+      <li data-page-node-id="kUNm5OZvSs1BwFPNlAHeRB">Clean gateway/leaf topology; single responsibility per service; Celery async pipeline.</li>
+      <li data-page-node-id="m6AJsMSlOG3bSuz8NjZse2">Dual case-store backend (Postgres + durable JSON fallback) that reports which one served a write.</li>
+      <li data-page-node-id="3vS8eyRkCDPoS7ifyPL4zE">Runtime data-source switch (<code data-page-node-id="M4AJQbUQ7PhSfapjKWpunb">--data-source</code>) with no local copying.</li>
+    </ul>
+  </div>
+  <div class="card good" data-page-node-id="zItubBvLONXXuBjgaxghmN">
+    <h4 class="good" style="color:#3fb950;margin-top:0" data-page-node-id="T4rqD5SmA4wNywC7CVdlwK">Reproducible dev tooling</h4>
+    <ul data-page-node-id="oaEx4aOzGJrFzM4kPxwofd">
+      <li data-page-node-id="BE5FekkgAsIIIO81ctVPjC"><code data-page-node-id="dUmvwDhc4jje8g7DKvePff">make test/lint/format/typecheck</code> all clean; 302 tests (115 services + 112 ml + 75 core).</li>
+      <li data-page-node-id="EeiS4M7B2U1VxrtgyCqlfs">Synthetic generator matches the real distribution on <b data-page-node-id="pDk0nq7qyx094DzgRD4QDm">26/28</b> checks via <code data-page-node-id="8rfOeJei0VkgnLQhmsfnTq">match_report.json</code>.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ============ 9. LIMITATIONS ============ -->
+<section id="limits" data-page-node-id="oFdIIpdKhO2p1hqnzI0AHU">
+  <h2 data-page-node-id="cxcrYkyPuNXNrjrtAp80X5">9 · Limitations &amp; Technical Debt</h2>
+
+  <h3 data-page-node-id="DNf15tb81L8CLqGhts3ZRL">9.1 Scientific limitations (the answer may be wrong)</h3>
+  <table data-page-node-id="xa16X12pURmQuXAFrfFOA8">
+    <tr data-page-node-id="gtBKawol4d1FUPqHmEJpx4"><th data-page-node-id="26Q9EKcw3mSEYuhjYVBPHA">ID</th><th data-page-node-id="rgWpAVbq53zu4Dw8TvYGi1">Limitation</th><th data-page-node-id="4FemW4O3DQbBU1w1a1tp9d">Why it matters</th></tr>
+    <tr data-page-node-id="Lv8jxKPEaXWOLT8zSEZi4E"><td data-page-node-id="c0hkNvaeyUgGOfJtuZJXXi">A1</td><td data-page-node-id="zVxqsGPRTxjxOWK5BAy6ZV"><b data-page-node-id="Em3CakK2GxZP2Q5d2txbaS">No trained model is deployed.</b> Tier-B UNet++ was trained 3× (10 ep each) but is <code data-page-node-id="EflE70iYgOF5GIxOzQBNT3">untrained</code> in prod and emits no probabilities. Quote test IoU <b data-page-node-id="lfIF5rEk5CjTYNGJLHmhel">0.1447</b> if forced.</td><td data-page-node-id="MtMp2D97yYelRRr1fdqtLe">"Trained" ≠ "usable"; the model over-predicts on unseen acquisitions.</td></tr>
+    <tr data-page-node-id="KortDCKtKQnyWy1FfC6kF0"><td data-page-node-id="6ITtlOpBANQ4AHckrVwTVl">A2</td><td data-page-node-id="DlbhVByRN2bZydcZc1TbXc"><b data-page-node-id="JLyTMp8dW9o3EYNBX8NyFH">The Wilson CI is not P(oil).</b> It answers "how consistent is the dark-pixel evidence?" not "how likely is this oil?"</td><td data-page-node-id="oVXHKWc1WEoPWZglWDEYp2">The most dangerous number — it looks like a probability. Never present it as one.</td></tr>
+    <tr data-page-node-id="XZ919Z1Fwv880rqhdUFF8V"><td data-page-node-id="GJtqFZZNgUiPC50jZEO9uh">A3</td><td data-page-node-id="HZ3gTxQKRJNJHrjxJyF61R"><b data-page-node-id="XmRKn0BmJltoZwkFDdeVdL">Look-alike filtering needs wind.</b> Without 2–10 m/s wind, rain/low-wind/biogenic films can pass.</td><td data-page-node-id="kmqSCYIA5cXfU6fBt7Jrmi">Detections emitted but flagged <code data-page-node-id="w67ZMIsqwS9T434JKjTxpb">LOW_CONFIDENCE_NO_WIND</code>.</td></tr>
+    <tr data-page-node-id="P4junsIl7csVBH17ok4TA4"><td data-page-node-id="XqSuAiibkEYo4O2iY2fyYL">A5</td><td data-page-node-id="grGLlNvFuHlRhKBmqOt9xF">Backtracking assumes a point-source release and stationary current — false for a wreck leaking over days (the Wakashio case).</td><td data-page-node-id="wnPyV2YKM2FeLfihMXptNv">Inferred origin is <i data-page-node-id="JOp4xUVsHRsU0AgsqKNwqK">plausible</i>, not the origin.</td></tr>
+    <tr data-page-node-id="m45uae1I0c9EuWHZl3Gn5o"><td data-page-node-id="ySqbo0qgBaC0u3QVJfgwMG">A7</td><td data-page-node-id="j9HWVGexpJigao7x20Rm1s"><b data-page-node-id="vAE0GvaDe2DvpZkSN2xkEQ">Attribution weights are chosen, not fitted</b> (<code data-page-node-id="PpOflLpYvkbeFbkQOEXEgn">0.6/0.4</code>).</td><td data-page-node-id="mBgECSDEanMXk6lYKgnR5D"><code data-page-node-id="wAcAbEF13EzUDg5Jd4XM5j">K_ij</code> is a structured opinion with a stated interval, not a calibrated probability.</td></tr>
+    <tr data-page-node-id="Mx5Yia32yJ3mHOR4OAsO7C"><td data-page-node-id="zOlmqHjPBWTPsfJvUB4L1k">A9</td><td data-page-node-id="cGQHkVYMfiCr6ImffdHj1G"><b data-page-node-id="F89IoRrtuJsLkQE5aYYuKt">The 2020 case cannot be AIS-attributed at all</b> (no free historical Indian-Ocean feed).</td><td data-page-node-id="BkyCHp7Z8s005cmdqsxMHG">System honestly renders "satellite-AIS subscription required."</td></tr>
+    <tr data-page-node-id="xw1T6ym0lhcooVxPcCH0q3"><td data-page-node-id="m752jF9GqV1u4mk1gQd767">A10</td><td data-page-node-id="g3phKpOLgPN369pf6jq8LM">Synthetic match misses 2 pooled <code data-page-node-id="XZSPe5waMHWNBZ3FLMtGf9">p99.9</code> tails; the reference value shifts ±3.5 dB with sample size.</td><td data-page-node-id="Rsf0fNIkS9gvX9xHrKggwW">Treat those two checks as unresolved, not as evidence.</td></tr>
+    <tr data-page-node-id="ZKWJ7wExqEfEDKxKSCHlvl"><td data-page-node-id="zsfRpxmJNN3ad9kJmBnKyo">B12</td><td data-page-node-id="8YQmhVNTH94FMF4yxRTz2R"><b data-page-node-id="OqgMY40XoBYAM2CXhcrLv9">SAR band order is assumed (VH,VV) not measured.</b> Training unaffected; physical "VV" readings unverified.</td><td data-page-node-id="cBE40zeEkrOeJjUIQGrDQc">Relabelling would invalidate every index/checkpoint/match report.</td></tr>
+  </table>
+
+  <h3 data-page-node-id="AvbC3nNHRBqhbR4SF0rAvr">9.2 Operational limitations (right answer, can't deliver here)</h3>
+  <div class="card bad" data-page-node-id="fF43CjP5w8ZyoJKqdFeqFj">
+    <ul data-page-node-id="m4kCYBNUUJDDkLvaNm4TU3">
+      <li data-page-node-id="w7AZsblWR6ecChhyU15V4r"><b data-page-node-id="79hGeK1pH7a0AN9usbaogD">B1 / B10</b> — Full compose stack and <code data-page-node-id="U62pm9BTKSB6YowsBAipkV">Dockerfile.train</code> have never been built (no Docker daemon). Only <code data-page-node-id="xJQaGAwLvDNUK12MhjFBig">config</code> is validated.</li>
+      <li data-page-node-id="83eJnHywj8qzFKk4B7f5vZ"><b data-page-node-id="hlLoofyl0Yc5KoOAtD6Gcl">B2</b> — Drift container lacks <code data-page-node-id="jVdVPIaJHHNRCeba4tFIw5">libeccodes0</code>; verified drift numbers came from native macOS. The arm64 image would fail on ERA5 GRIB.</li>
+      <li data-page-node-id="HsPlqVQ2YMwvSQjxQbbwug"><b data-page-node-id="ONKp4ws1ykzQCI0FJf6ktZ">B4</b> — Ollama not running; <code data-page-node-id="ZOyCzAfNQ05NI0sn4RcFey">intel</code> LLM narratives are inert (deterministic template fallback).</li>
+      <li data-page-node-id="kNUDAA9LifosRDemH8dbty"><b data-page-node-id="t9UQM5Mya7b9HmBXs1CmKU">B5</b> — Postgres path is written but unexercised; only the JSON fallback store is tested (restart round-trip verified).</li>
+      <li data-page-node-id="HTwKnn8WRb2ymcOXQ6SKVm"><b data-page-node-id="7BABFrd1tJaNExKhyrI6CS">B6</b> — Legacy <code data-page-node-id="Yxzh4IkEp5mGIEChFDAcFc">/api/v1/cases</code> CRUD is still in-memory (module-level dict); only <code data-page-node-id="oaPrTy0dMxGnh7TOTQCk4u">/api/v1/scenes/persist</code> is durable.</li>
+      <li data-page-node-id="OmfvZe9wCJDJzL9l7h02jx"><b data-page-node-id="efjZ0Ho0tEVPBWcPhdS5IT">B9</b> — ~22 GB free; Zenodo archives (96 GB) cannot be staged here.</li>
+    </ul>
+  </div>
+
+  <h3 data-page-node-id="SnUYPcwOUJilCaKzA1SoIg">9.3 Technical debt (code-level)</h3>
+  <div class="card warn" data-page-node-id="bFQ64vzGVPfMAyVbuS1Pm9">
+    <ul data-page-node-id="PMpMFi7XgDHhojNOi3JNtE">
+      <li data-page-node-id="sERjtHEXMcQtoudjKUvul2"><b data-page-node-id="yk2PsCE7GFLQ9eiWTHY5NX">Shared core is dead weight.</b> <code data-page-node-id="AbuoDjfpEumVvfdnACD1HA">sentinel_core</code> is not imported by any service; config + loguru are re-implemented per service. The training harness uses it, but services don't — so two config truths can drift apart.</li>
+      <li data-page-node-id="xeNismviu05gYagFjzlHUk"><b data-page-node-id="G0C1LQvReLcU1IfYoU9C7Z">Port drift.</b> <code data-page-node-id="33nhBWsTbnxfQovWJPFd7F">detect/app/main.py</code> hardcodes <code data-page-node-id="atqteg9EKOl6Kefttz5tzt">port=8000</code> (same as the gateway) while compose runs it on 8002; the gateway's <code data-page-node-id="00jBnedBl4HlEPHaOgubFI">DETECT_SERVICE_URL</code> default matches the <i data-page-node-id="QfSDuOFRIPH5j3S5ZpsUsu">deploy</i> wiring, not the in-code default.</li>
+      <li data-page-node-id="D8vyK0GTydjQZ9CcSgXWyd"><b data-page-node-id="MOfkx9G585adqqAYbDV8WY">Two entry points per detection/drift service</b> (<code data-page-node-id="lhqTax1UBzWqYakkshoOYW">main</code> vs <code data-page-node-id="BKoSMGeSFSbpdmwL1ERSYm">main_det</code> / <code data-page-node-id="D0uYy1ffFdrAjcvowrNPGO">main_attribution</code>) — a real maintenance fork that must be selected correctly per environment.</li>
+      <li data-page-node-id="DBCCrdcpRXoUPuWwNoRkLc"><b data-page-node-id="o7osMw5kMAAlDy1bhf3yaO">AOIs as strings.</b> A <code data-page-node-id="zxoaA2jnjKumhH5oVhn0NX">west,south,east,north</code> lat-first string is four numbers legal in either slot; a lat/lon swap is invisible to any validator. Code now prefers named axes (<code data-page-node-id="90ks99g3VXOk3pOoibCS03">min_lon</code>…).</li>
+      <li data-page-node-id="AZse7jxXqylLAw0PORVoOl"><b data-page-node-id="DzjAHXjP2TGJo1F5updO11">Manifest defines the dataset, not the listing.</b> The <code data-page-node-id="YUrlFiaRvWF0nnmCBn8GJx">scene_leakage</code> guard was vacuous twice over (ids collapsed to the archive dir; loader ignored the manifest's <code data-page-node-id="TtzzSnUPiAGOJEfue2C0UW">scene_id</code>). Now fixed, but it shows a guard that can't fail is not a guard.</li>
+      <li data-page-node-id="Amuab0cx2KI4aB7bT2HM5m"><b data-page-node-id="0ubRUdD43Va6HJQV1qnBej">Untracked real data.</b> <code data-page-node-id="CAIrzS09Ksoh48dQqRWupY">data/sar/</code> (6 COG GeoTIFFs) is gitignored; 5 tests skip without it. Demo product ID in the original brief does not exist.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ============ 10. FIT ============ -->
+<section id="fit" data-page-node-id="XHcfCvF0bJWy9cnu2P6F1F">
+  <h2 data-page-node-id="xQfPCAWyjqgQNhILn6GA9o">10 · Where It Excels vs. Where a Different Approach Fits</h2>
+
+  <div class="card good" data-page-node-id="kRGr9Vn2AZAHZKap756xMd">
+    <h4 class="good" style="color:#3fb950;margin-top:0" data-page-node-id="oB40ZkRbW8x21YlAEPz5sG">Excels when…</h4>
+    <ul data-page-node-id="AgwNr56rTB872xmSMDRs4n">
+      <li data-page-node-id="E9I9YhYLUTUotSV4ba8W2r"><b data-page-node-id="PPuSTyuRTeBtXeRp2Tnado">Reproducibility and auditability matter more than peak accuracy.</b> Explainable deterministic detection + full provenance + stated CIs is ideal for a legal/regulatory evidence package (IMO MEPC referral).</li>
+      <li data-page-node-id="BC98W3cGrwjXSzAdxGPR42"><b data-page-node-id="jHeR0bYdULntGBBxmaCIAn">Data is sensitive or immovable.</b> Reading the real archive in place with a SHA-256 proof is exactly right for read-only external disks / constrained environments.</li>
+      <li data-page-node-id="ClWEBVko8RtrGXkzORCUOE"><b data-page-node-id="lYqGFmyDdH1hDKCQj2h5Cl">You need to <i data-page-node-id="CN1g9YwmjreovMjGTHtqfu">measure</i> leakage and selection bias</b> rather than hope it isn't there. The footprint grouping + held-out test + atomic reporting is a model-evaluation template worth copying.</li>
+      <li data-page-node-id="5HQvaQY1hXGNugmgtH47vs"><b data-page-node-id="P8K9qVAFEjPaJhWvSbXJl6">Honest uncertainty communication</b> to analysts who will act on the output (every datum shows confidence).</li>
+    </ul>
+  </div>
+
+  <div class="card bad" data-page-node-id="qb9okLhfq8CWGPU2cLHuun">
+    <h4 style="color:#f85149;margin-top:0" data-page-node-id="eP0ze3ANHrg85LD5EiHkBP">Struggles / a different approach is better when…</h4>
+    <ul data-page-node-id="OeKvMOdUJDDvRAFYZcmnQX">
+      <li data-page-node-id="l17CYeYcLsQ1wFBhXQ7jmI"><b data-page-node-id="Jo9yK4tcPaYSPrzNi9JRYI">You need a deployed, accurate detector.</b> No trained model ships; if detection accuracy is the product, train and benchmark a proper segmentation model on a labelled set (Zenodo + held-out Part III) first — that is the single highest-value gap.</li>
+      <li data-page-node-id="8Wm4I3cO6jgnrsW5Njl7Jc"><b data-page-node-id="1BTopYy4TA8H2IlDqZYnMZ">You need real vessel attribution.</b> Without a satellite-AIS subscription the attribution stage returns empty. A different data source (paid historical AIS) is a prerequisite, not an architecture fix.</li>
+      <li data-page-node-id="PUu47MRWzHUKwpQJBACQ72"><b data-page-node-id="zFHNLHEgbsDtjUHMI8XKmB">You need calibrated probabilities.</b> The Wilson CI is evidence-consistency, not P(oil). For risk scoring you need a labelled benchmark to calibrate against.</li>
+      <li data-page-node-id="57drEIldaX5hYQmdAQCApi"><b data-page-node-id="EhwSfwCn15OCXOxCDTVJRB">You are operating at scale with many concurrent scenes.</b> A microservice mesh on one 16 GB laptop with no GPU is fragile; the full compose is unbuilt and the lite profile drops Prometheus/Grafana/worker/intel. A single merged service or a GPU box would simplify operations.</li>
+      <li data-page-node-id="7ZEGEpDVGyl1Cd7Fj5iFiL"><b data-page-node-id="eg8vzigchdpsYeAYagxxmB">Wind/ocean forcing is unavailable.</b> Look-alike discrimination collapses without a 2–10 m/s wind field; a purely SAR pipeline will misclassify low-wind patches.</li>
+      <li data-page-node-id="ykfFspgdmKir1nISqw9bor"><b data-page-node-id="fphW9MGFnW06L9sGFwREqK">Maintainability of two entry points + duplicated config</b> is a drag — consolidate detection into one configurable app and wire <code data-page-node-id="dKvTNtq5bHpcmQ3zUyREqN">sentinel_core</code> into the services to remove the dual-config debt.</li>
+    </ul>
+  </div>
+
+  <div class="card" data-page-node-id="stzlt7Y4cmDYHFGwN0YSHO">
+    <b data-page-node-id="7CVNVAPzvGpJHsnnfAHorl">Suggested next steps, in value order (from the project handover):</b>
+    <ol data-page-node-id="TFoNYABacmNY0UC7vwsrZH">
+      <li data-page-node-id="y3a12y6U9HLV9MaT6guAEs">Get more acquisitions into val/test (8 and 6 is why the held-out estimate is wide).</li>
+      <li data-page-node-id="m7KU7nX0BXQ9MrgeCgh5Qx">Attack the over-prediction: threshold selection + augmentation that varies <i data-page-node-id="K7dumvPXc2qqjX3AQmpSYZ">acquisition conditions</i> (incidence angle, wind), not just geometry.</li>
+      <li data-page-node-id="ghlJFyVScdeE3ZANHKSx4y">Build <code data-page-node-id="8eD2dfcPprRGQJTJ5NCZWH">Dockerfile.train</code> once on a machine with a daemon.</li>
+      <li data-page-node-id="VeP6SxBaw5al8QxMoRDDlG">Verify the SAR band order against a declared-acquisition source to close B12.</li>
+    </ol>
+  </div>
+</section>
+
+</div>
+
+<footer data-page-node-id="ru95pETizFbIu6OFJ24mDS">
+  SENTINEL Architecture &amp; Design Documentation — generated from source at
+  <code data-page-node-id="CSsyHFEI1jpzTAQG31akbJ">/Users/praxsmac/projects/claude1/sentinel</code>. Diagrams reflect the
+  <b data-page-node-id="TvE7SCx9xfYSWwEkJPBEos">actual</b> code (services/api, ingest, detect, drift, attribute, intel, ui;
+  sentinel_core; ml/training; ml/synth; scripts/train.py). Verified figures from
+  docs/HANDOVER.md, MODEL_CARD.md, LIMITATIONS.md, RUNBOOK.md. The single number to
+  quote for detection: <b data-page-node-id="EDthzbFkIolrEl4sLxEYWW">held-out test IoU 0.1447</b> (wide; 6 acquisitions).
+</footer>
+</body>
+</html>

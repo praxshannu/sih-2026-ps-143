@@ -1,0 +1,64 @@
+# ============================================================================
+# Build context for sentinel-ui.
+# ============================================================================
+#
+# Why this file has to exist:
+#
+#   services/ui/Dockerfile does:
+#
+#       COPY package.json package-lock.json* ./
+#       RUN npm ci
+#       COPY . .
+#       RUN npm run build
+#
+#   There was no .dockerignore in this repo, so `COPY . .` copied the host's
+#   node_modules/ — 891 MB of it — on top of the tree `npm ci` had just
+#   installed inside the image.
+#
+#   node_modules is not portable. esbuild, rollup and the other native
+#   toolchain packages ship prebuilt platform binaries, and the host copy is
+#   darwin-arm64 while the image is linux-x64. The overwrite either fails the
+#   build outright with a "you installed esbuild for another platform" error,
+#   or succeeds and produces a bundle that will not run. It also pushes ~900 MB
+#   of build context over the wire on every build, which matters a lot when the
+#   builder is a 2 vCPU EC2 instance on a metered connection.
+#
+# Anything below is regenerated inside the image and must never come from the
+# host.
+
+node_modules
+**/node_modules
+
+# Build output — `npm run build` produces this inside the image.
+dist
+dist-ssr
+build
+
+# The host's Vite cache can leak absolute host paths into the bundle.
+.vite
+.cache
+
+# Editor / OS noise.
+.vscode
+.idea
+.DS_Store
+Thumbs.db
+*.swp
+*~
+
+# VCS — the Dockerfile does not need history, and .git is large.
+.git
+.gitignore
+.dockerignore
+
+# Logs.
+*.log
+logs
+npm-debug.log*
+yarn-error.log*
+
+# Environment files. Vite inlines VITE_* at build time; a stray .env in the
+# build context is how a local API URL ends up baked into a production bundle.
+.env
+.env.*
+!.env.example

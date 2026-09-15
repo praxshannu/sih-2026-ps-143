@@ -1,0 +1,304 @@
+# ============================================================================
+# SENTINEL — single-instance AWS profile (Free-plan credit budget)
+# ============================================================================
+#
+# STANDALONE FILE. Run it on its own:
+#
+#     docker compose -f docker-compose.aws.yml up -d --build
+#
+# Derived from docker-compose.lite.yml, with four deliberate differences.
+# Do not layer this over docker-compose.lite.yml or docker-compose.txt —
+# compose overrides can add or change services but cannot remove them, and
+# cannot un-publish a port.
+#
+# ── What changed from lite, and why ───────────────────────────────────────
+#
+# 1. ONLY sentinel-ui publishes a port, and it binds to 127.0.0.1.
+#    In docker-compose.lite.yml every service publishes to 0.0.0.0 — db on
+#    5432 with POSTGRES_PASSWORD defaulting to `sentinel_secret`, redis on
+#    6379 with no auth at all. On a laptop that is invisible. On an EC2 box
+#    with a public IPv4 it is an open Postgres and an open Redis. Here they
+#    are reachable only from inside the compose network. Caddy on the host
+#    terminates TLS and proxies to 127.0.0.1:3000.
+#
+# 2. detect runs the *trained* UNet++ on CPU, not the torch-free Tier-A path.
+#    MODEL_CHECKPOINT points at the bind-mounted checkpoint and IN_CHANNELS
+#    is pinned to 2. See the note at the detect service — the service default
+#    of 6 does not match the checkpoint and the load fails.
+#
+# 3. Memory caps trimmed from ~8.4 GB to ~6.5 GB so the eight services plus
+#    the kernel and the Docker daemon fit on an 8 GB instance. Caps are hard
+#    limits, not reservations; the trims are on services that idle far below
+#    their old ceiling.
+#
+# 4. restart: unless-stopped and per-container log rotation. The default
+#    json-file driver has no size cap, and unbounded container logs will fill
+#    a 40 GB gp3 volume in weeks.
+#
+# ── Not included ──────────────────────────────────────────────────────────
+#
+#   prometheus, grafana, celery worker, intel (LLM narrative)
+#
+#   Same four omissions as the lite profile. The intel service is the only
+#   one that needs an LLM; without it, case narratives fall back to the
+#   deterministic template by design.
+#
+# ── Known limitation, stated rather than hidden ───────────────────────────
+#
+#   drift needs cfgrib/eccodes to read ERA5 GRIB. services/drift/Dockerfile
+#   does NOT install libeccodes0, so every forecast will fail with an eccodes
+#   error until the Dockerfile is patched (see the runbook, Step 6b). The
+#   service is left in the profile because the failure is loud and typed, not
+#   silent — but if you do not need drift, comment the block out and reclaim
+#   ~1.4 GB of RAM.
+
+name: sentinel-aws
+
+services:
+  db:
+    image: postgis/postgis:15-3.4
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: sentinel
+      POSTGRES_USER: ${DB_USER:-sentinel}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-sentinel_secret}
+    # No `ports:` on purpose — internal only. Reach it with:
+    #   docker compose -f docker-compose.aws.yml exec db psql -U sentinel -d sentinel
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # Migrations are applied in filename order on first initialisation.
+      - ./database/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-sentinel} -d sentinel"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
+    deploy:
+      resources:
+        limits:
+          memory: 768m
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    deploy:
+      resources:
+        limits:
+          memory: 192m
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+  sentinel-ingest:
+    build:
+      context: ./services/ingest
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      # Compose service DNS, not 127.0.0.1. `.env` carries the native
+      # (127.0.0.1) values because that is how the laptop runs, so they are
+      # overridden here rather than trusted.
+      INGEST_SERVICE_URL: http://sentinel-ingest:8001
+      DETECT_SERVICE_URL: http://sentinel-detect:8002
+      DRIFT_SERVICE_URL: http://sentinel-drift:8003
+      ATTRIBUTE_SERVICE_URL: http://sentinel-attribute:8004
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8001/health', timeout=5).status == 200 else 1)\""]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+  sentinel-detect:
+    build:
+      context: ./services/detect
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      DETECT_SERVICE_URL: http://sentinel-detect:8002
+      # ── The three settings that decide whether the trained model loads ──
+      # The checkpoint at models/detector_best.pth carries
+      # in_channels=2, encoder=resnet34 (read from its own payload, not
+      # assumed). services/detect/app/main.py defaults IN_CHANNELS to 6 —
+      # the legacy value the trainer used to hardcode. torch.load then hits a
+      # size mismatch on encoder.conv1.weight ([64,2,7,7] vs [64,6,7,7]) and
+      # load_state_dict(strict=False) still raises. Set these explicitly.
+      MODEL_CHECKPOINT: /app/models/detector_best.pth
+      ENCODER_NAME: resnet34
+      IN_CHANNELS: "2"
+      NUM_CLASSES: "1"
+      DEVICE: cpu
+    volumes:
+      - ./data:/app/data
+      # Read-only: inference never writes a checkpoint back.
+      - ./models:/app/models:ro
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      # start_period is long on purpose: importing torch costs ~10-15 s on
+      # 2 vCPU, then the 283 MB checkpoint is read and moved to CPU.
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8002/health', timeout=10).status == 200 else 1)\""]
+      interval: 30s
+      timeout: 15s
+      retries: 5
+      start_period: 240s
+    deploy:
+      resources:
+        limits:
+          # CPU torch + a 2048x2048 scene tiled at 512 with overlap. Several
+          # float32 working arrays live at once.
+          memory: 2560m
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+  sentinel-drift:
+    build:
+      context: ./services/drift
+    restart: unless-stopped
+    # Verified OpenDrift/OpenOil entry point.
+    command: ["uvicorn", "app.main_attribution:app", "--host", "0.0.0.0", "--port", "8003"]
+    env_file:
+      - .env
+    environment:
+      DRIFT_SERVICE_URL: http://sentinel-drift:8003
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8003/health', timeout=5).status == 200 else 1)\""]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 90s
+    deploy:
+      resources:
+        limits:
+          memory: 1400m
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+  sentinel-attribute:
+    build:
+      context: ./services/attribute
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      ATTRIBUTE_SERVICE_URL: http://sentinel-attribute:8004
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8004/health', timeout=5).status == 200 else 1)\""]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          memory: 448m
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+  sentinel-api:
+    build:
+      context: ./services/api
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      # The gateway is the only thing the UI talks to (AGENTS.md), so it is
+      # the one place that must know every upstream.
+      INGEST_SERVICE_URL: http://sentinel-ingest:8001
+      DETECT_SERVICE_URL: http://sentinel-detect:8002
+      DRIFT_SERVICE_URL: http://sentinel-drift:8003
+      ATTRIBUTE_SERVICE_URL: http://sentinel-attribute:8004
+      DATABASE_URL: postgresql+asyncpg://${DB_USER:-sentinel}:${DB_PASSWORD:-sentinel_secret}@db:5432/sentinel
+      REDIS_URL: redis://redis:6379/0
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
+    volumes:
+      - ./data:/app/data
+      - ./scripts:/app/scripts:ro
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5).status == 200 else 1)\""]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          memory: 640m
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+  sentinel-ui:
+    build:
+      context: ./services/ui
+    restart: unless-stopped
+    # The ONLY published port, and it is bound to loopback. Caddy on the host
+    # owns 80/443 and proxies here. To reach the UI without Caddy (no domain,
+    # no TLS), change this to "3000:3000" and open port 3000 in the security
+    # group — the runbook covers both.
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      sentinel-api:
+        condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/ >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 96m
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+volumes:
+  pgdata:
