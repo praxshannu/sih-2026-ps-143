@@ -33,6 +33,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from typing import Any
+
 from loguru import logger  # noqa: E402
 
 from ml.training.train_detector import train  # noqa: E402
@@ -119,8 +121,12 @@ def _overrides(args: argparse.Namespace) -> dict[str, object]:
     Only flags the user actually passed are included, so a flag left at its
     default never overrides the environment. ``--max-pairs 0`` is the explicit
     way to clear a cap that came from the environment.
+
+    The nested groups are ``dict[str, Any]``, not ``dict[str, object]``: they are
+    merged into ``model_dump()`` output and splatted into a settings model, and
+    ``object`` makes every one of those merges a type error at the call site.
     """
-    training: dict[str, object] = {}
+    training: dict[str, Any] = {}
     mapping = {
         "epochs": args.epochs,
         "batch_size": args.batch_size,
@@ -147,10 +153,13 @@ def _overrides(args: argparse.Namespace) -> dict[str, object]:
         overrides["data_source"] = args.data_source
     if args.run_name is not None:
         overrides["run_name"] = args.run_name
+    logging_over: dict[str, Any] = {}
     if args.log_level is not None:
-        overrides["logging"] = {"level": args.log_level}
+        logging_over["level"] = args.log_level
     if args.json_logs:
-        overrides["logging"] = {**overrides.get("logging", {}), "json_output": True}
+        logging_over["json_output"] = True
+    if logging_over:
+        overrides["logging"] = logging_over
     return overrides
 
 
@@ -162,11 +171,13 @@ def main(argv: list[str] | None = None) -> int:
     # Nested groups are re-validated rather than patched in place: model_copy
     # skips validation, and a bad --image-size must fail here, not inside a
     # convolution four hours into the run.
-    if "training" in overrides:
-        merged = {**settings.training.model_dump(), **overrides["training"]}
+    training_over = overrides.get("training")
+    if isinstance(training_over, dict):
+        merged = {**settings.training.model_dump(), **training_over}
         settings = settings.model_copy(update={"training": TrainingSettings(**merged)})
-    if "logging" in overrides:
-        merged = {**settings.logging.model_dump(), **overrides["logging"]}
+    logging_over = overrides.get("logging")
+    if isinstance(logging_over, dict):
+        merged = {**settings.logging.model_dump(), **logging_over}
         settings = settings.model_copy(update={"logging": type(settings.logging)(**merged)})
     for key in ("data_source", "run_name"):
         if key in overrides:

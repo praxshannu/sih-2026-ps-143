@@ -203,7 +203,7 @@ def catalogue_lookup(token: str, spec: SceneSpec) -> list[dict[str, Any]]:
 def fetch_geotiff(token: str, spec: SceneSpec) -> np.ndarray:
     """Calibrated sigma0 GeoTIFF for the AOI, rendered server-side by Sentinel Hub."""
     w, s, e, n = spec.bbox
-    payload = {
+    payload: dict[str, Any] = {
         "input": {
             "bounds": {
                 "bbox": [w, s, e, n],

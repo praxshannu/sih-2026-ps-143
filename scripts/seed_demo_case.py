@@ -20,6 +20,7 @@ import math
 import random
 import uuid
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import asyncpg
 
@@ -32,7 +33,7 @@ SPILL_ID = uuid.uuid4()
 DRIFT_ID = uuid.uuid4()
 CASE_ID = uuid.uuid4()
 
-SUSPECTS = [
+SUSPECTS: list[dict[str, Any]] = [
     {
         "mmsi": "477218700",
         "vessel_name": "MV WAKASHIO",

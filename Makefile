@@ -57,6 +57,7 @@ $(MYPY_TARGETS): mypy-%:
 typecheck: mypy-each
 	$(RUN_PY) -m mypy ml/ --ignore-missing-imports
 	$(RUN_PY) -m mypy sentinel_core/ --ignore-missing-imports
+	$(RUN_PY) -m mypy scripts/ --ignore-missing-imports
 
 seed:
 	$(PYTHON) scripts/seed_demo_case.py

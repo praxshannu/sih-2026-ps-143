@@ -36,6 +36,7 @@ import sys
 import urllib.request
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import Any
 
 import asyncpg
 from loguru import logger
@@ -61,7 +62,7 @@ MARINECADASTRE_SAMPLE_URL = "https://coast.noaa.gov/htdata/CSV/AIS/2020/AIS_2020
 # receiver coverage; `should_use_synthetic` is the authority on that.
 DEMO_BBOX = (57.6, -21.0, 58.2, -20.4)  # Wakashio zone, SE of Mauritius
 
-VESSEL_PROFILES = [
+VESSEL_PROFILES: list[dict[str, Any]] = [
     {"type": 70, "name": "Bulk Carrier", "speed_range": (10.0, 15.0), "weight": 8},
     {"type": 80, "name": "Container Ship", "speed_range": (12.0, 22.0), "weight": 6},
     {"type": 82, "name": "Container Ship", "speed_range": (14.0, 24.0), "weight": 5},
@@ -74,7 +75,7 @@ VESSEL_PROFILES = [
     {"type": 92, "name": "Chemical Tanker", "speed_range": (12.0, 17.0), "weight": 4},
 ]
 
-FLAGS = [
+FLAGS: list[str] = [
     "HKG",
     "PAN",
     "LBR",
@@ -92,7 +93,7 @@ FLAGS = [
     "RUS",
 ]
 
-Indian_Ocean_ROUTES = [
+Indian_Ocean_ROUTES: list[dict[str, Any]] = [
     {"name": "Strait of Malacca Exit", "center": (2.0, 100.0), "heading": 270.0, "spread": 5.0},
     {"name": "Mozambique Channel N", "center": (-12.0, 44.0), "heading": 190.0, "spread": 3.0},
     {"name": "Mozambique Channel S", "center": (-20.0, 38.0), "heading": 200.0, "spread": 4.0},
@@ -104,7 +105,7 @@ Indian_Ocean_ROUTES = [
 ]
 
 
-def generate_vessel(mmsi_base: int, idx: int) -> dict:
+def generate_vessel(mmsi_base: int, idx: int) -> dict[str, Any]:
     profile = random.choices(VESSEL_PROFILES, weights=[p["weight"] for p in VESSEL_PROFILES])[0]
     route = random.choice(Indian_Ocean_ROUTES)
     flag = random.choice(FLAGS)
