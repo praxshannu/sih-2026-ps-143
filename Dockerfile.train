@@ -1,0 +1,61 @@
+# SENTINEL training image.
+#
+# This is not a service. There is no port, no healthcheck and no restart policy:
+# it runs to completion, writes runs/<run_id>/{run_report.json,metrics.jsonl},
+# and exits with a code that says what happened (0 ok, 2 bad arguments, 78
+# configuration error, 1 runtime failure, 130 interrupted).
+#
+# Build:
+#   docker build -f Dockerfile.train -t sentinel-train .
+#
+# NOT YET BUILD-VERIFIED. Docker is not installed on the machine this image was
+# written on, so every COPY source and the dependency set below were checked by
+# hand and the image itself has never been built. The first person with a Docker
+# daemon should build it and, if the build passes, delete this paragraph.
+#
+# Train on the matched synthetic set (no dataset mount needed):
+#   docker run --rm -v "$PWD/runs:/app/runs" sentinel-train
+#
+# Train on the real archive, read in place. The :ro mount is the cheap guard;
+# the trainer also enforces it itself via SourceFingerprint and refuses to write
+# a checkpoint, run or log inside the source.
+#   docker run --rm \
+#     -v /Volumes/Ventoy/Oil:/data/real:ro \
+#     -v "$PWD/runs:/app/runs" \
+#     -e SENTINEL_DATASOURCES__REAL_IMAGES_DIR=/data/real \
+#     sentinel-train --data-source real --epochs 3 --max-scenes 24
+FROM python:3.11-slim AS base
+
+WORKDIR /app
+
+# libexpat1 is needed by rasterio's manylinux wheel; GDAL itself is bundled.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libexpat1 \
+    && rm -rf /var/lib/apt/lists/*
+RUN groupadd -r sentinel && useradd -m -r -g sentinel sentinel
+
+# GDAL_DISABLE_READDIR_ON_OPEN: a cold open on a large archive directory costs
+# ~0.3 s without it, and the archive is read one scene at a time.
+ENV HF_HOME=/tmp \
+    TORCH_HOME=/tmp \
+    PYTHONUNBUFFERED=1 \
+    GDAL_DISABLE_READDIR_ON_OPEN=EMPTY_DIR
+
+COPY ml/requirements.txt ml/requirements.txt
+RUN pip install --no-cache-dir -r ml/requirements.txt
+
+# Only what the trainer imports. `app` and `app.models` are empty __init__
+# files; the encoder itself is plain torch, so the serving dependencies are not
+# needed here.
+COPY sentinel_core/ sentinel_core/
+COPY ml/ ml/
+COPY scripts/ scripts/
+COPY services/detect/app/__init__.py services/detect/app/__init__.py
+COPY services/detect/app/models/ services/detect/app/models/
+COPY pyproject.toml ./
+
+RUN chown -R sentinel:sentinel /app
+USER sentinel
+
+ENTRYPOINT ["python", "scripts/train.py"]
+CMD ["--data-source", "synthetic", "--epochs", "2"]
