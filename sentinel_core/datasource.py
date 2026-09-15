@@ -217,11 +217,14 @@ def _pair_by_stem(
     pairs: list[tuple[Path, Path]] = []
     missing: list[str] = []
     for image in images:
-        mask = index.get(image.stem.lower())
-        if mask is None:
+        # Not `mask`: that name is already bound by the loop that built the
+        # index above, and rebinding it to an Optional makes the shadowed
+        # variable's type change mid-function.
+        paired = index.get(image.stem.lower())
+        if paired is None:
             missing.append(image.name)
             continue
-        pairs.append((image, mask))
+        pairs.append((image, paired))
 
     if missing:
         raise DataSourceUnavailableError(

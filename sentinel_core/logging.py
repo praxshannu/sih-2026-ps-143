@@ -24,6 +24,7 @@ import sys
 from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from pathlib import Path
+from types import FrameType
 from typing import Any
 
 from loguru import logger
@@ -79,7 +80,10 @@ class InterceptHandler(logging.Handler):
             level: str | int = logger.level(record.levelname).name
         except ValueError:
             level = record.levelno
-        frame, depth = logging.currentframe(), 2
+        # ``currentframe()`` is typed as returning a frame, but the walk
+        # terminates on ``f_back`` being None, so the variable has to admit it.
+        frame: FrameType | None = logging.currentframe()
+        depth = 2
         while frame is not None and frame.f_code.co_filename == logging.__file__:
             frame = frame.f_back
             depth += 1

@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pytest
@@ -75,8 +76,8 @@ def _make_real_archive(
     return images, masks
 
 
-def _settings(root: Path, **datasource_overrides) -> Settings:
-    defaults = {
+def _settings(root: Path, **datasource_overrides: Any) -> Settings:
+    defaults: dict[str, Any] = {
         "real_images_dir": root / "images",
         "real_masks_dir": root / "masks",
         "synthetic_root": root / "synthetic",
