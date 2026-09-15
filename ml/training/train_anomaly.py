@@ -109,13 +109,17 @@ class LSTMAutoencoder(nn.Module):
 
 def load_ais_sequences(data_dir: str, seq_len: int = 48, stride: int = 6) -> np.ndarray:
     data_path = Path(data_dir)
-    sequences = []
+    # One element type for the accumulator: every branch appends a 2-D
+    # (seq_len, features) array. Mixing nested lists and arrays here made the
+    # declared ``-> np.ndarray`` return a lie in one branch and a truth in the
+    # other, which is how it stayed broken without failing.
+    sequences: list[np.ndarray] = []
 
     csv_files = list(data_path.glob("*.csv")) + list(data_path.glob("*.npy"))
     if not csv_files:
         print(f"[anomaly] No data files in {data_dir}, generating synthetic normal behavior...")
-        sequences = _generate_synthetic_normal(n_vessels=200, seq_len=seq_len)
-        return sequences
+        synthetic = _generate_synthetic_normal(n_vessels=200, seq_len=seq_len)
+        return np.asarray(synthetic, dtype=np.float32)
 
     for f in csv_files:
         if f.suffix == ".npy":
