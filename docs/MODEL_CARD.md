@@ -139,6 +139,60 @@ ever reaching an analyst.
 implemented and unit-tested against fixtures; it has never seen the real
 archives (40.7 GB + 45.9 GB + 9.9 GB monolithic `.7z` — the disk cannot take it).
 
+### 2.4 The training pipeline now exists, and has run end-to-end on both sources
+
+This does **not** change the status above: no trained model is deployed. What
+changed is that the pipeline which would produce one is now real, runs to
+completion, and has been exercised against both data sources.
+
+```bash
+python scripts/train.py --data-source real      --epochs 2 --max-scenes 24 \
+    --max-steps-per-epoch 2 --image-size 256
+python scripts/train.py --data-source synthetic --epochs 2 --max-scenes 24 \
+    --max-steps-per-epoch 2 --image-size 256
+```
+
+Both exit `0` and write `runs/<run_id>/run_report.json`:
+
+| | real | synthetic |
+|---|---|---|
+| Source | `/Volumes/Ventoy/Oil`, read **in place** | `data/synthetic` |
+| Pairs / splits | 1200 total, 24 used → train 19, val 5, test 0 | 120 total, 23 used → train 19, val 2, test 2 |
+| `provenance` | `real` | `synthetic_mock` |
+| `source_unchanged` | `True` | `True` |
+| Best val IoU | 0.0975 | 0.0000 |
+
+**The val IoU column is not a result and must not be quoted as one.** Both runs
+were bounded with `--max-steps-per-epoch 2` — two optimiser steps per epoch —
+so they demonstrate that the pipeline runs, not that the network learned. A
+model that has taken two steps has taken two steps.
+
+What the runs *do* establish:
+
+- The archive is read where it lies. Verified two ways: the trainer's
+  `SourceFingerprint` (`mtime_ns`, entry count, `st_dev`) reports
+  `source_unchanged: True`, and an independent SHA-256 over every filename,
+  size and mtime in `/Volumes/Ventoy/Oil` is **identical before and after** —
+  2400 entries, same digest, same directory mtime, same free space.
+- Both data sources work from the same code path, switchable at runtime with
+  `--data-source`. Nothing is copied to the local machine for either.
+- Checkpoints, `run_report.json` and `metrics.jsonl` are written atomically and
+  carry the provenance stamp.
+
+Two defects were found by these runs and fixed, both of which had made training
+impossible rather than merely wrong:
+
+1. **The geometry transforms were written for a 2-D mask** while the loader
+   supplies `(1, H, W)`. `mask[rows, cols]` on a 3-D array means
+   `mask[rows, cols, :]`, so crops came back with an empty axis; and
+   `mask[:, ::-1]` flipped the *height* while the image flipped the *width*,
+   which would have trained on masks desynchronised from their images without
+   raising anything.
+2. **A split with no rows was fatal.** `test_fraction` defaults to `0.0`, so the
+   real path has no test split — and building a dataset from an empty manifest
+   sent the loader looking for `images/` + `masks/` that a prepared root does
+   not have.
+
 ---
 
 ## 3. The anomaly detector (LSTM autoencoder)
@@ -180,6 +234,10 @@ suspect list.
 | It produces Wilson 95 % CIs, never point estimates | **Verified** by test |
 | Its confidence is a calibrated P(oil) | **False.** Pixel-evidence interval only. |
 | A trained segmentation model exists | **False.** None deployed, none trained. |
+| The training pipeline runs end-to-end on both data sources | **Verified**, bounded runs, `source_unchanged: True` |
+| The real archive is read in place and never written | **Verified** — trainer fingerprint plus an independent SHA-256 either side of a run |
+| The verified runs produced a useful model | **False.** Two optimiser steps per epoch; the IoU is not a result. |
+| The synthetic set reproduces the real distribution | **27 of 28 checks.** VV p99.9 is 4.9 dB short — see LIMITATIONS A10. |
 | Performance on a labelled benchmark is known | **False.** No benchmark has been run. |
 | Anomaly detection is operational | **False.** Not trained; trainer refuses empty input. |
 | Attribution weights are fitted | **False.** Chosen by hand, uncalibrated. |

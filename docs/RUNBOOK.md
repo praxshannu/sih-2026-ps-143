@@ -13,9 +13,13 @@ cd /Users/praxsmac/projects/claude1/sentinel
 PY=/Users/praxsmac/.workbuddy-ai/binaries/python/envs/default/bin/python
 
 cp .env.example .env          # then fill CDSE_*, CDSAPI_*, COPERNICUSMARINE_*
-$PY -m pytest services/ ml/ -q
+$PY -m pytest services/ ml/ sentinel_core/ -q
 make dev-lite                 # 8 containers, ~8.4 GB
 open http://localhost:3000    # Scene Intake is at /intake
+
+# train the detector on either data source, switchable at runtime (§5)
+$PY scripts/train.py --data-source synthetic --epochs 10
+$PY scripts/train.py --data-source real --epochs 3 --max-scenes 24 --max-steps-per-epoch 1
 ```
 
 ---
@@ -55,15 +59,17 @@ Run these before believing anything:
 cd /Users/praxsmac/projects/claude1/sentinel
 PY=/Users/praxsmac/.workbuddy-ai/binaries/python/envs/default/bin/python
 
-# 1. Tests — expect "115 passed"
-$PY -m pytest services/ ml/ -q
+# 1. Tests — expect "277 passed"
+$PY -m pytest services/ ml/ sentinel_core/ -q
 
-# 2. Lint and format — expect "All checks passed!" and "120 files already formatted"
-$PY -m ruff check services/ ml/ scripts/ conftest.py
-$PY -m ruff format --check services/ ml/ scripts/ conftest.py
+# 2. Lint and format — expect "All checks passed!" and "141 files already formatted"
+$PY -m ruff check services/ ml/ scripts/ sentinel_core/ conftest.py
+$PY -m ruff format --check services/ ml/ scripts/ sentinel_core/ conftest.py
 
 # 3. Types — expect "Success: no issues found" for each
 for s in api ingest detect drift attribute intel; do echo "--- $s"; $PY -m mypy services/$s; done
+$PY -m mypy ml/
+$PY -m mypy sentinel_core/
 
 # 4. Compose — both must print a resolved config
 docker compose -f docker-compose.txt config >/dev/null && echo "base OK"
@@ -89,6 +95,23 @@ inside the system temp root and raises `PermissionError("EEXIST")` rather than
 broken test suite.
 
 Override the location with `SENTINEL_PYTEST_TMP` if you want a tmpfs.
+
+**The sandbox can also kill a run mid-collection.** This environment wraps
+deletions in a bulk-delete guard that counts *cumulative* deletions per turn and
+raises `SystemExit(1)` when the count crosses a threshold. A pytest session
+under `.pytest_tmp/` deletes enough files to cross it, and because the guard
+fires inside a fixture rather than at exit, the symptom is a scattering of
+failures and errors that have nothing to do with the code — and the summary line
+is lost, so it reads as "the suite is broken".
+
+```bash
+# If you see unexplained F/E with no summary, move the tmp root out of the tree:
+SENTINEL_PYTEST_TMP=/tmp/sentinel_pytest $PY -m pytest services/ ml/ sentinel_core/ -q
+```
+
+277 passed is the real number. A run that reports failures *and* prints a
+`[safe-delete][SAFE_DELETE_BULK_CONFIRM_REQUIRED]` line has been interfered with;
+re-run it before believing anything.
 
 ---
 
@@ -250,7 +273,109 @@ http://localhost:3000/intake
 
 ---
 
-## 5. Troubleshooting
+## 5. Training the detector
+
+### 5.1 The in-place contract
+
+The real archive is **read where it lies** and is never copied to the local
+machine. That is enforced, not promised:
+
+- The real index (`data/index/real/manifest.jsonl`) stores **absolute** paths
+  into `/Volumes/Ventoy/Oil`. Nothing is staged.
+- `SourceFingerprint` records each source directory's `mtime_ns`, entry count,
+  `st_dev` and inode at the start of the run and re-checks it at the end.
+  `source_unchanged` in `run_report.json` is that check.
+- `assert_outputs_are_outside_the_source` refuses a checkpoint, run or log path
+  inside a source directory before the first batch.
+
+To prove it yourself, fingerprint the archive either side of a run:
+
+```bash
+PY=/Users/praxsmac/.workbuddy-ai/binaries/python/envs/default/bin/python
+$PY - <<'EOF'
+import hashlib
+from pathlib import Path
+src = Path("/Volumes/Ventoy/Oil")
+h = hashlib.sha256()
+for p in sorted(src.iterdir()):
+    st = p.stat()
+    h.update(f"{p.name}|{st.st_size}|{st.st_mtime_ns}\n".encode())
+print(len(list(src.iterdir())), h.hexdigest(), src.stat().st_mtime_ns)
+EOF
+```
+
+Run it before and after training; all three numbers must be identical. On the
+1200-scene archive that is `2400 69d35c71…ac4 1682009727000000000`.
+
+### 5.2 Running
+
+```bash
+cd /Users/praxsmac/projects/claude1/sentinel
+set -a; . ./.env; set +a
+export GDAL_DISABLE_READDIR_ON_OPEN=EMPTY_DIR   # 268 ms -> 1.8 ms per open
+
+# Real archive, read in place. Bounded so it finishes.
+$PY scripts/train.py --data-source real --epochs 3 --max-scenes 24 \
+    --max-steps-per-epoch 1 --image-size 512
+
+# The matched synthetic set.
+$PY scripts/train.py --data-source synthetic --epochs 10
+
+# Switch sources at runtime without editing anything:
+$PY scripts/train.py --data-source synthetic --run-name ab-synthetic
+$PY scripts/train.py --data-source real      --run-name ab-real
+```
+
+`--data-source` overrides `SENTINEL_DATA_SOURCE`; both override nothing else.
+`--max-steps-per-epoch` is what makes a smoke run cheap — the epoch still
+validates, so the whole pipeline is exercised.
+
+**Exit codes**: `0` ok, `2` bad arguments, `78` configuration error,
+`1` runtime failure, `130` interrupted (the last checkpoint is complete and
+resumable with `--resume`).
+
+### 5.3 What a good run looks like
+
+```
+data source: 1200 pair(s), 2 band(s), images=/Volumes/Ventoy/Oil in_place=True
+device: mps (auto: Apple MPS available, no CUDA)
+splits: train=19 val=5 test=0
+model: UNet++/resnet34 in_channels=2 params=24,719,654 trainable=24,719,654
+source unchanged: True
+■ real | best val IoU 0.0975 at epoch 1 | Trained on real SAR scenes read in place…
+```
+
+Then read the report, not the log line:
+
+```bash
+$PY -m json.tool runs/<run_id>/run_report.json | head -40
+```
+
+`claim` states in words what the numbers are allowed to mean, and
+`scientifically_valid` is false whenever they are not a scientific result.
+
+### 5.4 The training image
+
+```bash
+docker build -f Dockerfile.train -t sentinel-train .
+docker run --rm -v /Volumes/Ventoy/Oil:/data/real:ro -v "$PWD/runs:/app/runs" \
+    -e SENTINEL_DATASOURCES__REAL_IMAGES_DIR=/data/real \
+    sentinel-train --data-source real --epochs 3 --max-scenes 24
+```
+
+**This image has never been built** — Docker is not installed on the machine it
+was written on. The COPY sources and the dependency set were checked by hand;
+the build is not verified. The Dockerfile says so at the top.
+
+One thing to know before relying on it: the encoder weights come from the
+Hugging Face hub, so a machine with no network cannot train with
+`encoder_weights=imagenet`. The image bakes them at build time for that reason.
+On a machine without them, pass `--encoder-weights none` — the trainer says so
+itself when the build fails.
+
+---
+
+## 6. Troubleshooting
 
 | Symptom | Cause | Fix |
 |---|---|---|
@@ -266,7 +391,7 @@ http://localhost:3000/intake
 | detect tests all skip | `data/sar/` absent (gitignored) | expected on a fresh clone; re-run where the scenes exist |
 | `eccodes` error inside the drift container | arm64 Linux lacks `libeccodes0` | add it to the drift Dockerfile, or run drift natively (see §4.2) |
 
-### 5.1 Reading a provenance state
+### 6.1 Reading a provenance state
 
 * `■ REAL` — checksummed from the named upstream. Trust it to the extent the
   source deserves.
@@ -278,10 +403,10 @@ http://localhost:3000/intake
 
 ---
 
-## 6. Maintenance
+## 7. Maintenance
 
 ```bash
-make test          # pytest services/ ml/
+make test          # pytest services/ ml/ sentinel_core/
 make lint          # ruff check + format --check
 make typecheck     # mypy per service (never `mypy services/` — see pyproject)
 make test-all      # all three

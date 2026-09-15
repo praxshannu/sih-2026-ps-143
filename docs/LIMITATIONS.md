@@ -95,6 +95,36 @@ required` and lists the source that would fill the gap.
 
 ---
 
+### A10. The synthetic VV tail is 4.9 dB short, and the check cannot settle it
+
+The synthetic set matches the real archive on 27 of 28 distribution checks
+(`data/synthetic/match_report.json`). The one that misses is **VV p99.9**: the
+real archive's brightest 0.1% of pixels sits at −16.79 dB, the synthetic set's
+at −21.67 dB.
+
+This is measured, not guessed, and the mechanism is understood. For a two-class
+population where bright pixels are a fraction `f` of a scene, the scene's p99.9
+is the bright pool's quantile `q = 1 − 0.001/f` — about the pool's p78 for VV.
+The generator draws its bright coverage from per-scene records measured on a
+32-scene sample, and its estimate (`f = 0.00368`) is 20% below the real mean
+(`f = 0.00459`). Applied through `q`, a 20% coverage shortfall costs ~4.5 dB on a
+population that rises steeply there, which is the whole of the 4.9 dB gap.
+
+The reason this is listed as a limitation rather than a bug: **a 32-scene mean of
+VV bright coverage has a 5–95% bootstrap band of 0.0027–0.0067** (±46%). The
+synthetic value sits inside it. A check whose estimator carries ±46% sampling
+noise cannot support a ±2 dB tolerance on a statistic with a ~60 dB/dB slope, so
+the honest reading is "the sample is too small to decide", not "the generator is
+biased". The per-scene bright statistics do match closely (VV p99 mean: real
+−10.54, synthetic −10.21).
+
+Two things would settle it: profile all 1200 scenes instead of 32
+(`scripts/generate_synthetic.py --sample 1200`), or widen the tolerance for
+pooled tail statistics and say why. Until one of those is done, treat the VV
+p99.9 comparison as unresolved.
+
+---
+
 ## B. Operational limitations
 
 ### B1. The full compose stack has not been built or run
@@ -165,12 +195,47 @@ will fail. The key is also empty in `.env`.
 ~22 GB free. The Zenodo archives cannot be staged here. A Docker build of the
 full stack would consume several GB more.
 
+### B10. `Dockerfile.train` has never been built
+
+Docker is not installed on the machine it was written on, so the image is
+unbuilt. Every COPY source was checked by hand and the dependency set is the one
+the trainer was verified against, but "the Dockerfile exists" is not "the image
+works". The file says so at the top, where the next person will read it.
+
+Related and worth knowing before relying on it: the encoder weights come from
+the Hugging Face hub, so a machine with no network cannot train with the default
+`encoder_weights=imagenet`. The image bakes them at build time for that reason.
+The trainer detects the failure and names the workaround
+(`--encoder-weights none`) rather than dying with a stack trace.
+
+### B11. Scene ids collapse to one value, so the leakage check is vacuous
+
+`default_scene_id` falls back to the nearest non-generic parent directory, which
+for a flat archive of tiles is the archive directory itself. Every one of the
+1200 scenes in `/Volumes/Ventoy/Oil` therefore reports as scene `"Oil"`, and the
+run report says `"n_scenes": 1` for a 19-pair split.
+
+The consequence is narrow but real: `scene_leakage` finds nothing to leak,
+because as far as it can tell there is only one scene. The split itself is still
+made per file (`split_strategy: per_file_hash`), and the trainer prints a loud
+warning that tiles were split per file rather than per acquisition and that
+cross-split metrics are therefore optimistic — so the risk is disclosed, just
+not in the field where a reader would look for it.
+
+This is not fixed here on purpose. Changing `default_scene_id` changes which
+files land in train and val, which would invalidate the end-to-end run that was
+just verified. The archive genuinely carries no scene identifier — every GeoTIFF
+has only generic TIFF tags — so the honest fix is an explicit
+`--scene-regex` (or a scene-grouping index), not a better guess from the path.
+
 ---
 
 ## C. Unverified — nobody has checked
 
 | Item | What is missing |
 |---|---|
+| `Dockerfile.train` | never built — no Docker on the machine it was written on |
+| A training run long enough to learn anything | the verified runs are bounded smoke runs (`--max-steps-per-epoch`), so their IoU is not a result |
 | Postgres/PostGIS persistence path | never executed against a live server |
 | `docker compose up --build`, either profile | only `config` validated |
 | Full 7-service native stack under load | services started individually, not together |
