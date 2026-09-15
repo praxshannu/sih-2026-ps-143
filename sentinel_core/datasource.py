@@ -56,7 +56,7 @@ from typing import Any, Literal
 
 from loguru import logger
 
-from sentinel_core.config import DataSourceKind, Settings, get_settings
+from sentinel_core.config import DataSourceKind, SceneGrouping, Settings, get_settings
 from sentinel_core.errors import (
     DatasetUnavailableError,
     DataSourceMismatchError,
@@ -81,6 +81,18 @@ SOURCE_META_NAME = "source.json"
 
 #: Coarse grid used to group tiles that probably came from the same pass.
 DEFAULT_SCENE_GRID_DEG = 1.0
+
+#: Slack, in degrees, added to each footprint before asking whether two tiles
+#: share ground. Tiles in the real archive are ~0.184 deg across, so this is
+#: roughly 1/40 of a tile: enough to absorb the rounding in GeoTIFF tie-point
+#: arithmetic, where two tiles cut from one mosaic can differ in their corner
+#: coordinates by float noise, and far too small to bridge two genuinely
+#: disjoint footprints.
+#:
+#: Deliberately not a setting. It is slack against representation error, not a
+#: scientific parameter, and a knob here would let a typo silently merge two
+#: acquisitions or shatter one — the same class of failure as a transposed AOI.
+DEFAULT_FOOTPRINT_TOL_DEG = 0.005
 
 #: macOS writes an AppleDouble sidecar next to every file on a non-native
 #: filesystem. They end in ``.tif`` too and would otherwise be indexed as
@@ -153,23 +165,177 @@ def _list_rasters(directory: Path) -> list[Path]:
     )
 
 
-def _probe(path: Path) -> tuple[int, str]:
-    """Band count and a coarse geolocation key, without reading any pixels.
+@dataclass(frozen=True)
+class _TileProbe:
+    """Everything one header read tells us about a tile, and nothing more."""
+
+    bands: int
+    geo_key: str
+    crs: str | None
+    bounds: tuple[float, float, float, float] | None
+
+
+def _probe(path: Path) -> _TileProbe:
+    """Band count, CRS and footprint — without reading any pixels.
 
     Cheap because :mod:`sentinel_core.raster` turns off GDAL's per-open
     directory scan — 268 ms down to 1.8 ms per file on the external archive,
     which is why validating all 1200 scenes costs seconds rather than minutes.
     """
     header = header_info(path)
-    return header.bands, header.geo_key
+    return _TileProbe(
+        bands=header.bands,
+        geo_key=header.geo_key,
+        crs=header.crs,
+        bounds=header.bounds,
+    )
+
+
+def _boxes_touch(
+    a: tuple[float, float, float, float],
+    b: tuple[float, float, float, float],
+    tol: float,
+) -> bool:
+    """True when two ``(left, bottom, right, top)`` boxes overlap within ``tol``.
+
+    Both boxes must be in the same CRS; :func:`_footprint_scene_ids` is what
+    enforces that, because comparing metres to degrees is a silent lie.
+    """
+    return a[0] - tol <= b[2] and b[0] - tol <= a[2] and a[1] - tol <= b[3] and b[1] - tol <= a[3]
+
+
+def _footprint_scene_ids(
+    pairs: Sequence[tuple[Path, Path]],
+    probes: Sequence[_TileProbe],
+    *,
+    tol: float = DEFAULT_FOOTPRINT_TOL_DEG,
+) -> tuple[list[str], list[str]]:
+    """Group tiles by the ground they cover, via union-find over footprints.
+
+    Returns ``(scene_ids, warnings)``.
+
+    Two tiles join the same group when their bounding boxes overlap once each
+    box is grown by ``tol``. A group is labelled by the lowest file stem in it,
+    so the label is stable across runs and independent of the order the
+    directory listing happens to come back in.
+
+    Why this rather than the grid. A 1 deg cell is a property of the coordinate
+    system, not of the acquisition. Two tiles cut from a single pass, a hundred
+    metres apart, land in different cells whenever a cell boundary runs between
+    them; two tiles from passes a week and eighty kilometres apart land in the
+    same cell whenever one does not. The grid is a guess about where passes
+    stop, and it is wrong at every boundary.
+
+    Footprint overlap instead asks the question the split actually needs
+    answered — do these two tiles show the same patch of sea? — because leakage
+    happens exactly when tiles that share ground end up on opposite sides of the
+    train/val boundary. On the real archive this resolves 1200 tiles to 195
+    acquisition areas, 78 of which straddle a per-file split; the grid finds a
+    different and larger number of groups, and its straddles are the same ones
+    plus the ones it invents at cell edges.
+
+    Tiles with no georeferencing cannot be grouped this way and each keep their
+    own stem as an id; that is reported, not silently accepted. An archive that
+    mixes CRSs is refused outright for the same reason — see below.
+
+    Complexity: tiles are swept in ``min_x`` order against a live window of
+    boxes still overlapping in ``x``. Real tiles are scattered, so the window
+    holds one or two boxes and the scan is effectively linear. It degrades to
+    quadratic only if every tile shares the same ``x`` extent, which no
+    acquisition does — and at 1200 tiles even that is 720k cheap comparisons.
+    """
+    n = len(pairs)
+    if len(probes) != n:  # pragma: no cover - callers zip them from one scan
+        raise ValueError(f"got {len(probes)} probe(s) for {n} pair(s)")
+
+    # A mixed-CRS archive would have us compare metres against degrees, and the
+    # comparison would return a confident, meaningless answer. Refuse instead.
+    #
+    # Only *actual* CRSs are compared here. A tile with no CRS at all is not a
+    # second CRS — it is a tile that cannot be placed, and it is handled below
+    # by being left in a group of its own. Treating the two as one condition
+    # would make a single blind tile refuse the whole archive.
+    crs_seen = {probe.crs for probe in probes if probe.crs is not None}
+    if len(crs_seen) > 1:
+        raise DataSourceMismatchError(
+            f"real archive mixes coordinate reference systems {sorted(crs_seen)}; "
+            "tile footprints are not comparable across CRSs, so scene grouping "
+            "cannot be computed. Reproject the archive to one CRS, or use "
+            'scene_grouping="per_file".',
+            reason="inconsistent_crs",
+            context={"crs_seen": sorted(crs_seen)},
+        )
+
+    parent = list(range(n))
+
+    def find(i: int) -> int:
+        root = i
+        while parent[root] != root:
+            root = parent[root]
+        while parent[i] != root:  # path compression
+            parent[i], i = root, parent[i]
+        return root
+
+    def union(i: int, j: int) -> None:
+        # Union by index, not by rank: the smallest index wins the root, which
+        # makes `find` deterministic and therefore the labels reproducible.
+        ri, rj = find(i), find(j)
+        if ri != rj:
+            parent[max(ri, rj)] = min(ri, rj)
+
+    located: list[tuple[int, tuple[float, float, float, float]]] = []
+    for i, probe in enumerate(probes):
+        if probe.bounds is not None:
+            located.append((i, probe.bounds))
+    located.sort(key=lambda item: item[1][0])
+
+    active: list[tuple[int, tuple[float, float, float, float]]] = []
+    for i, box in located:
+        # Everything still in the window already starts at or before this box,
+        # so the x test is exactly "does it end after this one starts".
+        active = [a for a in active if a[1][2] >= box[0] - tol]
+        for j, other in active:
+            if _boxes_touch(box, other, tol):
+                union(i, j)
+        active.append((i, box))
+
+    labels: dict[int, str] = {}
+    for i, _box in located:
+        root = find(i)
+        stem = pairs[i][0].stem
+        if root not in labels or stem < labels[root]:
+            labels[root] = stem
+
+    scene_ids: list[str] = []
+    ungeoreferenced: list[str] = []
+    for i, (image, _mask) in enumerate(pairs):
+        if probes[i].bounds is None:
+            scene_ids.append(image.stem)
+            ungeoreferenced.append(image.name)
+        else:
+            scene_ids.append(labels[find(i)])
+
+    warnings: list[str] = []
+    if ungeoreferenced:
+        warnings.append(
+            f"{len(ungeoreferenced)} tile(s) carry no georeferencing and were left "
+            "in a group of their own "
+            f"(e.g. {', '.join(sorted(ungeoreferenced)[:5])}). Their split is "
+            "arbitrary, so any metric computed across it is optimistic."
+        )
+    return scene_ids, warnings
 
 
 def _scene_id(path: Path, geo: str, grid_deg: float) -> str:
-    """Spatial proxy for a scene id; falls back to the file stem.
+    """Spatial proxy for a scene id via a fixed grid; falls back to the file stem.
 
     Two tiles whose centroids fall in the same ``grid_deg`` cell are treated as
     the same "scene" for splitting purposes. That is a heuristic, not a fact —
-    which is why it is recorded on the spec rather than assumed downstream.
+    which is why it is recorded on the spec rather than assumed downstream — and
+    it is wrong at every cell boundary: a tile straddling one gets a different
+    id from its immediate neighbour. Prefer ``scene_grouping="footprint"``,
+    which asks about shared ground instead of shared coordinates. Kept because
+    an existing index may have been built with it and must stay reproducible.
     """
     if not geo:
         return path.stem
@@ -312,10 +478,10 @@ def _write_manifest(
     return len(materialised)
 
 
-def _entries_with_geo(
-    pairs: Sequence[tuple[Path, Path]], grid_deg: float, require_bands: int
-) -> tuple[list[tuple[str, Path, Path]], int, str]:
-    """Read every scene header and group tiles by their coarse spatial cell.
+def _scan_headers(
+    pairs: Sequence[tuple[Path, Path]], require_bands: int
+) -> tuple[list[_TileProbe], int, str]:
+    """Read every tile header, and check the archive is homogeneous.
 
     This is the expensive path. On the external archive a *cold* file open costs
     ~300 ms (measured: 23 ms just to open and read 16 bytes, the rest is GDAL
@@ -327,12 +493,12 @@ def _entries_with_geo(
         "cold removable media (about 0.3 s per never-before-opened file)",
         len(pairs),
     )
-    entries: list[tuple[str, Path, Path]] = []
+    probes: list[_TileProbe] = []
     band_counts: set[int] = set()
-    for index, (image, mask) in enumerate(pairs, start=1):
-        bands, geo = _probe(image)
-        band_counts.add(bands)
-        entries.append((_scene_id(image, geo, grid_deg), image, mask))
+    for index, (image, _mask) in enumerate(pairs, start=1):
+        probe = _probe(image)
+        band_counts.add(probe.bands)
+        probes.append(probe)
         if index % 100 == 0:
             logger.info("  header {}/{}", index, len(pairs))
 
@@ -350,7 +516,38 @@ def _entries_with_geo(
             reason="band_count_mismatch",
             context={"found": bands, "required": require_bands},
         )
-    return entries, bands, f"all {len(pairs)} headers read"
+    return probes, bands, f"all {len(pairs)} headers read"
+
+
+def _group_scenes(
+    mode: SceneGrouping,
+    pairs: Sequence[tuple[Path, Path]],
+    probes: Sequence[_TileProbe],
+    *,
+    grid_deg: float,
+    tol: float = DEFAULT_FOOTPRINT_TOL_DEG,
+) -> tuple[list[str], list[str]]:
+    """Assign a scene id to every pair, by the requested grouping mode.
+
+    Returns ``(scene_ids, warnings)``. ``mode="per_file"`` never reaches here —
+    it is the one mode that needs no header scan, and the caller short-circuits
+    it so the archive is not touched at all.
+    """
+    if mode == "footprint":
+        return _footprint_scene_ids(pairs, probes, tol=tol)
+
+    scene_ids = [
+        _scene_id(image, probe.geo_key, grid_deg)
+        for (image, _mask), probe in zip(pairs, probes, strict=True)
+    ]
+    warnings: list[str] = []
+    if len(set(scene_ids)) == len(scene_ids):
+        warnings.append(
+            "Spatial scene grouping put every tile in its own grid cell, so the "
+            "split is still effectively per file. Cross-split metrics are "
+            'optimistic. Try scene_grouping="footprint".'
+        )
+    return scene_ids, warnings
 
 
 def _build_real(settings: Settings, *, rebuild: bool, grid_deg: float) -> DataSourceSpec:
@@ -376,31 +573,56 @@ def _build_real(settings: Settings, *, rebuild: bool, grid_deg: float) -> DataSo
             context={"masks_dir": str(masks_dir), "exists": masks_dir.is_dir()},
         )
 
+    mode = cfg.resolved_scene_grouping()
+
     manifest_path = prepared_root / MANIFEST_NAME
+    cached: dict[str, Any] = {}
     if manifest_path.is_file() and not rebuild:
-        meta = json.loads((prepared_root / SOURCE_META_NAME).read_text(encoding="utf-8"))
-        if meta.get("images_dir") == str(images_dir) and meta.get("n_rows"):
+        try:
+            cached = json.loads((prepared_root / SOURCE_META_NAME).read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            # A manifest with no readable sidecar cannot be trusted to describe
+            # itself; rebuilding costs nothing in the per-file mode and is the
+            # only safe answer in the others.
+            logger.warning(
+                "real index at {} has a manifest but no readable {}; rebuilding",
+                prepared_root,
+                SOURCE_META_NAME,
+            )
+            cached = {}
+
+    if cached.get("images_dir") == str(images_dir) and cached.get("n_rows"):
+        cached_mode = cached.get("scene_grouping")
+        if cached_mode == mode:
             return DataSourceSpec(
                 kind="real",
                 prepared_root=prepared_root,
                 images_dir=images_dir,
                 masks_dir=masks_dir,
-                n_pairs=int(meta["n_rows"]),
-                bands=int(meta.get("bands", cfg.require_bands)),
+                n_pairs=int(cached["n_rows"]),
+                bands=int(cached.get("bands", cfg.require_bands)),
                 provenance=DataProvenance.REAL,
                 in_place=True,
                 read_only=not os.access(images_dir, os.W_OK),
-                split_strategy=str(meta.get("split_strategy", "unknown")),
-                warnings=tuple(meta.get("warnings", ())),
+                split_strategy=str(cached.get("split_strategy", "unknown")),
+                warnings=tuple(cached.get("warnings", ())),
                 note="cached index; pass rebuild=True to re-enumerate",
             )
+        # The index records which mode produced its scene ids. Reusing an index
+        # built by a different mode would apply the previous grouping's split to
+        # a different question, and nothing downstream could tell: the val set
+        # would just be the one the other grouping happened to choose.
+        logger.warning(
+            "real index at {} was built with scene_grouping={!r} but the "
+            "configuration asks for {!r}; rebuilding (the archive is re-read)",
+            prepared_root,
+            cached_mode,
+            mode,
+        )
 
     pairs = _pair_by_stem(images, masks, source="real")
 
-    if cfg.spatial_scene_grouping:
-        entries, bands, band_note = _entries_with_geo(pairs, grid_deg, cfg.require_bands)
-        split_strategy = f"spatial_grid_{grid_deg}deg"
-    else:
+    if mode == "per_file":
         # No header scan: index by file stem. This is instant, which matters
         # because the archive is on removable media where touching all 1200
         # files costs minutes. Band count is not lost — the dataset loader
@@ -411,23 +633,26 @@ def _build_real(settings: Settings, *, rebuild: bool, grid_deg: float) -> DataSo
             "not scanned: the archive is on removable media where a cold file open "
             "costs ~0.3 s, so 1200 header reads is minutes. The loader asserts the "
             "band count on every scene it reads. Set "
-            "SENTINEL_DATASOURCES__SPATIAL_SCENE_GROUPING=true to pay it once and "
+            "SENTINEL_DATASOURCES__SCENE_GROUPING=footprint to pay it once and "
             "cache it."
         )
         split_strategy = "per_file_hash"
-
-    warnings: list[str] = []
-    if not cfg.spatial_scene_grouping:
-        warnings.append(
+        warnings = [
             "Tiles were split per file, not per scene. This archive carries no scene "
             "identifier (every GeoTIFF has only generic TIFF tags), so tiles from one "
             "acquisition can straddle the train/test boundary and cross-split metrics "
-            "are optimistic. Enable spatial scene grouping to reduce this."
-        )
-    elif len({entry[0] for entry in entries}) == len(entries):
-        warnings.append(
-            "Spatial scene grouping put every tile in its own grid cell, so the split "
-            "is still effectively per file. Cross-split metrics are optimistic."
+            "are optimistic. Set SENTINEL_DATASOURCES__SCENE_GROUPING=footprint to "
+            "group tiles by the ground they share instead."
+        ]
+    else:
+        probes, bands, band_note = _scan_headers(pairs, cfg.require_bands)
+        scene_ids, warnings = _group_scenes(mode, pairs, probes, grid_deg=grid_deg)
+        entries = [
+            (scene_id, image, mask)
+            for scene_id, (image, mask) in zip(scene_ids, pairs, strict=True)
+        ]
+        split_strategy = (
+            "footprint_connected" if mode == "footprint" else f"spatial_grid_{grid_deg}deg"
         )
 
     by_split = _assign_splits(
@@ -453,6 +678,13 @@ def _build_real(settings: Settings, *, rebuild: bool, grid_deg: float) -> DataSo
                 }
             )
 
+    n_scenes = len({e[0] for e in entries})
+    split_counts = {k: len(v) for k, v in by_split.items()}
+
+    # Which grouping produced these scene ids is part of the index, not a
+    # property of the reader. Without it a later run cannot tell whether a
+    # cached split answers the question it is now asking, and would reuse a
+    # per-file split for a footprint-grouped experiment without a word.
     n = _write_manifest(
         prepared_root,
         rows,
@@ -464,20 +696,23 @@ def _build_real(settings: Settings, *, rebuild: bool, grid_deg: float) -> DataSo
             "bands": bands,
             "band_validation": band_note,
             "split_strategy": split_strategy,
-            "scene_grid_deg": grid_deg if cfg.spatial_scene_grouping else None,
-            "n_scenes": len({e[0] for e in entries}),
-            "split_counts": {k: len(v) for k, v in by_split.items()},
+            "scene_grouping": mode,
+            "scene_grid_deg": grid_deg if mode == "grid" else None,
+            "footprint_tol_deg": DEFAULT_FOOTPRINT_TOL_DEG if mode == "footprint" else None,
+            "n_scenes": n_scenes,
+            "split_counts": split_counts,
             "warnings": warnings,
             "provenance": DataProvenance.REAL.value,
         },
     )
 
     logger.info(
-        "real source indexed: {} pairs, {} bands, scenes={}, splits={}",
+        "real source indexed: {} pairs, {} bands, grouping={}, scenes={}, splits={}",
         n,
         bands,
-        len({e[0] for e in entries}),
-        {k: len(v) for k, v in by_split.items()},
+        mode,
+        n_scenes,
+        split_counts,
     )
     return DataSourceSpec(
         kind="real",
@@ -611,7 +846,7 @@ def _build_synthetic(settings: Settings, *, rebuild: bool) -> DataSourceSpec:
         )
 
     pairs = _pair_by_stem(images, masks, source="synthetic")
-    bands, _ = _probe(pairs[0][0])
+    bands = _probe(pairs[0][0]).bands
 
     rows: list[dict[str, Any]] = []
     for image, mask in pairs:

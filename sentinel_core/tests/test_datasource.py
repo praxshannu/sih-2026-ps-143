@@ -16,6 +16,7 @@ the thing under test is partly the pairing and probing of actual files.
 from __future__ import annotations
 
 import json
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
@@ -35,6 +36,10 @@ from sentinel_core.errors import DataSourceMismatchError, DataSourceUnavailableE
 from sentinel_core.provenance import DataProvenance
 
 SIZE = 32
+PIXEL_DEG = 0.001
+
+#: Edge length of the tiles the helpers below write: 32 px at 0.001 deg.
+TILE_DEG = SIZE * PIXEL_DEG
 
 
 def _write_raster(
@@ -45,6 +50,7 @@ def _write_raster(
     lon: float = 4.0,
     lat: float = 55.0,
     dtype: str = "float32",
+    crs: str | None = "EPSG:4326",
 ) -> None:
     """A tiny georeferenced GeoTIFF, standing in for one Sentinel-1 scene."""
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -57,10 +63,44 @@ def _write_raster(
         width=SIZE,
         count=bands,
         dtype=dtype,
-        crs="EPSG:4326",
-        transform=from_origin(lon, lat, 0.001, 0.001),
+        crs=crs,
+        transform=from_origin(lon, lat, PIXEL_DEG, PIXEL_DEG),
     ) as dst:
         dst.write(data)
+
+
+def _write_tile(
+    path: Path, *, left: float, bottom: float, bands: int = 2, crs: str | None = "EPSG:4326"
+) -> None:
+    """A tile occupying exactly ``[left, left+TILE_DEG] x [bottom, bottom+TILE_DEG]``.
+
+    :func:`_write_raster` takes the *north-west* corner. Footprints are compared
+    by their lower-left, so these helpers take the south-west corner instead and
+    let a test place a tile on a grid boundary to the degree.
+    """
+    _write_raster(path, bands=bands, lon=left, lat=bottom + TILE_DEG, crs=crs)
+
+
+def _make_footprint_archive(root: Path, boxes: Sequence[tuple[float, float]]) -> tuple[Path, Path]:
+    """One image/mask pair per ``(left, bottom)``, named by position."""
+    images, masks = root / "images", root / "masks"
+    for i, (left, bottom) in enumerate(boxes):
+        _write_tile(images / f"{i:05d}.tif", left=left, bottom=bottom)
+        _write_tile(masks / f"{i:05d}.tif", left=left, bottom=bottom, bands=1)
+    return images, masks
+
+
+def _manifest_rows(spec: Any) -> list[dict[str, Any]]:
+    return [
+        json.loads(line)
+        for line in (spec.prepared_root / MANIFEST_NAME).read_text().splitlines()
+        if line.strip()
+    ]
+
+
+def _scene_ids(spec: Any) -> dict[str, str]:
+    """``{file stem: scene id}`` as written into the manifest."""
+    return {Path(row["image"]).stem: row["scene_id"] for row in _manifest_rows(spec)}
 
 
 def _make_real_archive(
@@ -177,6 +217,172 @@ def test_spatial_grouping_keeps_a_scene_inside_one_split(tmp_path: Path) -> None
     for row in rows:
         by_scene.setdefault(row["scene_id"], set()).add(row["split"])
     assert all(len(splits) == 1 for splits in by_scene.values()), by_scene
+
+
+# ---------------------------------------------------------------------------
+# Footprint grouping
+#
+# The grid asks "are these two tiles in the same 1 degree cell?", which is a
+# question about the coordinate system. The footprint asks "do these two tiles
+# show the same patch of sea?", which is the question the split needs answered.
+# These tests pin the difference at a cell boundary, in both directions.
+# ---------------------------------------------------------------------------
+
+#: A whole-numbered degree, so ``round(lon)`` flips between the two tiles that
+#: straddle it and the grid puts them in different cells.
+GRID_EDGE = 3.5
+
+
+def test_footprint_grouping_joins_tiles_a_grid_boundary_separates(tmp_path: Path) -> None:
+    """Two touching tiles, one acquisition, split by the grid for no reason."""
+    _make_footprint_archive(tmp_path, ((GRID_EDGE - TILE_DEG, 55.0), (GRID_EDGE, 55.0)))
+    grid = resolve_source("real", settings=_settings(tmp_path, scene_grouping="grid"), rebuild=True)
+    assert len(set(_scene_ids(grid).values())) == 2  # the boundary runs between them
+
+    footprint = resolve_source(
+        "real", settings=_settings(tmp_path, scene_grouping="footprint"), rebuild=True
+    )
+    assert len(set(_scene_ids(footprint).values())) == 1  # they share an edge
+
+
+def test_footprint_grouping_separates_tiles_a_grid_cell_merges(tmp_path: Path) -> None:
+    """Two tiles 30 km apart, one cell, two acquisitions."""
+    _make_footprint_archive(tmp_path, ((3.60, 55.0), (3.90, 55.0)))
+    grid = resolve_source("real", settings=_settings(tmp_path, scene_grouping="grid"), rebuild=True)
+    assert len(set(_scene_ids(grid).values())) == 1
+
+    footprint = resolve_source(
+        "real", settings=_settings(tmp_path, scene_grouping="footprint"), rebuild=True
+    )
+    assert len(set(_scene_ids(footprint).values())) == 2
+
+
+def test_footprint_grouping_is_transitive(tmp_path: Path) -> None:
+    """A touches B and B touches C, but A does not touch C — still one group.
+
+    A pairwise implementation that compares each tile against its group's first
+    box gets this wrong and shatters a continuous acquisition into pieces, which
+    is the leakage the grouping exists to prevent.
+    """
+    _make_footprint_archive(tmp_path, tuple((3.0 + i * TILE_DEG, 55.0) for i in range(3)))
+    spec = resolve_source(
+        "real", settings=_settings(tmp_path, scene_grouping="footprint"), rebuild=True
+    )
+    # One group, labelled by the lowest stem in it — so the label is a stable
+    # name for the acquisition rather than a function of traversal order.
+    assert set(_scene_ids(spec).values()) == {"00000"}
+
+
+def test_footprint_grouping_keeps_an_acquisition_on_one_side_of_the_split(
+    tmp_path: Path,
+) -> None:
+    """Twenty tiles in a row, plus five unrelated ones, must not interleave."""
+    run = tuple((3.0 + i * TILE_DEG, 55.0) for i in range(20))
+    far = tuple((40.0 + i, -10.0) for i in range(5))
+    _make_footprint_archive(tmp_path, run + far)
+    spec = resolve_source(
+        "real", settings=_settings(tmp_path, scene_grouping="footprint"), rebuild=True
+    )
+
+    rows = _manifest_rows(spec)
+    assert len({row["scene_id"] for row in rows}) == 6  # the run is one acquisition
+    run_splits = {row["split"] for row in rows if Path(row["image"]).stem < f"{len(run):05d}"}
+    assert len(run_splits) == 1, run_splits
+
+
+def test_footprint_grouping_reports_ungeoreferenced_tiles(tmp_path: Path) -> None:
+    """A tile with no CRS cannot be placed, so it is named rather than guessed at."""
+    images, masks = tmp_path / "images", tmp_path / "masks"
+    for i, crs in enumerate(("EPSG:4326", None, "EPSG:4326")):
+        _write_tile(images / f"{i:05d}.tif", left=3.0, bottom=55.0, crs=crs)
+        _write_tile(masks / f"{i:05d}.tif", left=3.0, bottom=55.0, bands=1)
+
+    spec = resolve_source(
+        "real", settings=_settings(tmp_path, scene_grouping="footprint"), rebuild=True
+    )
+    ids = _scene_ids(spec)
+    # The two located tiles group together; the blind one stands alone.
+    assert ids["00000"] == ids["00002"]
+    assert ids["00001"] == "00001"
+    assert any("no georeferencing" in warning for warning in spec.warnings)
+
+
+def test_footprint_grouping_refuses_a_mixed_crs_archive(tmp_path: Path) -> None:
+    """Comparing metres against degrees returns a confident, meaningless answer."""
+    images, masks = tmp_path / "images", tmp_path / "masks"
+    for i, crs in enumerate(("EPSG:4326", "EPSG:3857")):
+        _write_tile(images / f"{i:05d}.tif", left=3.0, bottom=55.0, crs=crs)
+        _write_tile(masks / f"{i:05d}.tif", left=3.0, bottom=55.0, bands=1)
+
+    with pytest.raises(DataSourceMismatchError) as caught:
+        resolve_source(
+            "real", settings=_settings(tmp_path, scene_grouping="footprint"), rebuild=True
+        )
+    assert caught.value.reason == "inconsistent_crs"
+    assert caught.value.context["crs_seen"] == ["EPSG:3857", "EPSG:4326"]
+
+
+def test_footprint_index_records_the_mode_and_its_tolerance(tmp_path: Path) -> None:
+    _make_footprint_archive(tmp_path, ((3.0, 55.0),))
+    spec = resolve_source(
+        "real", settings=_settings(tmp_path, scene_grouping="footprint"), rebuild=True
+    )
+    assert spec.split_strategy == "footprint_connected"
+    meta = json.loads((spec.prepared_root / SOURCE_META_NAME).read_text())
+    assert meta["scene_grouping"] == "footprint"
+    assert meta["scene_grid_deg"] is None
+    assert meta["footprint_tol_deg"] == 0.005
+    assert meta["band_validation"].startswith("all ")
+
+
+def test_the_legacy_spatial_flag_still_means_the_grid(tmp_path: Path) -> None:
+    """``spatial_scene_grouping`` predates ``scene_grouping``; it keeps working."""
+    _make_real_archive(tmp_path)
+    spec = resolve_source(
+        "real", settings=_settings(tmp_path, spatial_scene_grouping=True), rebuild=True
+    )
+    assert spec.split_strategy.startswith("spatial_grid")
+    meta = json.loads((spec.prepared_root / SOURCE_META_NAME).read_text())
+    assert meta["scene_grouping"] == "grid"
+
+
+def test_an_explicit_mode_beats_the_legacy_flag(tmp_path: Path) -> None:
+    _make_real_archive(tmp_path)
+    spec = resolve_source(
+        "real",
+        settings=_settings(tmp_path, spatial_scene_grouping=True, scene_grouping="footprint"),
+        rebuild=True,
+    )
+    assert spec.split_strategy == "footprint_connected"
+
+
+def test_changing_the_grouping_mode_invalidates_the_cached_index(tmp_path: Path) -> None:
+    """A cached split answers the question it was built for, and no other.
+
+    Reusing a per-file index for a footprint-grouped run would silently hand the
+    experiment the other grouping's validation set.
+    """
+    _make_real_archive(tmp_path)
+    settings = _settings(tmp_path)
+    per_file = resolve_source("real", settings=settings, rebuild=True)
+    assert per_file.split_strategy == "per_file_hash"
+
+    footprint = resolve_source("real", settings=_settings(tmp_path, scene_grouping="footprint"))
+    assert footprint.split_strategy == "footprint_connected"
+    assert "cached" not in footprint.note
+    meta = json.loads((footprint.prepared_root / SOURCE_META_NAME).read_text())
+    assert meta["scene_grouping"] == "footprint"
+
+
+def test_the_cached_index_is_reused_when_the_mode_matches(tmp_path: Path) -> None:
+    """The header scan costs minutes on removable media; it must not repeat."""
+    _make_real_archive(tmp_path)
+    settings = _settings(tmp_path, scene_grouping="footprint")
+    first = resolve_source("real", settings=settings, rebuild=True)
+    again = resolve_source("real", settings=settings)
+    assert "cached" in again.note
+    assert again.split_strategy == first.split_strategy
+    assert again.n_pairs == first.n_pairs
 
 
 def test_real_split_is_deterministic(tmp_path: Path) -> None:
