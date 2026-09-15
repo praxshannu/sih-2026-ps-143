@@ -547,6 +547,17 @@ def get_dataloaders(
             loaders: list[Any] = []
             for split in ("train", "val", "test"):
                 rows = [r for r in rows_in if r.get("split") == split]
+                if not rows:
+                    # A split with no rows is legitimate: test_fraction defaults
+                    # to 0.0, so there is usually no test split at all. The
+                    # DataLoader was guarded against this but the dataset was
+                    # not, and building it with an empty manifest sends __init__
+                    # down the pair-from-directories path against a root that
+                    # holds nothing but a manifest — which raises
+                    # DatasetUnavailableError for a run that has everything it
+                    # needs. The caller gets None and skips the split.
+                    loaders.append(None)
+                    continue
                 transform = train_transform if split == "train" else val_transform
                 dataset = SAROilSpillDataset(
                     root,
@@ -566,8 +577,6 @@ def get_dataloaders(
                         pin_memory=False,
                         drop_last=split == "train",
                     )
-                    if rows
-                    else None
                 )
             logger.info("prepared-root splits: {}", sorted(splits))
             return loaders[0], loaders[1], loaders[2]
