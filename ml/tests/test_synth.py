@@ -30,6 +30,7 @@ from ml.synth.generate import (
 from ml.synth.profile import (
     NODATA_DB,
     DistributionProfile,
+    _extremes,
     compare_profiles,
     profile_scenes,
 )
@@ -509,7 +510,12 @@ def test_extreme_records_carry_more_than_three_knots(tmp_path: Path) -> None:
 
 
 def test_the_generator_uses_the_extended_knot_set(tmp_path: Path) -> None:
-    """The curve the generator samples must be the curve the profile recorded."""
+    """The curve the generator samples must be the curve the profile recorded.
+
+    It must span the population rather than stopping at p90: the scene's p99.9
+    is around the population's p97, so a curve that ends at p90 cannot produce
+    a pixel that bright, however the interpolation is done.
+    """
     images, masks = build_fixture(tmp_path, n_scenes=4)
     profile = profile_scenes(images, masks)
     record = _pick_extreme_record(np.random.default_rng(0), profile, "VV")
@@ -519,7 +525,87 @@ def test_the_generator_uses_the_extended_knot_set(tmp_path: Path) -> None:
         for key, value in record.items()
         if key.startswith(prefix_key)
     }
-    assert set(curve) == {"p1", "p10", "p50", "p90", "p99"}
+    assert set(curve) == {"p1", "p10", "p25", "p50", "p75", "p90", "p99"}
+    # The dense upper half is the point, not the count.
+    assert float(curve["p99"]) >= float(curve["p90"]) >= float(curve["p75"])
+
+
+def test_a_population_below_the_pixel_floor_records_no_coverage() -> None:
+    """A coverage with no curve behind it is worse than no coverage at all.
+
+    Every knot defaults to 0.0 dB, and 0.0 dB is this archive's no-data fill. A
+    record that claims a bright population while leaving the whole curve at its
+    defaults would make the generator write that many pixels at the fill value,
+    which the profiler then excludes as fill -- so the population would be
+    deleted from both sides of the comparison and the check would pass on a
+    scene that never contained it. Measured on the real archive: 9 of 32 VH
+    scenes had a bright population under the floor.
+    """
+    sea = -30.0
+    band = np.full((64, 64), sea, dtype=np.float32)
+    band[0, :3] = sea + 25.0  # three bright pixels, well under the floor
+
+    record = _extremes(band, np.ones(band.shape, dtype=bool), sea)
+
+    assert record["bright_fraction"] == 0.0
+    assert all(value == NODATA_DB for key, value in record.items() if "_db_p" in key)
+
+
+def test_a_population_at_the_pixel_floor_still_records_a_curve() -> None:
+    """The floor is inclusive, so the fix above cannot silently widen.
+
+    Zeroing the coverage is the right answer only when the population really is
+    too small to describe. One pixel more than the floor must still be measured,
+    or the guard would swallow every thin-but-real population in the archive.
+    """
+    sea = -30.0
+    band = np.full((64, 64), sea, dtype=np.float32)
+    band[0, :] = sea + 25.0  # exactly the floor
+
+    record = _extremes(band, np.ones(band.shape, dtype=bool), sea)
+
+    assert record["bright_fraction"] > 0.0
+    assert record["bright_db_p50"] > sea
+    assert record["bright_db_p50"] != NODATA_DB
+
+
+def test_the_generator_refuses_a_coverage_with_an_all_nodata_curve() -> None:
+    """A profile written before the invariant existed must not corrupt a scene.
+
+    Such a record says "this many bright pixels" and then gives every knot the
+    value 0.0 dB, which is the fill value. Writing them would inject fill pixels
+    into the scene and buy the scene nothing, because the profiler excludes fill
+    before it measures anything. Refusing the record is the safe direction: the
+    scene is then merely missing a population it never had a curve for.
+    """
+    record = {
+        "bright_fraction": 0.5,
+        "bright_component_px": 1.0,
+        "bright_db_p1": NODATA_DB,
+        "bright_db_p10": NODATA_DB,
+        "bright_db_p50": NODATA_DB,
+        "bright_db_p90": NODATA_DB,
+        "bright_db_p99": NODATA_DB,
+    }
+    band = np.full((32, 32), -32.0, dtype=np.float32)
+    # ``_apply_extremes`` writes into the array it is given, so the returned
+    # array is the same object. Comparing it to ``band`` would be comparing the
+    # array to itself and would pass however many pixels were overwritten.
+    before = band.copy()
+
+    out = _apply_extremes(
+        np.random.default_rng(0),
+        band,
+        record,
+        "bright",
+        32,
+        32,
+        1.0,
+        scene_sea_level=-32.0,
+    )
+
+    # A 0.5 coverage over 1024 pixels would have been ~512 writes; none happened.
+    np.testing.assert_array_equal(out, before)
 
 
 def test_extremes_are_placed_relative_to_the_scene_sea_level() -> None:

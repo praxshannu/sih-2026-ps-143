@@ -84,15 +84,18 @@ _MIN_EXTREME_PIXELS = 64
 
 #: Percentiles recorded for the bright and dark extreme populations.
 #:
-#: Five knots rather than three, because the generator samples this curve as an
-#: inverse CDF and the scene-level statistics that are checked live *outside*
-#: the body of the extreme population. Measured on this archive, VV's brightest
-#: 0.1% of pixels is the top 22% of its bright population, and VH's is the top
-#: 40% — both inside [p10, p90], but only just, and a three-knot piecewise
-#: linear curve straightens out exactly the curvature that decides where they
-#: land. The tails are where a detector's threshold sits, so they are worth the
-#: extra two numbers.
-_EXTREME_PERCENTILES = (1.0, 10.0, 50.0, 90.0, 99.0)
+#: The generator samples this curve as an inverse CDF, and the scene-level
+#: statistics that are checked correspond to a specific quantile *of the extreme
+#: population*, not of the scene. Measured on this archive, VV's bright pixels
+#: are ~0.1-0.5% of a scene, so the scene's own p99.9 is the top few percent of
+#: that population -- around its p97.
+#:
+#: Two things follow, and both were wrong before. The curve must reach p99, or
+#: the generator cannot produce a pixel as bright as the scene's p99.9 at all;
+#: and it must be dense through the upper half, because the population is
+#: strongly concave there (VV measured: p50 -16.7, p90 -5.5, p99 -1.0 dB) and a
+#: sparse curve interpolates straight through the curvature.
+_EXTREME_PERCENTILES = (1.0, 10.0, 25.0, 50.0, 75.0, 90.0, 99.0)
 
 
 def read_bands(path: Path) -> np.ndarray:
@@ -233,6 +236,15 @@ def _extremes(band: np.ndarray, valid: np.ndarray, sea_level: float) -> dict[str
     ):
         out[f"{prefix}_fraction"] = float(selection.mean())
         if int(selection.sum()) < _MIN_EXTREME_PIXELS:
+            # Too few pixels to describe the population, so record no population
+            # at all. Keeping the coverage while leaving every knot at its 0.0
+            # default is worse than recording nothing: 0.0 dB is this archive's
+            # no-data fill, so the generator would place that many pixels at the
+            # fill value and the profiler would then exclude them as fill --
+            # a measured population quietly deleted from both sides of the
+            # comparison. Measured here: 9 of 32 VH scenes had a bright
+            # population under the floor.
+            out[f"{prefix}_fraction"] = 0.0
             continue
         values = np.percentile(band[selection], _EXTREME_PERCENTILES)
         for level, value in zip(_EXTREME_PERCENTILES, values, strict=True):

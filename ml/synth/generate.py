@@ -396,6 +396,13 @@ def _apply_extremes(
     }
     if not curve:
         return band_db
+    # A profile written before the fraction/curve invariant was enforced can
+    # carry a coverage with an all-default curve. Writing those pixels at their
+    # default of 0.0 dB would inject this archive's no-data fill value into the
+    # scene, and the profiler would then exclude them as fill rather than count
+    # them. Refuse the record rather than corrupt the scene.
+    if all(abs(value - NODATA_DB) <= 1e-6 for value in curve.values()):
+        return band_db
 
     reference_sea = float(record.get("sea_level_db", scene_sea_level))
     shift = float(scene_sea_level) - reference_sea
