@@ -237,7 +237,7 @@ suspect list.
 | The training pipeline runs end-to-end on both data sources | **Verified**, bounded runs, `source_unchanged: True` |
 | The real archive is read in place and never written | **Verified** — trainer fingerprint plus an independent SHA-256 either side of a run |
 | The verified runs produced a useful model | **False.** Two optimiser steps per epoch; the IoU is not a result. |
-| The synthetic set reproduces the real distribution | **27 of 28 checks.** VV p99.9 is 4.9 dB short — see LIMITATIONS A10. |
+| The synthetic set reproduces the real distribution | **26 of 28 checks.** Both misses are pooled `p99.9` tails — see LIMITATIONS A10. |
 | Performance on a labelled benchmark is known | **False.** No benchmark has been run. |
 | Anomaly detection is operational | **False.** Not trained; trainer refuses empty input. |
 | Attribution weights are fitted | **False.** Chosen by hand, uncalibrated. |

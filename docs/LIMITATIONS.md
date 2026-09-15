@@ -95,33 +95,55 @@ required` and lists the source that would fill the gap.
 
 ---
 
-### A10. The synthetic VV tail is 4.9 dB short, and the check cannot settle it
+### A10. The two pooled-tail checks miss, and the check cannot settle itself
 
-The synthetic set matches the real archive on 27 of 28 distribution checks
-(`data/synthetic/match_report.json`). The one that misses is **VV p99.9**: the
-real archive's brightest 0.1% of pixels sits at −16.79 dB, the synthetic set's
-at −21.67 dB.
+The synthetic set matches the real archive on **26 of 28** distribution checks
+(`data/synthetic/match_report.json`). The two that miss are both pooled tails:
 
-This is measured, not guessed, and the mechanism is understood. For a two-class
-population where bright pixels are a fraction `f` of a scene, the scene's p99.9
-is the bright pool's quantile `q = 1 − 0.001/f` — about the pool's p78 for VV.
-The generator draws its bright coverage from per-scene records measured on a
-32-scene sample, and its estimate (`f = 0.00368`) is 20% below the real mean
-(`f = 0.00459`). Applied through `q`, a 20% coverage shortfall costs ~4.5 dB on a
-population that rises steeply there, which is the whole of the 4.9 dB gap.
+| Check | Real | Synthetic | Δ | Tolerance |
+|---|---|---|---|---|
+| `VV.p99.9` | −16.79 dB | −20.59 dB | 3.80 dB | 2.0 dB |
+| `VH.p99.9` | −8.77 dB | −6.56 dB | 2.21 dB | 2.0 dB |
 
-The reason this is listed as a limitation rather than a bug: **a 32-scene mean of
-VV bright coverage has a 5–95% bootstrap band of 0.0027–0.0067** (±46%). The
-synthetic value sits inside it. A check whose estimator carries ±46% sampling
-noise cannot support a ±2 dB tolerance on a statistic with a ~60 dB/dB slope, so
-the honest reading is "the sample is too small to decide", not "the generator is
-biased". The per-scene bright statistics do match closely (VV p99 mean: real
-−10.54, synthetic −10.21).
+These numbers are **reproducible**: two consecutive
+`generate_synthetic.py --verify-only --sample 32` runs return identical values,
+and the real side is identical across every run recorded here (the sampler sorts
+by name and walks a fixed stride, so the same scenes are measured every time).
+An earlier note in this repository recorded 27/28; that figure came from an
+earlier state of the generator and does not reproduce against the current code.
 
-Two things would settle it: profile all 1200 scenes instead of 32
-(`scripts/generate_synthetic.py --sample 1200`), or widen the tolerance for
-pooled tail statistics and say why. Until one of those is done, treat the VV
-p99.9 comparison as unresolved.
+**Why they miss, mechanically.** For a two-class population where bright pixels
+are a fraction `f` of a scene, the scene's p99.9 is the bright pool's quantile
+`q = 1 − 0.001/f` — about the pool's p78 for VV and p41 for VH. Both checks
+therefore sit on the steepest part of the extreme population, where the
+generator's coverage estimate and the shape of its knot curve both matter most.
+
+**Why this is a limitation and not a bug: the reference value is not stable.**
+Re-running the same generator with `--sample 96` instead of `--sample 32` — same
+code, same seed, three times the real scenes — moved the *real* `VV.p99.9` from
+−16.79 to **−13.32 dB**, a 3.5 dB swing produced purely by looking at more of the
+archive. `VH.p99.9` moved from −8.77 to −7.75 dB the same way. A statistic that
+moves 3.5 dB with sample size cannot be a ±2 dB acceptance gate, and a generator
+cannot track a target that moves with the sample.
+
+A bootstrap agrees: a 32-scene mean of VV bright coverage has a 5–95% band of
+0.0027–0.0067 (±46%). The per-scene statistics, which do not pool, match closely
+(VV p99 mean: real −10.54, synthetic −10.21) — which is what a generator fitted
+to the measured population should do.
+
+One fix was attempted and **reverted**: walking the measured records without
+replacement (`record_index`) so the drawn multiset matches the measured one
+instead of resampling it with replacement. It is principled — a draw with
+replacement is a bootstrap and adds variance the archive does not have — but at
+the same 32-scene sample it produced 25/28 rather than 26/28, adding a `VH.p0.1`
+failure and widening `VV.p99.9` to 6.7 dB. The effect is not separable from the
+noise of the check it was meant to fix, and a change that worsens the measured
+outcome on an unverifiable theory is not worth shipping.
+
+What would settle it: profile all 1200 scenes rather than a sample, or replace
+these two checks with ones that state their sampling band and fail only when the
+value falls outside it. Until then, treat the two `p99.9` comparisons as
+unresolved rather than as evidence about the generator.
 
 ---
 
