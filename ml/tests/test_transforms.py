@@ -162,6 +162,113 @@ def test_compose_rejects_a_transform_that_changes_the_band_count() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Mask layout: the loader hands over (1, H, W), not (H, W)
+#
+# Every test above passes a 2-D mask, which is the layout the docstring
+# described. The loader does not: it reads a mask as (1, H, W) and hands it
+# straight to the chain, so the 2-D tests exercised a contract no caller used
+# and the whole geometry layer was wrong for the only layout that mattered.
+# These run both layouts through the same assertions.
+# ---------------------------------------------------------------------------
+
+
+def _marker_pair(layout: str, size: int = IMAGE_SIZE) -> tuple[np.ndarray, np.ndarray]:
+    """An image whose brightest pixel is the one the mask marks."""
+    image, mask = make_pair(size)
+    image[:, mask > 0] = 99.0
+    return (image, mask) if layout == "2d" else (image, mask[np.newaxis, ...])
+
+
+def _marked_positions(mask: np.ndarray, layout: str) -> np.ndarray:
+    return np.argwhere(mask[0] > 0) if layout == "3d" else np.argwhere(mask > 0)
+
+
+@pytest.mark.parametrize("layout", ["2d", "3d"])
+def test_crop_returns_a_patch_for_both_mask_layouts(layout: str) -> None:
+    """``mask[rows, cols]`` on a 3-D mask means ``mask[rows, cols, :]``.
+
+    The slices land on the channel axis and the row axis, so the crop comes back
+    with an empty first axis instead of a patch — which is what the trainer hit:
+    "stack expects each tensor to be equal size, but got [0, 256, 2048] at entry
+    0 and [1, 0, 2048] at entry 1".
+    """
+    image, mask = _marker_pair(layout)
+    cropped_image, cropped_mask = RandomCrop(32)(image, mask, np.random.default_rng(0))
+    assert cropped_image.shape == (2, 32, 32)
+    assert cropped_mask.shape == ((32, 32) if layout == "2d" else (1, 32, 32))
+    assert cropped_mask.shape[-2:] == cropped_image.shape[-2:]
+
+
+@pytest.mark.parametrize("layout", ["2d", "3d"])
+def test_centre_crop_returns_a_patch_for_both_mask_layouts(layout: str) -> None:
+    """The evaluation path goes through ``_CenterCrop``, so it has the same bug."""
+    image, mask = _marker_pair(layout)
+    cropped_image, cropped_mask = build_eval_transforms(32)(image, mask)
+    assert cropped_image.shape == (2, 32, 32)
+    assert cropped_mask.shape == ((32, 32) if layout == "2d" else (1, 32, 32))
+
+
+@pytest.mark.parametrize("layout", ["2d", "3d"])
+def test_flip_moves_the_mask_with_the_image_in_both_layouts(layout: str) -> None:
+    """This one is silent, and that is what makes it dangerous.
+
+    ``mask[:, ::-1]`` on a ``(1, H, W)`` mask flips the *height* while the image
+    flips the *width*. The mask stays a plausible array; it just stops matching
+    the image it labels, and the run trains happily on wrong targets.
+    """
+    image, mask = _marker_pair(layout)
+    for seed in range(6):
+        flipped_image, flipped_mask = RandomFlip(1.0, 1.0)(
+            image, mask, np.random.default_rng(seed)
+        )
+        bright = np.argwhere(flipped_image[0] > 50.0)
+        marked = _marked_positions(flipped_mask, layout)
+        assert bright.shape == marked.shape == (1, 2), (layout, seed)
+        assert tuple(bright[0]) == tuple(marked[0]), (layout, seed)
+
+
+@pytest.mark.parametrize("layout", ["2d", "3d"])
+def test_rotate90_moves_the_mask_with_the_image_in_both_layouts(layout: str) -> None:
+    """``np.rot90(mask, axes=(0, 1))`` turns channel-against-height on a 3-D mask."""
+    image, mask = _marker_pair(layout)
+    for seed in range(6):
+        rotated_image, rotated_mask = RandomRotate90(1.0)(
+            image, mask, np.random.default_rng(seed)
+        )
+        bright = np.argwhere(rotated_image[0] > 50.0)
+        marked = _marked_positions(rotated_mask, layout)
+        assert bright.shape == marked.shape == (1, 2), (layout, seed)
+        assert tuple(bright[0]) == tuple(marked[0]), (layout, seed)
+
+
+@pytest.mark.parametrize("layout", ["2d", "3d"])
+def test_the_full_train_chain_accepts_the_loader_layout(layout: str) -> None:
+    """The chain as the trainer builds it, on a mask as the loader reads it.
+
+    This is the test that would have caught the crash: the pieces above can each
+    look right while the composed chain still fails, because only the chain has
+    every step running on the same array.
+    """
+    image, mask = _marker_pair(layout, 256)
+    chain = build_train_transforms(64, seed=0)
+    for _ in range(8):
+        out_image, out_mask = chain(image, mask)
+        assert out_image.shape == (2, 64, 64)
+        assert out_mask.shape == ((64, 64) if layout == "2d" else (1, 64, 64))
+
+
+def test_a_mask_that_is_not_the_size_of_its_image_is_refused() -> None:
+    """The invariant every geometric transform depends on, checked in one place.
+
+    Without it a mismatched pair is moved by index arithmetic that means
+    different things on the two arrays, and the result still looks like a mask.
+    """
+    image, mask = make_pair(64)
+    with pytest.raises(ValueError, match="does not match mask"):
+        RandomFlip(1.0, 1.0)(image, mask[:32], np.random.default_rng(0))
+
+
+# ---------------------------------------------------------------------------
 # Radiometry
 # ---------------------------------------------------------------------------
 

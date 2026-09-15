@@ -18,9 +18,11 @@ What the transforms assume
 --------------------------
 * Images are ``(C, H, W)`` ``float32`` **in dB** — the native form of both the
   real archive and the synthetic generator. No conversion happens on the way in.
-* Masks are ``(H, W)`` and binary. A mask is a label, so it is *never*
-  interpolated: every geometric transform moves it with the same integer index
-  arithmetic it applies to the image.
+* Masks are ``(H, W)`` or ``(1, H, W)`` and binary; the spatial axes are the
+  last two in either case. A mask is a label, so it is *never* interpolated:
+  every geometric transform moves it with the same integer index arithmetic it
+  applies to the image, and ``Transform.__call__`` refuses a pair whose spatial
+  extents differ.
 * Geometry and radiometry are separate concerns. Geometric transforms are exact
   and lossless; radiometric ones change pixel values and are applied in the
   order a physical scene would produce them (speckle, then contrast, then a
@@ -107,6 +109,16 @@ class Transform:
     def __call__(
         self, image: np.ndarray, mask: np.ndarray, rng: np.random.Generator
     ) -> tuple[np.ndarray, np.ndarray]:
+        if image.shape[-2:] != mask.shape[-2:]:
+            # A geometric transform moves the mask by the *same index
+            # arithmetic* as the image, so the two have to be the same size.
+            # Checking here rather than in each subclass means the invariant
+            # cannot be forgotten by a transform added later.
+            raise ValueError(
+                f"{self.name}: image spatial extent {tuple(image.shape[-2:])} does not "
+                f"match mask {tuple(mask.shape[-2:])}; a mask that is not the size of "
+                "its image cannot be moved with it."
+            )
         return self.apply(image, mask, rng)
 
     def describe(self) -> dict[str, Any]:
@@ -136,6 +148,13 @@ class RandomFlip(Transform):
     view of a surface, so mirroring changes nothing physical. Rotations by
     arbitrary angles do not have that property — they resample, and a resampled
     dB field is not the same measurement.
+
+    The mask is indexed with ``...`` rather than ``:``. It reaches here either as
+    ``(H, W)`` or as ``(1, H, W)`` — the loader keeps a channel axis because the
+    model wants one — and ``mask[:, ::-1]`` on the 3-D layout flips the *height*
+    while the image flips the *width*. The mask would then be silently
+    desynchronised from the image it labels, which trains on wrong targets
+    rather than failing.
     """
 
     p_horizontal: float = 0.5
@@ -145,16 +164,20 @@ class RandomFlip(Transform):
     def apply(self, image, mask, rng):
         if rng.random() < self.p_horizontal:
             image = image[:, :, ::-1]
-            mask = mask[:, ::-1]
+            mask = mask[..., ::-1]
         if rng.random() < self.p_vertical:
             image = image[:, ::-1, :]
-            mask = mask[::-1, :]
+            mask = mask[..., ::-1, :]
         return np.ascontiguousarray(image), np.ascontiguousarray(mask)
 
 
 @dataclass
 class RandomRotate90(Transform):
-    """Rotate by k * 90 degrees. Exact — no interpolation is involved."""
+    """Rotate by k * 90 degrees. Exact — no interpolation is involved.
+
+    ``axes=(-2, -1)`` for the mask, for the same reason as :class:`RandomFlip`:
+    the spatial axes are the last two whatever the mask's leading layout is.
+    """
 
     p: float = 0.5
     name: str = field(default="random_rotate90", init=False)
@@ -164,7 +187,7 @@ class RandomRotate90(Transform):
             return image, mask
         k = int(rng.integers(1, 4))
         return np.ascontiguousarray(np.rot90(image, k, axes=(1, 2))), np.ascontiguousarray(
-            np.rot90(mask, k, axes=(0, 1))
+            np.rot90(mask, k, axes=(-2, -1))
         )
 
 
@@ -176,6 +199,10 @@ class RandomCrop(Transform):
     what actually feeds the network — it is not an optional extra. It raises
     rather than padding when the scene is smaller than the patch: silently
     zero-padding dB data would invent a black region that reads as open water.
+
+    ``mask[..., rows, cols]``, not ``mask[rows, cols]``: on a ``(1, H, W)`` mask
+    the two-argument form means ``mask[rows, cols, :]`` and slices the channel
+    axis against the rows, which yields an empty first axis rather than a crop.
     """
 
     size: int
@@ -194,7 +221,7 @@ class RandomCrop(Transform):
         cols = slice(left, left + self.size)
         return (
             np.ascontiguousarray(image[:, rows, cols]),
-            np.ascontiguousarray(mask[rows, cols]),
+            np.ascontiguousarray(mask[..., rows, cols]),
         )
 
 
@@ -269,10 +296,16 @@ class Compose:
     """Apply transforms in order with one seeded generator.
 
     The call signature is ``(image, mask) -> (image, mask)`` on ``(C, H, W)``
-    float32 and ``(H, W)`` binary arrays. That is a deliberate change from the
-    albumentations ``(H, W, C)`` dict contract the old module used: the dataset
-    reads CHW, the model wants CHW, and transposing twice per sample to satisfy a
-    library that is not installed was pure overhead.
+    float32 and a mask that is either ``(H, W)`` or ``(1, H, W)`` binary. That is
+    a deliberate change from the albumentations ``(H, W, C)`` dict contract the
+    old module used: the dataset reads CHW, the model wants CHW, and transposing
+    twice per sample to satisfy a library that is not installed was pure
+    overhead.
+
+    The mask's *spatial axes are always the last two*, and every geometric
+    transform indexes them as such. The two mask layouts are not a convenience:
+    the loader reads the mask as ``(1, H, W)`` and hands it straight here, so a
+    transform that assumes ``(H, W)`` is wrong for the only caller that exists.
     """
 
     def __init__(
@@ -399,7 +432,7 @@ class _CenterCrop(Transform):
         cols = slice(left, left + self.size)
         return (
             np.ascontiguousarray(image[:, rows, cols]),
-            np.ascontiguousarray(mask[rows, cols]),
+            np.ascontiguousarray(mask[..., rows, cols]),
         )
 
 
