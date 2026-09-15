@@ -61,9 +61,7 @@ DEFAULT_EXTERNAL_ROOT = Path("/Volumes/Ventoy")
 #: that is not a multiple of 32 loses pixels at the last up-sample.
 _ENCODER_STRIDE = 32
 
-_VALID_LOG_LEVELS = frozenset(
-    {"TRACE", "DEBUG", "INFO", "SUCCESS", "WARNING", "ERROR", "CRITICAL"}
-)
+_VALID_LOG_LEVELS = frozenset({"TRACE", "DEBUG", "INFO", "SUCCESS", "WARNING", "ERROR", "CRITICAL"})
 
 
 def repo_root() -> Path:
@@ -128,6 +126,12 @@ class DataSourceSettings(BaseModel):
     )
     allow_synthetic_fallback: bool = False
     require_bands: int = Field(default=2, ge=1, le=64)
+    #: Group tiles by the coarse grid cell containing their centroid, as a proxy
+    #: for "same acquisition", so train/test do not share a pass. Off by default
+    #: because it requires reading the header of every scene, and on the external
+    #: archive a *cold* file open costs ~0.3 s — roughly six minutes for 1200
+    #: files. The result is cached in the index, so the cost is paid once.
+    spatial_scene_grouping: bool = False
     #: Refuse to start if the real dataset is on a filesystem we may write to.
     #: Guards the "train in place" contract: the source archive is input only.
     real_read_only_expected: bool = True
@@ -277,6 +281,7 @@ class Settings(BaseSettings):
                 "synthetic_root": str(self.datasources.synthetic_root),
                 "allow_synthetic_fallback": self.datasources.allow_synthetic_fallback,
                 "require_bands": self.datasources.require_bands,
+                "spatial_scene_grouping": self.datasources.spatial_scene_grouping,
             },
             "training": self.training.model_dump(),
             "logging": self.logging.model_dump(),

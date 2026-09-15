@@ -11,6 +11,8 @@ from __future__ import annotations
 import json
 
 import pytest
+from pydantic import ValidationError
+
 from sentinel_core.config import (
     DataSourceSettings,
     LoggingSettings,
@@ -63,9 +65,7 @@ def test_env_override_switches_the_source(monkeypatch: pytest.MonkeyPatch) -> No
         ("SENTINEL_DATASOURCES__REQUIRE_BANDS", "99"),
     ],
 )
-def test_bad_values_are_rejected(
-    monkeypatch: pytest.MonkeyPatch, var: str, value: str
-) -> None:
+def test_bad_values_are_rejected(monkeypatch: pytest.MonkeyPatch, var: str, value: str) -> None:
     """A typo in a value must not silently train something else."""
     monkeypatch.setenv(var, value)
     with pytest.raises(ConfigError):
@@ -97,19 +97,19 @@ def test_relative_paths_anchor_to_the_repo_not_the_cwd(
 
 
 def test_image_size_must_suit_the_encoder() -> None:
-    with pytest.raises(Exception) as caught:
+    with pytest.raises(ValidationError) as caught:
         TrainingSettings(image_size=500)
     assert "multiple of" in str(caught.value)
 
 
 def test_splits_must_leave_something_to_train_on() -> None:
-    with pytest.raises(Exception) as caught:
+    with pytest.raises(ValidationError) as caught:
         TrainingSettings(val_fraction=0.6, test_fraction=0.5)
     assert "at least one scene" in str(caught.value)
 
 
 def test_loss_weights_cannot_both_be_zero() -> None:
-    with pytest.raises(Exception) as caught:
+    with pytest.raises(ValidationError) as caught:
         TrainingSettings(bce_weight=0.0, dice_weight=0.0)
     assert "constant" in str(caught.value)
 
@@ -137,7 +137,7 @@ def test_log_dir_is_none_unless_file_logging_is_on() -> None:
 
 
 def test_datasource_settings_reject_absurd_band_counts() -> None:
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         DataSourceSettings(require_bands=0)
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         DataSourceSettings(require_bands=1000)

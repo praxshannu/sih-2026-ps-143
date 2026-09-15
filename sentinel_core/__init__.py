@@ -15,11 +15,11 @@ from __future__ import annotations
 from sentinel_core.config import Settings, get_settings, reload_settings
 from sentinel_core.errors import (
     ConfigError,
+    DatasetError,
+    DatasetUnavailableError,
     DataSourceError,
     DataSourceMismatchError,
     DataSourceUnavailableError,
-    DatasetError,
-    DatasetUnavailableError,
     SentinelError,
     TrainingError,
 )

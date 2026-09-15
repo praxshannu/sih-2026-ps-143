@@ -18,7 +18,7 @@ unavailable, ``✕`` failed — so a log line and a badge say the same thing.
 
 from __future__ import annotations
 
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 __all__ = [
@@ -42,11 +42,12 @@ _SYNTHETIC_WARNING = (
 )
 
 
-class DataProvenance(str, Enum):
+class DataProvenance(StrEnum):
     """Where a dataset came from, and whether it can support a claim.
 
-    ``str``-valued so it serialises to the same JSON the API and UI already
-    expect, without a custom encoder.
+    ``StrEnum`` so it serialises to the same JSON the API and UI already
+    expect, without a custom encoder, and so ``str(member)`` is the wire value
+    rather than ``"DataProvenance.REAL"``.
     """
 
     REAL = PROVENANCE_REAL

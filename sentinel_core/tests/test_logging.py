@@ -17,6 +17,7 @@ import json
 import logging
 
 from loguru import logger
+
 from sentinel_core.logging import (
     DEFAULT_QUIET_LOGGERS,
     bind_context,

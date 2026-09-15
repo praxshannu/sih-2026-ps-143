@@ -11,9 +11,9 @@ from __future__ import annotations
 
 import importlib.util
 import sys
-from pathlib import Path
 
 import pytest
+
 from sentinel_core.config import repo_root
 from sentinel_core.provenance import (
     PROVENANCE_NO_COVERAGE,
