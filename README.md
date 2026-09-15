@@ -203,14 +203,21 @@ datasets, or train on a cloud GPU after downloading Part I/II. The trainer
 now fails if the requested directory is empty; it never creates synthetic
 training samples implicitly.
 
+The trainer reads whichever dataset the data-source switch points at. The real
+archive is read **in place** from the external disk — nothing is copied to the
+local machine, and the run fails if the source directory changed while it ran.
+
 ```bash
-# Train the oil spill detector (UNet++)
-python ml/training/train_detector.py \
-  --data-dir ./data/dartis \
-  --epochs 100 \
-  --batch-size 4 \
-  --image-size 512 \
-  --mixed-precision
+# Train the oil spill detector (UNet++) on the real archive, read in place.
+# --max-scenes/--max-steps bound a laptop-sized run.
+python scripts/train.py --data-source real \
+  --epochs 3 --max-scenes 24 --max-steps-per-epoch 1
+
+# Train on the matched synthetic set (no external disk required)
+python scripts/train.py --data-source synthetic --epochs 10
+
+# Resume an interrupted run
+python scripts/train.py --data-source real --resume checkpoints/<run_id>/detector_last.pth
 
 # Train the anomaly detector (LSTM autoencoder)
 python ml/training/train_anomaly.py \
@@ -221,6 +228,11 @@ python ml/training/train_anomaly.py \
 # Download model weights
 bash scripts/download_model_weights.sh
 ```
+
+Every run writes `runs/<run_id>/run_report.json` (config, provenance, source
+fingerprint, normalization statistics, augmentation chain, per-epoch metrics)
+and `runs/<run_id>/metrics.jsonl`. Checkpoints are written atomically, so an
+interrupted run never leaves a half-written file for `--resume` to load.
 
 ## Demo Walkthrough: MV Wakashio
 
