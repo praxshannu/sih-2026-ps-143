@@ -403,6 +403,12 @@ def atomic_torch_save(payload: Mapping[str, Any], path: Path) -> Path:
             reason="checkpoint_write_failed",
             context={"path": str(path)},
         ) from exc
+    except BaseException:
+        # torch.save can fail for reasons that are not I/O — an unserialisable
+        # payload, most obviously. The destination is still untouched, which is
+        # the guarantee that matters, but the temp file is ours to clean up.
+        tmp.unlink(missing_ok=True)
+        raise
     return path
 
 
