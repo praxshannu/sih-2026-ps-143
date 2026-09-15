@@ -75,9 +75,9 @@ $PY -m mypy sentinel_core/
 docker compose -f docker-compose.txt config >/dev/null && echo "base OK"
 docker compose -f docker-compose.lite.yml config >/dev/null && echo "lite OK"
 
-# 5. Fresh-clone reproducibility — expect "110 passed, 5 skipped"
+# 5. Fresh-clone reproducibility — expect "272 passed, 5 skipped"
 rm -rf /tmp/sentinel_clone && git clone -q . /tmp/sentinel_clone
-cd /tmp/sentinel_clone && $PY -m pytest services/ ml/ -q
+cd /tmp/sentinel_clone && $PY -m pytest services/ ml/ sentinel_core/ -q
 ```
 
 The 5 skips are the real-scene tests, which need `data/sar/` (gitignored). They

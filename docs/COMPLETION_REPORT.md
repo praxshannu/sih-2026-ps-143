@@ -18,11 +18,11 @@ Every command below was run on this machine. Output is quoted, not paraphrased.
 
 | # | Gate | Command | Result |
 |---|---|---|---|
-| 1 | Test suite | `pytest services/ ml/ -q` | **115 passed, 0 failed** (9.8 s) |
-| 2 | Test suite, fresh clone | `git clone . /tmp/x && pytest services/ ml/ -q` | **110 passed, 5 skipped** |
-| 3 | Lint | `ruff check services/ ml/ scripts/ conftest.py` | **All checks passed!** |
-| 4 | Format | `ruff format --check …` | **120 files already formatted** |
-| 5 | Types | `mypy services/<each of 6>` | **0 errors**, 117 source files |
+| 1 | Test suite | `pytest services/ ml/ sentinel_core/ -q` | **277 passed, 0 failed** (19.4 s) |
+| 2 | Test suite, fresh clone | `git clone . /tmp/x && pytest services/ ml/ sentinel_core/ -q` | **272 passed, 5 skipped** |
+| 3 | Lint | `ruff check services/ ml/ scripts/ sentinel_core/ conftest.py` | **All checks passed!** |
+| 4 | Format | `ruff format --check …` | **141 files already formatted** |
+| 5 | Types | `mypy services/<each of 6>`, `mypy ml/`, `mypy sentinel_core/` | **0 errors** |
 | 6 | Compose (full) | `docker compose -f docker-compose.txt config` | **valid** |
 | 7 | Compose (lite) | `docker compose -f docker-compose.lite.yml config` | **valid**, exactly 8 services |
 | 8 | Real Sentinel-1 inference | `DetectPipeline.run(wakashio_20200810_peak.tif)` | **`state: ok`, 11 detections** |
