@@ -535,6 +535,12 @@ class RunReport:
     epochs_completed: int = 0
     best_epoch: int = -1
     best_val_iou: float = 0.0
+    #: Metrics on the held-out test split, evaluated once at the best
+    #: checkpoint. Left empty when the run has no test split — which is the
+    #: default on the real path. An absent key is the honest signal here; a
+    #: zeroed metric would read as a measurement of something.
+    test_metrics: dict[str, Any] = field(default_factory=dict)
+    test_epoch: int = -1
     environment: dict[str, Any] = field(default_factory=dict)
     settings: dict[str, Any] = field(default_factory=dict)
     data_source: dict[str, Any] = field(default_factory=dict)
@@ -1062,6 +1068,40 @@ def train(
         "metrics": str(metrics_path),
     }
 
+    # The test split is the one nothing in this run consulted: the best epoch is
+    # chosen by val IoU, so scoring test at *that* checkpoint yields a number no
+    # decision here looked at. Reported alongside the val score, never instead of
+    # it — with a handful of acquisitions the two differ by more than either is
+    # precise to, and that gap is itself the useful part.
+    if test_loader is not None and len(test_loader.dataset):
+        best_payload = load_checkpoint(checkpoint_dir / CHECKPOINT_NAME, device)
+        model.load_state_dict(best_payload["model_state_dict"])
+        test_result = _run_epoch(
+            model,
+            test_loader,
+            criterion,
+            device,
+            optimizer=None,
+            scaler=None,
+            grad_clip=training.grad_clip,
+            max_steps=None,
+            epoch=report.best_epoch,
+            log_every=0,
+        )
+        report.test_metrics = test_result.to_dict()
+        report.test_epoch = report.best_epoch
+        logger.info(
+            "held-out test at the selected checkpoint (epoch {}): iou={:.4f} "
+            "f1={:.4f} precision={:.4f} recall={:.4f} on {} pair(s) / {} scene(s)",
+            report.best_epoch + 1,
+            report.test_metrics["iou"],
+            report.test_metrics["f1"],
+            report.test_metrics["precision"],
+            report.test_metrics["recall"],
+            len(test_loader.dataset),
+            len(set(test_loader.dataset.scene_ids)),
+        )
+
     # The in-place contract, checked rather than asserted.
     unchanged = True
     for fingerprint in fingerprints:
@@ -1104,14 +1144,39 @@ def _claim_text(spec: DataSourceSpec, report: RunReport) -> str:
             f"Split strategy: {spec.split_strategy}. "
         )
         if spec.split_strategy == "footprint_connected":
-            return base + (
+            shared = (
                 "Tiles were grouped by the ground they share, so no acquisition "
                 "appears on both sides of the boundary and the split is not "
-                "inflated by near-duplicate tiles. It is still not a "
-                "generalisation estimate: there is no held-out test set, and the "
-                "tiles within one acquisition share its calibration, incidence "
-                "angle and wind regime, so this measures transfer to unseen "
-                "ground rather than to unseen conditions."
+                "inflated by near-duplicate tiles. "
+            )
+            if report.test_metrics:
+                # The wording has to change with the run, not with the strategy:
+                # claiming "no held-out test set" on a run that measured one is
+                # the same class of error as quoting a leaked number.
+                n_test_scenes = report.splits.get("test", {}).get("n_scenes")
+                return (
+                    base
+                    + shared
+                    + (
+                        "best_val_iou is the epoch-selection score and is optimistic "
+                        "by construction. The test IoU was measured at the checkpoint "
+                        "that score selected, and no decision in this run consulted "
+                        f"it. It rests on {n_test_scenes} acquisition(s), so treat it "
+                        "as a wide estimate rather than a precise result. Tiles within "
+                        "one acquisition still share its calibration, incidence angle "
+                        "and wind regime, so this measures transfer to unseen ground "
+                        "rather than to unseen conditions."
+                    )
+                )
+            return (
+                base
+                + shared
+                + (
+                    "It is still not a generalisation estimate: there is no held-out "
+                    "test set, and the tiles within one acquisition share its "
+                    "calibration, incidence angle and wind regime, so this measures "
+                    "transfer to unseen ground rather than to unseen conditions."
+                )
             )
         return base + (
             "The archive carries no scene identifier, so if the split is per file "

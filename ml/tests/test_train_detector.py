@@ -517,6 +517,29 @@ def test_claim_text_stops_hedging_once_the_split_is_scene_disjoint(tmp_path: Pat
     assert "no held-out test set" in claim
 
 
+def test_claim_text_reports_a_test_set_once_one_was_actually_measured(tmp_path: Path) -> None:
+    """A caveat that outlives its cause is the same error as a missing one.
+
+    The footprint branch used to end with "there is no held-out test set" on
+    every run. Once ``test_fraction`` is set and the trainer scores that split,
+    that sentence is false — and a false caveat is how the original leak survived
+    review: the warning was present, accurate, and therefore ignored.
+    """
+    report = blank_report()
+    report.test_metrics = {"iou": 0.41, "f1": 0.5, "precision": 0.6, "recall": 0.4}
+    report.splits = {"test": {"n_scenes": 6}}
+
+    claim = _claim_text(
+        _spec_claiming(tmp_path, "footprint_connected", DataProvenance.REAL), report
+    )
+
+    assert "no held-out test set" not in claim
+    assert "6 acquisition(s)" in claim
+    # The val score is still named as the optimistic one, so the two cannot be
+    # mistaken for each other.
+    assert "optimistic" in claim
+
+
 def test_claim_text_refuses_a_detection_claim_for_synthetic_data(tmp_path: Path) -> None:
     claim = _claim_text(
         _spec_claiming(tmp_path, "per_file_hash", DataProvenance.SYNTHETIC), blank_report()
