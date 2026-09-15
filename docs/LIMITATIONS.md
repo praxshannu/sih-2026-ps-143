@@ -12,7 +12,7 @@ Entries are grouped by whether they are **scientific** (the answer may be wrong)
 
 ## A. Scientific limitations
 
-### A1. No trained segmentation model — the detector is deterministic
+### A1. The deployed detector is not a trained model
 
 Detection is a hand-tuned operator (Lee-sigma → Solberg two-gate threshold →
 morphology → connected components), not a learned model. It has no weights, so
@@ -23,7 +23,13 @@ validated against a labelled benchmark**. It cannot generalise the way a trained
 model would, and its thresholds were calibrated on the Wakashio scenes and the
 scene-statistics envelope in `pipeline.py`.
 
-See `MODEL_CARD.md` §1.
+A Tier-B learned model now exists in the sense that one has been *trained* —
+10 epochs on the real archive, `best_val_iou 0.8050` (MODEL_CARD §2.4). It is
+still not deployed and must not be treated as validated: it has no held-out
+evaluation, no benchmark, and its only metric comes from a per-file split with
+no scene separation (B11). "Trained" is not "usable".
+
+See `MODEL_CARD.md` §1 and §2.4.
 
 ### A2. The confidence interval is not P(oil)
 
@@ -235,7 +241,8 @@ The trainer detects the failure and names the workaround
 `default_scene_id` falls back to the nearest non-generic parent directory, which
 for a flat archive of tiles is the archive directory itself. Every one of the
 1200 scenes in `/Volumes/Ventoy/Oil` therefore reports as scene `"Oil"`, and the
-run report says `"n_scenes": 1` for a 19-pair split.
+run report says `"n_scenes": 1` for both the 96-pair train split and the 24-pair
+val split.
 
 The consequence is narrow but real: `scene_leakage` finds nothing to leak,
 because as far as it can tell there is only one scene. The split itself is still
@@ -244,11 +251,55 @@ warning that tiles were split per file rather than per acquisition and that
 cross-split metrics are therefore optimistic — so the risk is disclosed, just
 not in the field where a reader would look for it.
 
+This is why the 10-epoch run's `best_val_iou 0.8050` (MODEL_CARD §2.4) is
+reported as an upper bound. With 2048² tiles from the same acquisitions on both
+sides of the boundary, that number partly measures memorisation.
+
 This is not fixed here on purpose. Changing `default_scene_id` changes which
 files land in train and val, which would invalidate the end-to-end run that was
 just verified. The archive genuinely carries no scene identifier — every GeoTIFF
 has only generic TIFF tags — so the honest fix is an explicit
 `--scene-regex` (or a scene-grouping index), not a better guess from the path.
+
+---
+
+### B12. The archive's `VV`/`VH` band order is assumed, not measured
+
+The pipeline labels the two archive bands `("VV", "VH")` in that order
+(`SAR_BAND_NAMES`). Nothing verifies it. The archive carries no band metadata —
+every GeoTIFF has only generic TIFF tags — so the order is inherited from the
+brief rather than read from the data.
+
+The measured levels point the other way. Fitting per-band statistics from 32
+training scenes gives band 0 `mean −32.34 dB` and band 1 `mean −20.16 dB`: band 1
+is **12.2 dB brighter**. The reference product in `data/sar/`, whose bands *are*
+declared (`sigma0_VV_linear`, `sigma0_VH_linear`), has the co-pol 15–19 dB
+brighter than the cross-pol across three scenes:
+
+| scene | VV median | VH median | VV − VH |
+|---|---|---|---|
+| `browser_test_wakashio_20260913T191302Z.tif` | −15.23 dB | −33.82 dB | +18.58 dB |
+| `mumbai_20260913_recent.tif` | −21.41 dB | −36.58 dB | +15.17 dB |
+| `wakashio_20200729_early.tif` | −16.76 dB | −31.84 dB | +15.08 dB |
+
+So the archive is most likely stored `(VH, VV)` and the two names are swapped.
+
+What this does and does not affect:
+
+- **Training: nothing.** Both channels are fed to the network either way, and
+  the synthetic generator profiles and reproduces by band index, so the 26/28
+  match in A10 is unaffected.
+- **Physical interpretation: everything.** Any statement in this repository
+  attached to the name "VV" — including the equivalent-looks figures in
+  `docs/MODEL_CARD.md` and the per-band normalization above — is attached to a
+  band whose polarisation is unverified. The numbers are sound; the labels on
+  them are not.
+
+Not renamed here, deliberately. Renaming would change the band labels written
+into every index, checkpoint and match report, invalidating verified artifacts,
+in exchange for a claim that is well-supported but not proven. The fix is to
+read the order from data that declares it, or to obtain the acquisition metadata
+for this archive — not to relabel on inference.
 
 ---
 

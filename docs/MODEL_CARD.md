@@ -139,48 +139,105 @@ ever reaching an analyst.
 implemented and unit-tested against fixtures; it has never seen the real
 archives (40.7 GB + 45.9 GB + 9.9 GB monolithic `.7z` — the disk cannot take it).
 
-### 2.4 The training pipeline now exists, and has run end-to-end on both sources
+### 2.4 The training pipeline exists, and has now trained on the real archive
 
 This does **not** change the status above: no trained model is deployed. What
-changed is that the pipeline which would produce one is now real, runs to
-completion, and has been exercised against both data sources.
+changed is that the pipeline which would produce one is real, runs to
+completion, and has been run for a full 10 epochs over the real archive at the
+configured resolution.
+
+#### The real run
 
 ```bash
-python scripts/train.py --data-source real      --epochs 2 --max-scenes 24 \
-    --max-steps-per-epoch 2 --image-size 256
-python scripts/train.py --data-source synthetic --epochs 2 --max-scenes 24 \
-    --max-steps-per-epoch 2 --image-size 256
+python scripts/train.py --data-source real --epochs 10 --image-size 512 \
+    --batch-size 4 --max-scenes 120 --run-name real-10ep-512
 ```
 
-Both exit `0` and write `runs/<run_id>/run_report.json`:
+`runs/20260915T154010Z-real-10ep-512-828cee/` — 10 epochs in 1703 s (28.4 min)
+on MPS, exit `0`, `source_unchanged: True`.
 
-| | real | synthetic |
-|---|---|---|
-| Source | `/Volumes/Ventoy/Oil`, read **in place** | `data/synthetic` |
-| Pairs / splits | 1200 total, 24 used → train 19, val 5, test 0 | 120 total, 23 used → train 19, val 2, test 2 |
-| `provenance` | `real` | `synthetic_mock` |
-| `source_unchanged` | `True` | `True` |
-| Best val IoU | 0.0975 | 0.0222 |
+| epoch | train IoU | val IoU | val precision | val recall | val F1 |
+|---|---|---|---|---|---|
+| 1 | 0.1861 | 0.0000 | 0.0000 | 0.0000 | 0.0000 |
+| 2 | 0.4030 | 0.0000 | 1.0000 | 0.0000 | 0.0000 |
+| 3 | 0.3185 | 0.3969 | 0.9913 | 0.3982 | 0.5682 |
+| 4 | 0.4940 | 0.7840 | 0.9252 | 0.8371 | 0.8789 |
+| 5 | 0.5815 | 0.7807 | 0.9340 | 0.8262 | 0.8768 |
+| 6 | 0.5887 | 0.7098 | 0.9202 | 0.7564 | 0.8303 |
+| 7 | 0.4606 | 0.7815 | 0.9625 | 0.8060 | 0.8773 |
+| 8 | 0.5072 | 0.7611 | 0.8636 | 0.8650 | 0.8643 |
+| 9 | 0.5740 | 0.7594 | 0.8126 | 0.9207 | 0.8633 |
+| 10 | 0.5922 | **0.8050** | 0.9153 | 0.8698 | 0.8920 |
 
-**The val IoU column is not a result and must not be quoted as one.** Both runs
-were bounded with `--max-steps-per-epoch 2` — two optimiser steps per epoch —
-so they demonstrate that the pipeline runs, not that the network learned. A
-model that has taken two steps has taken two steps.
+`best_val_iou 0.8050` at epoch 10 (0-based index 9). Train IoU sits *below* val
+IoU throughout because train is measured under augmentation — random flips,
+90° rotations and crops — while val uses the eval transform. Train is the
+harder measurement, so the two are not comparable to each other.
 
-What the runs *do* establish:
+#### 0.8050 is an upper bound, not a generalisation estimate
 
-- The archive is read where it lies. Verified two ways: the trainer's
-  `SourceFingerprint` (`mtime_ns`, entry count, `st_dev`) reports
-  `source_unchanged: True`, and an independent SHA-256 over every filename,
-  size and mtime in `/Volumes/Ventoy/Oil` is **identical before and after** —
-  2400 entries, same digest, same directory mtime, same free space.
-- Both data sources work from the same code path, switchable at runtime with
-  `--data-source`. Nothing is copied to the local machine for either.
-- Checkpoints, `run_report.json` and `metrics.jsonl` are written atomically and
-  carry the provenance stamp.
+**This number must not be quoted as a detection performance.** The run's own
+claim string says why:
 
-Two defects were found by these runs and fixed, both of which had made training
-impossible rather than merely wrong:
+> Trained on real SAR scenes read in place from /Volumes/Ventoy/Oil. Split
+> strategy: `per_file_hash`. The archive carries no scene identifier, so if the
+> split is per file rather than per acquisition, cross-split metrics are
+> optimistic — treat them as an upper bound.
+
+The archive carries no scene identifier (every GeoTIFF has only generic TIFF
+tags), so `n_scenes` is 1 for both splits and `scene_leakage` cannot see
+anything: tiles from one acquisition can straddle the train/val boundary. A
+per-file split of 2048² tiles is not a held-out set. See LIMITATIONS B11.
+
+The run is also bounded to 120 of 1200 pairs (96 train / 24 val) by
+`--max-scenes`, and there is no test split at all — `test_fraction` defaults to
+`0.0`. So this is one training run, on a quarter of one archive, with no
+held-out evaluation. It demonstrates that the network learns; it does not
+measure how well it would detect a spill it has not seen.
+
+#### The two epochs of zero are not a defect
+
+Epochs 1–2 report val IoU `0.0000`, and epoch 2 reports `precision 1.0000`
+alongside it. Both are arithmetically correct and both are the same phenomenon:
+at the 0.5 threshold the model predicted almost nothing on held-out tiles.
+
+- Epoch 1 predicted **6 pixels out of 6,291,456**, and all 6 were correct —
+  hence precision `1.0000`, recall `6e-6`.
+- Epoch 2 predicted none at all, against 954,535 positive pixels.
+
+The train IoU over those same epochs was 0.19–0.40 because train metrics
+accumulate on batches the optimiser has just stepped on, while val is seen
+without a gradient. The model was sitting near the class prior (6% of train
+pixels and 15% of val pixels are oil) and had not yet escaped it. It escaped at
+epoch 3 and never returned. The small numbers are the metric working: the model
+was predicting nothing, and the report says so.
+
+#### What the run does establish
+
+- **The archive is read where it lies.** Two independent checks. The trainer's
+  `SourceFingerprint` records `mtime_ns`, entry count and `st_dev` for both
+  `/Volumes/Ventoy/Oil` (2400 entries, `st_dev 16777238`) and the mask
+  directory, and re-checks them at the end → `source_unchanged: True`. And a
+  SHA-256 over every filename, size and `mtime_ns` in the archive, taken before
+  and after the 10 epochs, is **identical**:
+
+  ```
+  before: {"dir_mtime_ns": 1682009727000000000, "entries": 2400,
+           "fingerprint": "69d35c71…d7ac4", "free_bytes": 14094827520}
+  after:  {"dir_mtime_ns": 1682009727000000000, "entries": 2400,
+           "fingerprint": "69d35c71…d7ac4", "free_bytes": 14094827520}
+  ```
+
+  Nothing was copied, staged or written. Free space is unchanged to the byte.
+- **Both data sources work from the same code path**, switchable at runtime
+  with `--data-source`, neither copying anything to the local machine.
+- **Checkpoints, `run_report.json` and `metrics.jsonl` are written atomically**
+  and carry the provenance stamp, the normalization statistics, the exact
+  source directories and the fingerprints.
+
+#### Defects these runs found, and fixed
+
+Four, all of which had made training impossible or the report wrong:
 
 1. **The geometry transforms were written for a 2-D mask** while the loader
    supplies `(1, H, W)`. `mask[rows, cols]` on a 3-D array means
@@ -192,6 +249,27 @@ impossible rather than merely wrong:
    real path has no test split — and building a dataset from an empty manifest
    sent the loader looking for `images/` + `masks/` that a prepared root does
    not have.
+3. **The extreme-value model lost the scene tail** — a coverage recorded with an
+   all-`NODATA_DB` curve, and a knot set that stopped below the statistic the
+   match check actually measures.
+4. **`--resume` reset the report's best-so-far.** `best_val_iou`/`best_epoch`
+   were seeded into local variables but never into the report, so a resumed run
+   that did not beat its checkpoint reported `best val IoU 0.0000 at epoch -1`
+   while holding a checkpoint that scored better than that.
+
+#### Per-band normalization, and an unverified band order
+
+The run fitted per-band statistics from 32 training scenes:
+`VV mean −32.34 std 4.63`, `VH mean −20.16 std 4.04` (dB).
+
+Those labels are an assumption, not a measurement — see LIMITATIONS B12. The
+archive has no band metadata, and band 1 is 12.2 dB *brighter* than band 0,
+whereas the reference product in `data/sar/`, whose bands are declared
+`sigma0_VV_linear` / `sigma0_VH_linear`, has the co-pol 15–19 dB brighter than
+the cross-pol. On that evidence the archive's bands are most likely stored
+`(VH, VV)`, so the names on these two numbers are probably swapped. Training is
+unaffected — both channels are used either way — but any physical reading of
+"VV" in this document is unverified.
 
 ---
 
@@ -233,10 +311,12 @@ suspect list.
 | A deterministic detector runs on real Sentinel-1 data | **Verified**, 4 scenes, reproduced twice |
 | It produces Wilson 95 % CIs, never point estimates | **Verified** by test |
 | Its confidence is a calibrated P(oil) | **False.** Pixel-evidence interval only. |
-| A trained segmentation model exists | **False.** None deployed, none trained. |
-| The training pipeline runs end-to-end on both data sources | **Verified**, bounded runs, `source_unchanged: True` |
+| A trained segmentation model exists | **Half true.** One has been trained (§2.4). None is deployed, evaluated on held-out data, or fit for use. |
+| The training pipeline runs end-to-end on both data sources | **Verified**, 10 real epochs plus a synthetic run, `source_unchanged: True` |
 | The real archive is read in place and never written | **Verified** — trainer fingerprint plus an independent SHA-256 either side of a run |
-| The verified runs produced a useful model | **False.** Two optimiser steps per epoch; the IoU is not a result. |
+| The 10-epoch run produced a useful model | **False.** Val IoU 0.8050 is on a per-file split with no scene separation and no test set. Upper bound, not a detection performance. |
+| `--resume` reports the checkpoint's own best, not its last epoch | **Verified** by test and in situ |
+| The `VV`/`VH` band order of the archive is known | **False.** No band metadata; the measured levels suggest `(VH, VV)` is stored. LIMITATIONS B12. |
 | The synthetic set reproduces the real distribution | **26 of 28 checks.** Both misses are pooled `p99.9` tails — see LIMITATIONS A10. |
 | Performance on a labelled benchmark is known | **False.** No benchmark has been run. |
 | Anomaly detection is operational | **False.** Not trained; trainer refuses empty input. |

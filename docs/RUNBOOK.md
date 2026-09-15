@@ -59,7 +59,7 @@ Run these before believing anything:
 cd /Users/praxsmac/projects/claude1/sentinel
 PY=/Users/praxsmac/.workbuddy-ai/binaries/python/envs/default/bin/python
 
-# 1. Tests — expect "277 passed"
+# 1. Tests — expect "281 passed"
 $PY -m pytest services/ ml/ sentinel_core/ -q
 
 # 2. Lint and format — expect "All checks passed!" and "141 files already formatted"
@@ -75,7 +75,7 @@ $PY -m mypy sentinel_core/
 docker compose -f docker-compose.txt config >/dev/null && echo "base OK"
 docker compose -f docker-compose.lite.yml config >/dev/null && echo "lite OK"
 
-# 5. Fresh-clone reproducibility — expect "272 passed, 5 skipped"
+# 5. Fresh-clone reproducibility — expect "276 passed, 5 skipped"
 rm -rf /tmp/sentinel_clone && git clone -q . /tmp/sentinel_clone
 cd /tmp/sentinel_clone && $PY -m pytest services/ ml/ sentinel_core/ -q
 ```
@@ -109,7 +109,7 @@ is lost, so it reads as "the suite is broken".
 SENTINEL_PYTEST_TMP=/tmp/sentinel_pytest $PY -m pytest services/ ml/ sentinel_core/ -q
 ```
 
-277 passed is the real number. A run that reports failures *and* prints a
+281 passed is the real number. A run that reports failures *and* prints a
 `[safe-delete][SAFE_DELETE_BULK_CONFIRM_REQUIRED]` line has been interfered with;
 re-run it before believing anything.
 
@@ -314,7 +314,11 @@ cd /Users/praxsmac/projects/claude1/sentinel
 set -a; . ./.env; set +a
 export GDAL_DISABLE_READDIR_ON_OPEN=EMPTY_DIR   # 268 ms -> 1.8 ms per open
 
-# Real archive, read in place. Bounded so it finishes.
+# Real archive, read in place, full resolution. ~28 min for 10 epochs on MPS.
+$PY scripts/train.py --data-source real --epochs 10 --image-size 512 \
+    --batch-size 4 --max-scenes 120 --run-name real-10ep-512
+
+# A smoke run: cheap, but still exercises the whole pipeline.
 $PY scripts/train.py --data-source real --epochs 3 --max-scenes 24 \
     --max-steps-per-epoch 1 --image-size 512
 
@@ -336,14 +340,32 @@ resumable with `--resume`).
 
 ### 5.3 What a good run looks like
 
+The full 10-epoch real run, verbatim:
+
 ```
-data source: 1200 pair(s), 2 band(s), images=/Volumes/Ventoy/Oil in_place=True
+data source: 1200 pair(s), 2 band(s), images=/Volumes/Ventoy/Oil in_place=True read_only=False
 device: mps (auto: Apple MPS available, no CUDA)
-splits: train=19 val=5 test=0
+max_scenes=120 capped this run to 120 of 1200 pair(s) (train=96, val=24)
+splits: train=96 val=24 test=0
+computing per-band normalization from 32 training scene(s)
+normalization mean=[-32.34, -20.155] std=[4.629, 4.042]
 model: UNet++/resnet34 in_channels=2 params=24,719,654 trainable=24,719,654
+MPS: running fp32; CUDA-only AMP is not applied
+epoch 4/10 train loss=2.3881 iou=0.4940 | val loss=2.5211 iou=0.7840 f1=0.8789 precision=0.9252 recall=0.8371 (210.2s)
+done: 10 epoch(s) in 1703.4s, best val IoU 0.8050 at epoch 10
 source unchanged: True
-■ real | best val IoU 0.0975 at epoch 1 | Trained on real SAR scenes read in place…
 ```
+
+Two things in that output look wrong and are not:
+
+- **The first two epochs report `val iou=0.0000`**, one of them with
+  `precision=1.0000`. Both are arithmetic, not a fault: at the 0.5 threshold the
+  model predicted 6 pixels out of 6.29 M in epoch 2 (all 6 correct, hence
+  precision 1.0) and none at all in epoch 1. It was sitting near the class prior
+  and had not escaped it yet. It escaped at epoch 3. See MODEL_CARD §2.4.
+- **Train IoU is lower than val IoU.** Train is measured under augmentation,
+  val under the eval transform, so train is the harder measurement. They are not
+  comparable to each other.
 
 Then read the report, not the log line:
 
@@ -352,7 +374,9 @@ $PY -m json.tool runs/<run_id>/run_report.json | head -40
 ```
 
 `claim` states in words what the numbers are allowed to mean, and
-`scientifically_valid` is false whenever they are not a scientific result.
+`scientifically_valid` is false whenever they are not a scientific result. On
+the real archive `claim` also carries the split caveat — the per-file split
+makes cross-split metrics optimistic, so `best_val_iou` is an upper bound.
 
 ### 5.4 The training image
 

@@ -18,8 +18,8 @@ Every command below was run on this machine. Output is quoted, not paraphrased.
 
 | # | Gate | Command | Result |
 |---|---|---|---|
-| 1 | Test suite | `pytest services/ ml/ sentinel_core/ -q` | **277 passed, 0 failed** (19.4 s) |
-| 2 | Test suite, fresh clone | `git clone . /tmp/x && pytest services/ ml/ sentinel_core/ -q` | **272 passed, 5 skipped** |
+| 1 | Test suite | `pytest services/ ml/ sentinel_core/ -q` | **281 passed, 0 failed** (21.8 s) |
+| 2 | Test suite, fresh clone | `git clone . /tmp/x && pytest services/ ml/ sentinel_core/ -q` | **276 passed, 5 skipped** |
 | 3 | Lint | `ruff check services/ ml/ scripts/ sentinel_core/ conftest.py` | **All checks passed!** |
 | 4 | Format | `ruff format --check …` | **141 files already formatted** |
 | 5 | Types | `mypy services/<each of 6>`, `mypy ml/`, `mypy sentinel_core/` | **0 errors** |
@@ -32,6 +32,7 @@ Every command below was run on this machine. Output is quoted, not paraphrased.
 | 12 | Case survives restart | `pytest services/api/tests/test_persistence.py` | **8 passed**, incl. round-trip via a fresh store instance |
 | 13 | No hardcoded UI coordinates | `grep` over `services/ui/src` | **no matches** |
 | 14 | Git clean | `git status --short` | **clean** |
+| 15 | Training runs on the real archive, in place | `scripts/train.py --data-source real --epochs 10 --image-size 512` | **exit 0, 10 epochs, `source_unchanged: True`**, archive byte-identical either side |
 
 The 5 skips in gate 2 are the real-scene tests, which require `data/sar/`
 (gitignored). They skip **with a stated reason**, never silently — a skip means
