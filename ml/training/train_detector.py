@@ -1098,11 +1098,24 @@ def train(
 def _claim_text(spec: DataSourceSpec, report: RunReport) -> str:
     """State plainly what these numbers do and do not support."""
     if spec.provenance is DataProvenance.REAL and spec.scientifically_valid:
-        return (
+        base = (
             f"Trained on real SAR scenes read in place from {spec.images_dir}. "
-            f"Split strategy: {spec.split_strategy}. The archive carries no scene "
-            "identifier, so if the split is per file rather than per acquisition, "
-            "cross-split metrics are optimistic — treat them as an upper bound."
+            f"Split strategy: {spec.split_strategy}. "
+        )
+        if spec.split_strategy == "footprint_connected":
+            return base + (
+                "Tiles were grouped by the ground they share, so no acquisition "
+                "appears on both sides of the boundary and the split is not "
+                "inflated by near-duplicate tiles. It is still not a "
+                "generalisation estimate: there is no held-out test set, and the "
+                "tiles within one acquisition share its calibration, incidence "
+                "angle and wind regime, so this measures transfer to unseen "
+                "ground rather than to unseen conditions."
+            )
+        return base + (
+            "The archive carries no scene identifier, so if the split is per file "
+            "rather than per acquisition, cross-split metrics are optimistic — "
+            "treat them as an upper bound."
         )
     return (
         f"Trained on {spec.provenance.value} data. These metrics describe the synthetic "

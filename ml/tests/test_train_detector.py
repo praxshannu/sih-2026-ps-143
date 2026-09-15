@@ -19,6 +19,7 @@ actually broken:
 from __future__ import annotations
 
 import threading
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -31,6 +32,7 @@ from ml.training.train_detector import (
     SourceFingerprint,
     SplitMetrics,
     _cap_scenes,
+    _claim_text,
     align_targets,
     assert_outputs_are_outside_the_source,
     atomic_torch_save,
@@ -472,3 +474,47 @@ def test_resume_of_a_payload_with_no_metrics_leaves_the_report_alone() -> None:
     assert best == -1.0
     assert report.best_val_iou == 0.0
     assert report.best_epoch == -1
+
+
+# ---------------------------------------------------------------------------
+# _claim_text -- the report must not overstate what was measured
+# ---------------------------------------------------------------------------
+
+
+def _spec_claiming(tmp_path: Path, strategy: str, provenance: DataProvenance) -> DataSourceSpec:
+    return replace(make_spec(tmp_path), split_strategy=strategy, provenance=provenance)
+
+
+def test_claim_text_calls_a_per_file_split_an_upper_bound(tmp_path: Path) -> None:
+    claim = _claim_text(
+        _spec_claiming(tmp_path, "per_file_hash", DataProvenance.REAL), blank_report()
+    )
+    assert "upper bound" in claim
+
+
+def test_claim_text_stops_hedging_once_the_split_is_scene_disjoint(tmp_path: Path) -> None:
+    """The hedge has to track the strategy, or it stops being read.
+
+    A caveat printed on every run is boilerplate, and boilerplate is what let a
+    per-file split sit inside a "verified" end-to-end run: the warning was there,
+    in the log, and it was true, and nobody acted on it because it was always
+    there. Once the split really is footprint-connected the caveat is false, so
+    printing it anyway would be the same failure in the other direction.
+    """
+    claim = _claim_text(
+        _spec_claiming(tmp_path, "footprint_connected", DataProvenance.REAL), blank_report()
+    )
+    assert "upper bound" not in claim
+    assert "not a generalisation estimate" in claim
+    # The residual limitation is stated rather than dropped: the split is sound,
+    # the evaluation is still not held out.
+    assert "no held-out test set" in claim
+
+
+def test_claim_text_refuses_a_detection_claim_for_synthetic_data(tmp_path: Path) -> None:
+    claim = _claim_text(
+        _spec_claiming(tmp_path, "per_file_hash", DataProvenance.SYNTHETIC), blank_report()
+    )
+    assert "synthetic" in claim
+    assert "not the ocean" in claim
+    assert "upper bound" not in claim
