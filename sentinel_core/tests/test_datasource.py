@@ -25,7 +25,7 @@ import pytest
 import rasterio
 from rasterio.transform import from_origin
 
-from sentinel_core.config import DataSourceSettings, PathSettings, Settings
+from sentinel_core.config import DataSourceSettings, PathSettings, Settings, TrainingSettings
 from sentinel_core.datasource import (
     MANIFEST_NAME,
     SOURCE_META_NAME,
@@ -116,18 +116,25 @@ def _make_real_archive(
     return images, masks
 
 
-def _settings(root: Path, **datasource_overrides: Any) -> Settings:
+def _settings(
+    root: Path,
+    *,
+    training: TrainingSettings | None = None,
+    **datasource_overrides: Any,
+) -> Settings:
     defaults: dict[str, Any] = {
         "real_images_dir": root / "images",
         "real_masks_dir": root / "masks",
         "synthetic_root": root / "synthetic",
     }
     defaults.update(datasource_overrides)
+    extra: dict[str, Any] = {} if training is None else {"training": training}
     return Settings(
         environment="ci",
         data_source="real",
         paths=PathSettings(data_dir=root / "data", checkpoint_dir=root / "ckpt"),
         datasources=DataSourceSettings(**defaults),
+        **extra,
     )
 
 
@@ -382,6 +389,85 @@ def test_the_cached_index_is_reused_when_the_mode_matches(tmp_path: Path) -> Non
     again = resolve_source("real", settings=settings)
     assert "cached" in again.note
     assert again.split_strategy == first.split_strategy
+    assert again.n_pairs == first.n_pairs
+
+
+def test_the_index_records_the_split_parameters_that_produced_it(tmp_path: Path) -> None:
+    """The split is baked into the manifest, so it belongs in the cache key."""
+    _make_real_archive(tmp_path)
+    spec = resolve_source(
+        "real",
+        settings=_settings(
+            tmp_path, training=TrainingSettings(val_fraction=0.2, test_fraction=0.1, seed=7)
+        ),
+        rebuild=True,
+    )
+    meta = json.loads((spec.prepared_root / SOURCE_META_NAME).read_text())
+    assert meta["split_params"] == {"val_fraction": 0.2, "test_fraction": 0.1, "seed": 7}
+
+
+def test_raising_test_fraction_invalidates_the_cached_index(tmp_path: Path) -> None:
+    """Otherwise a held-out run silently gets no held-out ground.
+
+    The manifest carries its split. Reusing one built with ``test_fraction=0``
+    for a run that asks for a test set hands back a manifest with no test rows,
+    and the trainer then reports zero test pairs — which reads as "the archive
+    has no held-out data" rather than "the cache answered a different question".
+    """
+    _make_real_archive(tmp_path)
+    two_way = resolve_source("real", settings=_settings(tmp_path), rebuild=True)
+    assert "cached" not in two_way.note
+
+    three_way = resolve_source(
+        "real",
+        settings=_settings(
+            tmp_path, training=TrainingSettings(val_fraction=0.2, test_fraction=0.2, seed=42)
+        ),
+    )
+    assert "cached" not in three_way.note
+
+
+def test_changing_the_seed_invalidates_the_cached_index(tmp_path: Path) -> None:
+    """The seed picks the split, so a new seed is a different dataset."""
+    _make_real_archive(tmp_path)
+    resolve_source(
+        "real", settings=_settings(tmp_path, training=TrainingSettings(seed=1)), rebuild=True
+    )
+    reseeded = resolve_source(
+        "real", settings=_settings(tmp_path, training=TrainingSettings(seed=2))
+    )
+    assert "cached" not in reseeded.note
+
+
+def test_an_index_without_split_params_is_rebuilt_rather_than_trusted(tmp_path: Path) -> None:
+    """An index that cannot say how it was split cannot be checked against it.
+
+    Indexes written before ``split_params`` existed are the case that matters:
+    there is no way to confirm the cached split answers the current question, so
+    the honest answer is to rebuild once rather than assume that it does.
+    """
+    _make_real_archive(tmp_path)
+    settings = _settings(tmp_path, scene_grouping="footprint")
+    first = resolve_source("real", settings=settings, rebuild=True)
+
+    meta_path = first.prepared_root / SOURCE_META_NAME
+    meta = json.loads(meta_path.read_text())
+    meta.pop("split_params")
+    meta_path.write_text(json.dumps(meta))
+
+    again = resolve_source("real", settings=settings)
+    assert "cached" not in again.note
+
+
+def test_the_cache_is_still_reused_when_every_split_parameter_matches(tmp_path: Path) -> None:
+    """The guard must not fire on the happy path — a rebuild costs a header scan."""
+    _make_real_archive(tmp_path)
+    settings = _settings(
+        tmp_path, training=TrainingSettings(val_fraction=0.2, test_fraction=0.1, seed=7)
+    )
+    first = resolve_source("real", settings=settings, rebuild=True)
+    again = resolve_source("real", settings=settings)
+    assert "cached" in again.note
     assert again.n_pairs == first.n_pairs
 
 

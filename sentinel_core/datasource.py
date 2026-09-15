@@ -575,6 +575,17 @@ def _build_real(settings: Settings, *, rebuild: bool, grid_deg: float) -> DataSo
 
     mode = cfg.resolved_scene_grouping()
 
+    # The split is baked into the manifest at build time, so the parameters that
+    # produced it belong in the cache key. Without them a run that raises
+    # ``test_fraction`` would reuse a manifest with no test rows and report an
+    # empty split as though the archive held no held-out ground — the same
+    # failure the ``scene_grouping`` check below exists to stop, one axis over.
+    split_params = {
+        "val_fraction": settings.training.val_fraction,
+        "test_fraction": settings.training.test_fraction,
+        "seed": settings.training.seed,
+    }
+
     manifest_path = prepared_root / MANIFEST_NAME
     cached: dict[str, Any] = {}
     if manifest_path.is_file() and not rebuild:
@@ -593,7 +604,8 @@ def _build_real(settings: Settings, *, rebuild: bool, grid_deg: float) -> DataSo
 
     if cached.get("images_dir") == str(images_dir) and cached.get("n_rows"):
         cached_mode = cached.get("scene_grouping")
-        if cached_mode == mode:
+        cached_split = cached.get("split_params")
+        if cached_mode == mode and cached_split == split_params:
             return DataSourceSpec(
                 kind="real",
                 prepared_root=prepared_root,
@@ -608,17 +620,37 @@ def _build_real(settings: Settings, *, rebuild: bool, grid_deg: float) -> DataSo
                 warnings=tuple(cached.get("warnings", ())),
                 note="cached index; pass rebuild=True to re-enumerate",
             )
-        # The index records which mode produced its scene ids. Reusing an index
-        # built by a different mode would apply the previous grouping's split to
-        # a different question, and nothing downstream could tell: the val set
-        # would just be the one the other grouping happened to choose.
-        logger.warning(
-            "real index at {} was built with scene_grouping={!r} but the "
-            "configuration asks for {!r}; rebuilding (the archive is re-read)",
-            prepared_root,
-            cached_mode,
-            mode,
-        )
+        if cached_mode != mode:
+            # The index records which mode produced its scene ids. Reusing an
+            # index built by a different mode would apply the previous grouping's
+            # split to a different question, and nothing downstream could tell:
+            # the val set would just be the one the other grouping happened to
+            # choose.
+            logger.warning(
+                "real index at {} was built with scene_grouping={!r} but the "
+                "configuration asks for {!r}; rebuilding (the archive is re-read)",
+                prepared_root,
+                cached_mode,
+                mode,
+            )
+        elif cached_split is None:
+            logger.warning(
+                "real index at {} predates split_params and does not record how it "
+                "was split, so the cached split cannot be checked against the "
+                "current val_fraction/test_fraction/seed; rebuilding once (the "
+                "archive is re-read)",
+                prepared_root,
+            )
+        else:
+            logger.warning(
+                "real index at {} was split with {} but the configuration asks for "
+                "{}; rebuilding (the archive is re-read). The split is baked into "
+                "the manifest, so reusing it would report an empty test split as "
+                "though the archive had no held-out ground.",
+                prepared_root,
+                cached_split,
+                split_params,
+            )
 
     pairs = _pair_by_stem(images, masks, source="real")
 
@@ -697,6 +729,7 @@ def _build_real(settings: Settings, *, rebuild: bool, grid_deg: float) -> DataSo
             "band_validation": band_note,
             "split_strategy": split_strategy,
             "scene_grouping": mode,
+            "split_params": split_params,
             "scene_grid_deg": grid_deg if mode == "grid" else None,
             "footprint_tol_deg": DEFAULT_FOOTPRINT_TOL_DEG if mode == "footprint" else None,
             "n_scenes": n_scenes,
