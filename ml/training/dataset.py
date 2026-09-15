@@ -234,10 +234,21 @@ class SAROilSpillDataset(Dataset[tuple[torch.Tensor, torch.Tensor]]):
             self.rows = load_manifest(self.root, split)
         self.provenance, self.scientifically_valid = infer_provenance(self.root, self.rows)
 
+        manifest_scene_ids: list[str] = []
         if self.rows:
-            self.image_paths, self.mask_paths, pairing_strategy = self._pair_from_manifest()
+            (
+                self.image_paths,
+                self.mask_paths,
+                pairing_strategy,
+                manifest_scene_ids,
+            ) = self._pair_from_manifest()
         else:
-            self.image_paths, self.mask_paths, pairing_strategy = self._pair_from_directories()
+            (
+                self.image_paths,
+                self.mask_paths,
+                pairing_strategy,
+                _,
+            ) = self._pair_from_directories()
 
         if not self.image_paths:
             raise DatasetUnavailableError(
@@ -256,8 +267,26 @@ class SAROilSpillDataset(Dataset[tuple[torch.Tensor, torch.Tensor]]):
         if indices is not None:
             self.image_paths = [self.image_paths[i] for i in indices]
             self.mask_paths = [self.mask_paths[i] for i in indices]
+            if manifest_scene_ids:
+                manifest_scene_ids = [manifest_scene_ids[i] for i in indices]
 
-        self.scene_ids = tuple(default_scene_id(p, self.scene_regex) for p in self.image_paths)
+        # The manifest is the authority on scene membership when it carries a
+        # scene id. The index builder may have grouped tiles by footprint, and
+        # re-deriving a scene from the file path would throw that away: for a
+        # flat archive of tiles the path says every tile belongs to the same
+        # scene, which makes the leakage check vacuous and hides a real
+        # train/val overlap. `strict=True` so a misalignment between the
+        # manifest and the paired paths is an error rather than a silently
+        # wrong scene id.
+        if manifest_scene_ids:
+            self.scene_ids = tuple(
+                str(scene) or default_scene_id(path, self.scene_regex)
+                for scene, path in zip(manifest_scene_ids, self.image_paths, strict=True)
+            )
+        else:
+            self.scene_ids = tuple(
+                default_scene_id(path, self.scene_regex) for path in self.image_paths
+            )
         bands = self._infer_bands()
         self.band_names = self._band_names(bands)
         self.pairing = PairingReport(
@@ -276,9 +305,15 @@ class SAROilSpillDataset(Dataset[tuple[torch.Tensor, torch.Tensor]]):
 
     # -- pairing ----------------------------------------------------------
 
-    def _pair_from_manifest(self) -> tuple[list[Path], list[Path], str]:
+    def _pair_from_manifest(self) -> tuple[list[Path], list[Path], str, list[str]]:
+        """Paths and scene ids from the manifest, in manifest order.
+
+        The scene ids come back aligned with the paths, and ``""`` where a row
+        does not carry one — the caller falls back to deriving it from the path.
+        """
         images: list[Path] = []
         masks: list[Path] = []
+        scenes: list[str] = []
         for row in self.rows:
             image = self.root / str(row["image"])
             mask = self.root / str(row["mask"])
@@ -289,9 +324,10 @@ class SAROilSpillDataset(Dataset[tuple[torch.Tensor, torch.Tensor]]):
                 )
             images.append(image)
             masks.append(mask)
-        return images, masks, "manifest"
+            scenes.append(str(row.get("scene_id") or ""))
+        return images, masks, "manifest", scenes
 
-    def _pair_from_directories(self) -> tuple[list[Path], list[Path], str]:
+    def _pair_from_directories(self) -> tuple[list[Path], list[Path], str, list[str]]:
         base = self.root
         if self.split is not None:
             candidate = base / self.split
@@ -312,7 +348,7 @@ class SAROilSpillDataset(Dataset[tuple[torch.Tensor, torch.Tensor]]):
                 f"({', '.join(IMAGE_SUFFIXES)}). Refusing to train on an empty dataset."
             )
         images, masks = self._match_by_stem(images, masks)
-        return images, masks, "directory"
+        return images, masks, "directory", []
 
     @staticmethod
     def _match_by_stem(images: list[Path], masks: list[Path]) -> tuple[list[Path], list[Path]]:
