@@ -273,8 +273,10 @@ def _effective_looks(band: np.ndarray, valid: np.ndarray) -> float:
         return 1.0
 
     def _blocks(array: np.ndarray) -> np.ndarray:
-        return array[:rows, :cols].reshape(rows // block, block, cols // block, block).transpose(
-            0, 2, 1, 3
+        return (
+            array[:rows, :cols]
+            .reshape(rows // block, block, cols // block, block)
+            .transpose(0, 2, 1, 3)
         )
 
     blocks = _blocks(linear)
@@ -329,8 +331,10 @@ def _sea_texture(band: np.ndarray, valid: np.ndarray, mask: np.ndarray, block: i
         return 0.0
 
     def _blocks(array: np.ndarray) -> np.ndarray:
-        return array[:rows, :cols].reshape(rows // block, block, cols // block, block).transpose(
-            0, 2, 1, 3
+        return (
+            array[:rows, :cols]
+            .reshape(rows // block, block, cols // block, block)
+            .transpose(0, 2, 1, 3)
         )
 
     medians = np.median(_blocks(band), axis=(2, 3))
@@ -340,7 +344,6 @@ def _sea_texture(band: np.ndarray, valid: np.ndarray, mask: np.ndarray, block: i
     if int(usable.sum()) < 16:
         return 0.0
     return float(medians[usable].std())
-
 
 
 @dataclass
@@ -389,9 +392,7 @@ class DistributionProfile:
         return cls(**payload)
 
 
-def _extreme_variance(
-    records: Sequence[dict[str, float]], sea_levels: Sequence[float]
-) -> float:
+def _extreme_variance(records: Sequence[dict[str, float]], sea_levels: Sequence[float]) -> float:
     """Mean variance the measured extremes contribute to the pooled spread.
 
     ``sum_i p_i * (level_i - sea)^2`` per scene, averaged over scenes. This is
@@ -541,9 +542,7 @@ def profile_scenes(
         speckle_sigma_per_band[name] = round(sigma, 4)
 
         texture = (
-            float(np.mean(texture_by_band[band_index]))
-            if texture_by_band[band_index]
-            else 0.0
+            float(np.mean(texture_by_band[band_index])) if texture_by_band[band_index] else 0.0
         )
         sea_texture_db_std[name] = round(texture, 4)
 
@@ -622,7 +621,6 @@ def profile_scenes(
                 6,
             )
 
-
     fractions = np.asarray(oil_fractions, dtype=np.float64)
     return DistributionProfile(
         bands=len(band_stats),
@@ -654,9 +652,7 @@ def profile_scenes(
         },
         speckle={
             "equivalent_looks": looks_per_band,
-            "equivalent_looks_median": round(
-                float(np.median(list(looks_per_band.values()))), 4
-            )
+            "equivalent_looks_median": round(float(np.median(list(looks_per_band.values()))), 4)
             if looks_per_band
             else 1.0,
             "speckle_sigma_db": speckle_sigma_per_band,
@@ -668,9 +664,7 @@ def profile_scenes(
             if nodata_fractions
             else 0.0,
             "fraction_max": round(float(np.max(nodata_fractions)), 6) if nodata_fractions else 0.0,
-            "scene_rate": round(
-                float(np.mean([value > 0.0 for value in nodata_fractions])), 6
-            )
+            "scene_rate": round(float(np.mean([value > 0.0 for value in nodata_fractions])), 6)
             if nodata_fractions
             else 0.0,
         },

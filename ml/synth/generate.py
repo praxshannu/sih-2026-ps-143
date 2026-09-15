@@ -101,7 +101,6 @@ def _field_amplitude(profile: DistributionProfile, name: str) -> float:
     return SEA_FIELD_AMPLITUDE_DB
 
 
-
 @dataclass
 class GenerationConfig:
     """How much to generate, and how."""
@@ -164,9 +163,7 @@ def _sample_from_percentiles(rng: np.random.Generator, percentiles: dict[str, fl
     return float(np.interp(draw, levels, values))
 
 
-def _sample_many(
-    rng: np.random.Generator, percentiles: dict[str, float], size: int
-) -> np.ndarray:
+def _sample_many(rng: np.random.Generator, percentiles: dict[str, float], size: int) -> np.ndarray:
     """Vectorised form of :func:`_sample_from_percentiles`, for thousands of draws."""
     if not percentiles or size <= 0:
         return np.zeros(size, dtype=np.float32)
@@ -231,7 +228,6 @@ def _extreme_canvas(
         # swath boundary in reality, and wrapping keeps the coverage exact.
         canvas[(row + offsets[:, 0]) % height, (col + offsets[:, 1]) % width] = True
     return canvas
-
 
 
 def _blob_patch(rng: np.random.Generator, area_px: float, elongation: float) -> np.ndarray:

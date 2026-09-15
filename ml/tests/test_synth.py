@@ -45,9 +45,7 @@ SCENE = 256
 # ---------------------------------------------------------------------------
 
 
-def _write_pair(
-    image_path: Path, mask_path: Path, image: np.ndarray, mask: np.ndarray
-) -> None:
+def _write_pair(image_path: Path, mask_path: Path, image: np.ndarray, mask: np.ndarray) -> None:
     import rasterio
     from rasterio.transform import from_origin
 
@@ -521,9 +519,7 @@ def test_the_generator_uses_the_extended_knot_set(tmp_path: Path) -> None:
     record = _pick_extreme_record(np.random.default_rng(0), profile, "VV")
     prefix_key = "bright_db_"
     curve = {
-        key[len(prefix_key) :]: value
-        for key, value in record.items()
-        if key.startswith(prefix_key)
+        key[len(prefix_key) :]: value for key, value in record.items() if key.startswith(prefix_key)
     }
     assert set(curve) == {"p1", "p10", "p25", "p50", "p75", "p90", "p99"}
     # The dense upper half is the point, not the count.

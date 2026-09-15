@@ -606,8 +606,7 @@ def _equivalent_looks_for_augmentation(
         elif isinstance(looks, (int, float)):
             return float(looks), str(candidate)
     logger.warning(
-        "no measured equivalent-looks profile found; speckle augmentation will "
-        "use the 4.0 default"
+        "no measured equivalent-looks profile found; speckle augmentation will use the 4.0 default"
     )
     return 4.0, "default"
 
@@ -750,8 +749,7 @@ def train(
     rows = load_manifest(spec.prepared_root)
     if not rows:
         raise TrainingError(
-            f"the prepared index at {spec.prepared_root} has no rows; run the index "
-            "build first",
+            f"the prepared index at {spec.prepared_root} has no rows; run the index build first",
             reason="index_empty",
             context={"prepared_root": str(spec.prepared_root)},
         )
@@ -1042,8 +1040,7 @@ def train(
     report.source_unchanged = unchanged
     if not unchanged:
         raise TrainingError(
-            "the data source directory changed during training; the in-place "
-            "contract was violated",
+            "the data source directory changed during training; the in-place contract was violated",
             reason="source_modified",
             context={"errors": report.errors},
         )

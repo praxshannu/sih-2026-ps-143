@@ -638,9 +638,7 @@ def _build_synthetic(settings: Settings, *, rebuild: bool) -> DataSourceSpec:
             "note": synthetic_warning("synthetic dataset"),
         },
     )
-    return _synthetic_spec(
-        root, meta, n_pairs=len(rows), bands=bands, split_strategy="directory"
-    )
+    return _synthetic_spec(root, meta, n_pairs=len(rows), bands=bands, split_strategy="directory")
 
 
 # ---------------------------------------------------------------------------

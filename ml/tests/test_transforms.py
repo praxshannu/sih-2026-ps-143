@@ -218,9 +218,7 @@ def test_flip_moves_the_mask_with_the_image_in_both_layouts(layout: str) -> None
     """
     image, mask = _marker_pair(layout)
     for seed in range(6):
-        flipped_image, flipped_mask = RandomFlip(1.0, 1.0)(
-            image, mask, np.random.default_rng(seed)
-        )
+        flipped_image, flipped_mask = RandomFlip(1.0, 1.0)(image, mask, np.random.default_rng(seed))
         bright = np.argwhere(flipped_image[0] > 50.0)
         marked = _marked_positions(flipped_mask, layout)
         assert bright.shape == marked.shape == (1, 2), (layout, seed)
@@ -232,9 +230,7 @@ def test_rotate90_moves_the_mask_with_the_image_in_both_layouts(layout: str) -> 
     """``np.rot90(mask, axes=(0, 1))`` turns channel-against-height on a 3-D mask."""
     image, mask = _marker_pair(layout)
     for seed in range(6):
-        rotated_image, rotated_mask = RandomRotate90(1.0)(
-            image, mask, np.random.default_rng(seed)
-        )
+        rotated_image, rotated_mask = RandomRotate90(1.0)(image, mask, np.random.default_rng(seed))
         bright = np.argwhere(rotated_image[0] > 50.0)
         marked = _marked_positions(rotated_mask, layout)
         assert bright.shape == marked.shape == (1, 2), (layout, seed)

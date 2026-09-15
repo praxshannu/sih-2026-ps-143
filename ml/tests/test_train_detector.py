@@ -321,9 +321,7 @@ def test_fingerprint_records_the_device_it_was_taken_on(tmp_path: Path) -> None:
 def test_output_inside_the_source_is_refused(tmp_path: Path) -> None:
     spec = make_spec(tmp_path / "archive")
     with pytest.raises(TrainingError):
-        assert_outputs_are_outside_the_source(
-            spec, {"checkpoints": spec.prepared_root / "runs"}
-        )
+        assert_outputs_are_outside_the_source(spec, {"checkpoints": spec.prepared_root / "runs"})
 
 
 def test_output_equal_to_the_source_is_refused(tmp_path: Path) -> None:

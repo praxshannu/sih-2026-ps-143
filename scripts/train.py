@@ -193,9 +193,7 @@ def main(argv: list[str] | None = None) -> int:
         logger.warning("interrupted; the last checkpoint is complete and resumable")
         return 130
 
-    marker = (
-        "\u25a0" if report.provenance == DataProvenance.REAL.value else "\u25b2"
-    )
+    marker = "\u25a0" if report.provenance == DataProvenance.REAL.value else "\u25b2"
     logger.info(
         "{} {} | best val IoU {:.4f} at epoch {} | {}",
         marker,
