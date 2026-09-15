@@ -38,6 +38,7 @@ from typing import Any
 
 import numpy as np
 import torch
+from loguru import logger
 from torch.utils.data import Dataset
 
 _TRAINING_DIR = Path(__file__).resolve().parent
@@ -55,6 +56,11 @@ IMAGE_SUFFIXES: tuple[str, ...] = (".tif", ".tiff", ".png", ".jpg", ".jpeg", ".n
 SAR_BAND_NAMES: tuple[str, ...] = ("VV", "VH")
 #: Auxiliary channels are physically meaningful but absent from the archive.
 AUX_CHANNEL_NAMES: tuple[str, ...] = ("wind_speed", "wind_dir", "incidence_angle")
+
+#: A joint image/mask transform: ``(C, H, W) float32`` + ``(H, W)`` binary in,
+#: the same shapes out. See :mod:`transforms` for why this is not the
+#: albumentations ``(H, W, C)`` dict contract.
+JointTransform = Callable[[np.ndarray, np.ndarray], tuple[np.ndarray, np.ndarray]]
 
 
 class DatasetUnavailableError(FileNotFoundError):
@@ -179,7 +185,9 @@ class SAROilSpillDataset(Dataset[tuple[torch.Tensor, torch.Tensor]]):
         root: directory with ``images/`` + ``masks/`` (or a prepared root with
             ``manifest.jsonl`` plus ``<split>/images``).
         indices: optional subset of pair indices (train/val subsets).
-        transform: joint image/mask transform (albumentations-style) or None.
+        transform: joint ``(image, mask) -> (image, mask)`` transform on CHW
+            arrays, applied in dB *before* normalization, or None. See
+            :mod:`transforms`.
         image_size: advisory target size; used by the transform, not by the loader.
         split: when the root holds several splits, select one (``train``/``val``/``test``).
         expected_bands: required band count, or ``None`` to infer it from the
@@ -193,7 +201,7 @@ class SAROilSpillDataset(Dataset[tuple[torch.Tensor, torch.Tensor]]):
         self,
         root: str | Path,
         indices: Sequence[int] | None = None,
-        transform: Callable[..., Any] | None = None,
+        transform: JointTransform | None = None,
         image_size: int = 512,
         *,
         split: str | None = None,
@@ -319,12 +327,12 @@ class SAROilSpillDataset(Dataset[tuple[torch.Tensor, torch.Tensor]]):
         paired_masks: list[Path] = []
         missing: list[str] = []
         for image in images:
-            mask = mask_index.get(image.stem.lower())
-            if mask is None:
+            found = mask_index.get(image.stem.lower())
+            if found is None:
                 missing.append(image.name)
                 continue
             paired_images.append(image)
-            paired_masks.append(mask)
+            paired_masks.append(found)
         if missing:
             raise DatasetUnavailableError(
                 f"{len(missing)} image(s) have no mask (e.g. {missing[:5]}). "
@@ -391,22 +399,32 @@ class SAROilSpillDataset(Dataset[tuple[torch.Tensor, torch.Tensor]]):
                 "extra channels are genuinely wind/incidence data, not padding."
             )
 
+        # Augmentation runs *before* normalization, and in the units the archive
+        # stores (dB). Speckle is multiplicative on linear intensity, so it must
+        # be applied to a field it can be inverted from — normalizing first
+        # would leave a shifted, scaled quantity with no way back.
+        #
+        # The contract is native CHW: (C, H, W) float32 in, (C, H, W) float32
+        # out, mask (H, W) binary. The old albumentations-style HWC/dict
+        # contract existed only to satisfy a library that is not installed, and
+        # its ImportError handler turned a missing dependency into a silent
+        # no-op augmentation.
+        if self.transform is not None:
+            image, mask = self.transform(image, mask)
+            image = np.asarray(image, dtype=np.float32)
+            mask = np.asarray(mask)
+            if image.shape[0] != bands:
+                raise ValueError(
+                    f"{image_path.name}: transform changed the band count "
+                    f"{bands} -> {image.shape[0]}; a transform must not add or drop channels"
+                )
+
         if self.normalization is not None:
             stats = self.normalization
             for band in range(min(bands, len(stats.mean))):
                 mean = stats.mean[band]
                 std = stats.std[band] if stats.std[band] > 0 else 1.0
                 image[band] = (image[band] - mean) / std
-
-        if self.transform is not None:
-            try:
-                transformed = self.transform(
-                    image=image.transpose(1, 2, 0), mask=mask.transpose(1, 2, 0)
-                )
-                image = np.asarray(transformed["image"]).transpose(2, 0, 1)
-                mask = np.asarray(transformed["mask"]).transpose(2, 0, 1)
-            except ImportError:
-                pass
 
         image_tensor = torch.from_numpy(np.ascontiguousarray(image)).float()
         mask_tensor = torch.from_numpy(np.ascontiguousarray((mask > 0.5).astype(np.float32)))
@@ -445,8 +463,11 @@ def compute_normalization_statistics(
     if len(dataset) == 0:
         raise DatasetUnavailableError("Cannot compute normalization statistics: dataset empty.")
     items = range(min(len(dataset), max_items) if max_items else len(dataset))
-    sums: np.ndarray | None = None
-    sums_sq: np.ndarray | None = None
+    # Sized zero and grown on the first item so the accumulators are never
+    # Optional — an `Optional[ndarray]` narrowed by an `if` inside a loop is a
+    # type error waiting to happen, and the band count is not known until then.
+    sums = np.zeros(0)
+    sums_sq = np.zeros(0)
     counts = 0
     samples: list[np.ndarray] = []
     for index in items:
@@ -454,7 +475,7 @@ def compute_normalization_statistics(
         array = image.numpy().astype(np.float64)
         bands = array.shape[0]
         flat = array.reshape(bands, -1)
-        if sums is None:
+        if sums.size == 0:
             sums = np.zeros(bands)
             sums_sq = np.zeros(bands)
         sums += flat.sum(axis=1)
@@ -462,7 +483,8 @@ def compute_normalization_statistics(
         counts += flat.shape[1]
         if len(samples) < 8:
             samples.append(flat[:, :: max(1, flat.shape[1] // 4096)])
-    assert sums is not None and sums_sq is not None
+    if sums.size == 0:
+        raise DatasetUnavailableError("Cannot compute normalization statistics: no items read.")
     mean = sums / counts
     std = np.sqrt(np.maximum(sums_sq / counts - mean**2, 0.0))
     pooled = np.concatenate(samples, axis=1) if samples else np.zeros((len(mean), 1))
@@ -496,11 +518,12 @@ def get_dataloaders(
     val_split: float = 0.15,
     test_split: float = 0.1,
     num_workers: int = 0,
-    train_transform: Callable[..., Any] | None = None,
-    val_transform: Callable[..., Any] | None = None,
+    train_transform: JointTransform | None = None,
+    val_transform: JointTransform | None = None,
     *,
     expected_bands: int | None = None,
     use_auxiliary_channels: bool = False,
+    manifest: Sequence[dict[str, Any]] | None = None,
 ) -> tuple[Any, Any, Any]:
     """Build train/val/test dataloaders.
 
@@ -509,17 +532,21 @@ def get_dataloaders(
     split is still computed per scene (never per tile) from the file names; the
     randomness that used to live here is gone, because a random tile split
     leaks the same acquisition across train and test.
+
+    ``manifest`` overrides the rows read from disk. That exists so a caller can
+    cap a run (``max_scenes``) or hold out a split without rewriting the index —
+    the index is an input, and training must not write to it.
     """
     from torch.utils.data import DataLoader
 
     root = Path(data_dir)
-    manifest = load_manifest(root)
-    if manifest:
-        splits = {str(row["split"]) for row in manifest}
+    rows_in = list(manifest) if manifest is not None else load_manifest(root)
+    if rows_in:
+        splits = {str(row["split"]) for row in rows_in}
         if {"train", "val", "test"} & splits:
-            loaders = []
+            loaders: list[Any] = []
             for split in ("train", "val", "test"):
-                rows = [r for r in manifest if r.get("split") == split]
+                rows = [r for r in rows_in if r.get("split") == split]
                 transform = train_transform if split == "train" else val_transform
                 dataset = SAROilSpillDataset(
                     root,
@@ -542,8 +569,8 @@ def get_dataloaders(
                     if rows
                     else None
                 )
-            print(f"[dataset] prepared-root splits: {sorted(splits)}")
-            return tuple(loaders)
+            logger.info("prepared-root splits: {}", sorted(splits))
+            return loaders[0], loaders[1], loaders[2]
 
     full = SAROilSpillDataset(
         root,
@@ -560,12 +587,14 @@ def get_dataloaders(
     for idx, scene in enumerate(scene_ids):
         index_by_split[assignment.by_scene[scene]].append(idx)
 
-    from augmentation import get_train_transforms, get_val_transforms
+    from transforms import build_eval_transforms, build_train_transforms
 
-    train_tf = train_transform if train_transform is not None else get_train_transforms(image_size)
-    val_tf = val_transform if val_transform is not None else get_val_transforms(image_size)
+    train_tf = (
+        train_transform if train_transform is not None else build_train_transforms(image_size)
+    )
+    val_tf = val_transform if val_transform is not None else build_eval_transforms(image_size)
 
-    def _loader(indices: list[int], transform: Callable[..., Any] | None, shuffle: bool) -> Any:
+    def _loader(indices: list[int], transform: JointTransform | None, shuffle: bool) -> Any:
         subset = SAROilSpillDataset(
             root,
             indices=indices,
@@ -583,10 +612,11 @@ def get_dataloaders(
             drop_last=shuffle,
         )
 
-    print(
-        f"[dataset] scene-aware split: "
-        f"train={len(index_by_split['train'])} val={len(index_by_split['val'])} "
-        f"test={len(index_by_split['test'])}"
+    logger.info(
+        "scene-aware split: train={} val={} test={}",
+        len(index_by_split["train"]),
+        len(index_by_split["val"]),
+        len(index_by_split["test"]),
     )
     return (
         _loader(index_by_split["train"], train_tf, True),
