@@ -4,6 +4,10 @@
 
 SENTINEL is an end-to-end system for detecting, attributing, and investigating maritime oil spills using SAR satellite imagery, AIS vessel tracking, ocean drift modeling, and LLM-generated case narratives.
 
+> **New here? Read [`HANDOVER.md`](HANDOVER.md) first.** This README explains how to
+> run the system; the handover states what is actually verified, what is only
+> assumed, and which performance number to quote.
+
 ## Architecture
 
 ```mermaid
