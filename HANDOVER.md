@@ -52,6 +52,7 @@ Full service stack, API reference and the MV Wakashio demo walkthrough are in
 | Real path trains end-to-end, in place | run `20260915T164046Z-…-footprint-b79e83`, 10 epochs, 1581.3 s, `source_unchanged: True`, disk fingerprint byte-identical |
 | Synthetic path trains end-to-end | run `20260915T171617Z-synth-regression-check-fe26e9` — metrics **bit-identical** to the pre-change baseline |
 | The leak-free split works | index rebuilt to **195 acquisitions, 0 straddling**, `train=1059 / val=141` |
+| A held-out test set now exists **and is scored** | run `20260915T180945Z-…-holdout-7e9d57`: 114 / 24 / 12 pairs over 41 / 8 / 6 acquisitions, **test IoU 0.1447** against val 0.5180 |
 | Deterministic detection (no torch) | 10 Aug 2020 real hit: 3.34 km², −9.81 dB, confidence 0.934 |
 | Synthetic set matches the real one | `data/synthetic/match_report.json`: **26/28** checks within tolerance, reproducible |
 | Lint, format, types | `make lint` / `make format` / `make typecheck` clean across 8 mypy targets |
@@ -61,32 +62,41 @@ Full service stack, API reference and the MV Wakashio demo walkthrough are in
 ## The one number that matters, and the trap around it
 
 ```
-per-file split    best val IoU 0.8050   ← an upper bound, NOT a result
-footprint split   best val IoU 0.2981   ← the number to quote
+per-file split, val            0.8050   ← leaked, an upper bound, NOT a result
+footprint split, val (run B)   0.2981   ← selected on the split it reports
+footprint split, val (run C)   0.5180   ← same problem, different acquisition mix
+footprint split, held-out test 0.1447   ← QUOTE THIS
 ```
 
-`0.8050 − 0.2981 = 0.5069`, so **roughly 63 % of the headline was leakage.**
-The first split let tiles from one satellite acquisition land in both train and
-val, so the model was validated on ground it had already seen.
+`0.8050 − 0.2981 = 0.5069`, so **roughly 63 % of the first headline was
+leakage**: the per-file split let tiles from one satellite acquisition land on
+both sides, so the model was validated on ground whose neighbours it had seen.
 
-Three details make it more than arithmetic: train IoU went *up* (0.5922 → 0.7044)
-while val went *down*; the two val sets differ in difficulty (15.2 % vs 3.6 % oil);
-and the leak-free val plateaus at 0.21–0.30 for seven epochs while train climbs
-to 0.70. That plateau is the informative shape.
+But the deeper problem was that *every* number above the last line was a **val**
+figure, selected on the same split it was reported from. Run C added a genuine
+held-out test set and the val estimate collapsed from 0.5180 to **0.1447** — a
+gap of 0.3732 from one model at one checkpoint.
 
-**If you quote one number, quote 0.2981.** It is also optimistic — see below.
+And it fails in a diagnosable way. At the checkpoint val liked best, the model was
+conservative on val (precision 0.95) and aggressive on test (precision 0.15,
+recall 0.76): on held-out acquisitions it emitted **333,079 false-positive pixels
+against 59,513 true positives** — six wrong pixels per right one. It does not
+transfer to unseen acquisitions; it over-predicts them.
+
+**Quote 0.1447.** Caveat: it rests on only 6 acquisitions, so it is wide. It is
+still the only number here that nothing was tuned against, and a wide estimate of
+the right quantity beats a tight estimate of the wrong one.
 
 ---
 
 ## What is NOT verified — read this before claiming anything
 
-- **There is no held-out test set.** The real path runs with `test_fraction=0.0`,
-  so `0.2981` is `best_val_iou` over 10 epochs — selected on the split it is
-  reported from. Measured selection bias on that run: **+0.0429** (last epoch
-  scored 0.2552, best-of-10 scored 0.2981). The val set is only **8 acquisitions
-  / 14 tiles**, and the run-to-run spread across epochs (std 0.107) is larger
-  than most effects you would want to detect. Closing this is the single highest-
-  value piece of work left.
+- **The held-out estimate is wide.** Run C's test split is **6 acquisitions / 12
+  tiles**, so 0.1447 carries a large interval. The val-to-test gap of 0.3732 is
+  convincing evidence of a real transfer failure; the precise value is not. Val
+  is 8 acquisitions, and epoch-to-epoch val spread (std ≈ 0.107) is larger than
+  most effects you would want to detect. **More acquisitions is the single
+  highest-value improvement available**, ahead of any modelling work.
 - **Nothing is deployed.** `Dockerfile.train` and the compose files exist but
   **have never been built** — no Docker daemon on this machine. The Dockerfile
   says so in its own header.
@@ -137,10 +147,16 @@ writing anything user-facing.
 
 ## Suggested next steps, in value order
 
-1. **Build the held-out test set.** Set `test_fraction` on the real path, re-run
-   the footprint split, and report the test IoU as the headline with val demoted
-   to model selection. Until then `0.2981` is an upper bound too.
-2. **Build `Dockerfile.train` once** on a machine with a daemon, then delete the
+1. **Get more acquisitions into val and test.** 8 and 6 is why the held-out
+   estimate is wide. Raise `--max-pairs` (the archive holds 195 acquisitions) or
+   run uncapped overnight; cost is linear at ~180 s/epoch for 114 train pairs on
+   this M2.
+2. **Attack the over-prediction.** Run C fails on precision (0.15 on unseen
+   acquisitions), not recall (0.76). That points at threshold selection, and at
+   augmentation that varies *acquisition conditions* rather than only geometry —
+   the current transforms flip, rotate and add speckle, none of which changes the
+   incidence angle or wind regime the model appears to be keying on.
+3. **Build `Dockerfile.train` once** on a machine with a daemon, then delete the
    "NOT YET BUILD-VERIFIED" paragraph.
-3. **Verify the band order** against a known acquisition, which would let the
+4. **Verify the band order** against a known acquisition, which would let the
    polarisation labels be trusted and B12 be closed.

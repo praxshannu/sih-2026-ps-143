@@ -34,6 +34,7 @@ Every command below was run on this machine. Output is quoted, not paraphrased.
 | 14 | Git clean | `git status --short` | **clean** |
 | 15 | Training runs on the real archive, in place | `scripts/train.py --data-source real --epochs 10 --image-size 512` | **exit 0, 10 epochs, `source_unchanged: True`**, archive byte-identical either side |
 | 16 | Training on a leak-free split | `scene_grouping=footprint`, then the same 10-epoch command | **exit 0, 195 acquisition areas, 0 straddling**, `best_val_iou 0.2981` vs 0.8050 on the leaky split |
+| 17 | A held-out test split, actually scored | `SENTINEL_TRAINING__TEST_FRACTION=0.1`, footprint split, `--max-pairs 150` | **exit 0**, 114 / 24 / 12 pairs over 41 / 8 / 6 acquisitions, **test IoU 0.1447** vs val 0.5180 — the val estimate was optimistic by 0.3732 |
 
 The 5 skips in gate 2 are the real-scene tests, which require `data/sar/`
 (gitignored). They skip **with a stated reason**, never silently — a skip means

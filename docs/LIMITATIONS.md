@@ -24,12 +24,16 @@ model would, and its thresholds were calibrated on the Wakashio scenes and the
 scene-statistics envelope in `pipeline.py`.
 
 A Tier-B learned model now exists in the sense that one has been *trained* —
-twice, for 10 epochs each on the real archive (MODEL_CARD §2.4). The first run
-scored `best_val_iou 0.8050` on a per-file split; once the split was made
+three times, for 10 epochs each on the real archive (MODEL_CARD §2.4). The first
+run scored `best_val_iou 0.8050` on a per-file split; once the split was made
 leak-free the same command scored **0.2981**, so about 63 % of the first number
-was leakage (B11). Neither is deployed and neither must be treated as validated:
-there is no held-out evaluation and no benchmark, and the leak-free number rests
-on 14 val tiles across 8 acquisitions. "Trained" is not "usable".
+was leakage (B11). The third run finally carried a held-out test set and scored
+**0.1447** on it, against 0.5180 on val in the same run — so the leak-free val
+figures were optimistic by a further ~3.6× (B11).
+
+None of them is deployed and none must be treated as validated. **Quote 0.1447.**
+It rests on 6 acquisitions and is therefore wide, and there is still no labelled
+benchmark to check any of it against. "Trained" is not "usable".
 
 See `MODEL_CARD.md` §1 and §2.4.
 
@@ -292,12 +296,45 @@ it can fail. The `--max-pairs` cap is leak-safe under this grouping — it trims
 within a split, in name order, which shortens acquisitions but never moves one
 across the boundary.
 
-**What is not fixed.** There is still no held-out test set, so the val split is
-the only cross-split number and it was used for model selection. And a footprint
-split removes near-duplicate *ground*, not shared *conditions*: tiles within one
-acquisition share its calibration, incidence angle and wind regime, so the score
-measures transfer to unseen ground, not to unseen weather. `_claim_text` now says
-this in the report instead of printing a per-file caveat that no longer applies.
+**What is not fixed — and now measured.** A footprint split removes near-duplicate
+*ground*, not shared *conditions*: tiles within one acquisition share its
+calibration, incidence angle and wind regime. The first run with a genuine
+held-out test set (`20260915T180945Z-real-10ep-512-holdout-7e9d57`, 114 train /
+24 val / 12 test pairs) shows what that costs:
+
+| metric | val @ epoch 7 | held-out test | gap |
+|---|---|---|---|
+| IoU | 0.5180 | **0.1447** | 0.3732 |
+| F1 | 0.6824 | 0.2529 | 0.4296 |
+| precision | 0.9507 | 0.1516 | 0.7991 |
+| recall | 0.5323 | 0.7618 | −0.2295 |
+
+The failure is neither subtle nor noise. On held-out acquisitions the model
+over-predicts: it finds 76 % of the true oil while emitting **333,079
+false-positive pixels against 59,513 true positives** — roughly six wrong pixels
+for every right one. At the epoch the run selected, its val precision was 0.95.
+
+So **0.5180 on this split and 0.2981 on the previous one were both val numbers**,
+each selected on the split it is reported from. Every headline this project has
+produced was between 2× and 5.5× the one number nothing was tuned against:
+
+| split | number | what it actually is |
+|---|---|---|
+| per-file, val | 0.8050 | leaked — an upper bound |
+| footprint, val (run B) | 0.2981 | selected on val, 8 acquisitions |
+| footprint, val (this split) | 0.5180 | selected on val, 8 acquisitions |
+| **footprint, held-out test** | **0.1447** | **the number to quote**, 6 acquisitions |
+
+Caveat on the caveat: 6 acquisitions is small, so 0.1447 is a wide estimate. But
+the direction and the mechanism — precision collapse on unseen acquisitions — are
+unmistakable, and a wide estimate of the right quantity beats a tight estimate of
+the wrong one.
+
+**Why the earlier numbers could not have revealed this.** Until
+`test_fraction` was set, the trainer *built* a test split and never scored it, and
+the footprint claim ended with "there is no held-out test set" unconditionally.
+The code was written for the state of the world that had already bitten and never
+revisited; the caveat was present, accurate, and therefore read as boilerplate.
 
 This was not fixed by changing `default_scene_id`. That would still be a guess
 from a path; the archive genuinely carries no scene identifier, so the honest fix

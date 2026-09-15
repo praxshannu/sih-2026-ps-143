@@ -139,13 +139,16 @@ ever reaching an analyst.
 implemented and unit-tested against fixtures; it has never seen the real
 archives (40.7 GB + 45.9 GB + 9.9 GB monolithic `.7z` — the disk cannot take it).
 
-### 2.4 The training pipeline exists, and has now been run twice on the real archive
+### 2.4 The training pipeline exists, and has now been run three times on the real archive
 
 This does **not** change the status above: no trained model is deployed. What
-changed is that the pipeline which would produce one is real, runs to
-completion, and has been run for a full 10 epochs over the real archive twice —
-once on a leaky split, once on a leak-free one. The second run is the one worth
-reading.
+changed is that the pipeline which would produce one is real, runs to completion,
+and has been run for a full 10 epochs over the real archive three times — once on
+a leaky split, once on a leak-free split with val only, and once on a leak-free
+split with a held-out test set.
+
+**Read run C.** It is the only one whose headline number nothing was tuned
+against, and it is substantially worse than the other two.
 
 #### Two runs, one budget
 
@@ -254,16 +257,72 @@ good. Two limitations survive the fix:
   fraction cannot hit a tile fraction — this run got 11.7 % of tiles for a 20 %
   scene fraction. One unusually easy or hard acquisition would move the score a
   lot.
-- **There is no held-out test set.** `test_fraction` is 0, so val is the only
-  cross-split number and it was used for model selection. A footprint split
-  removes shared *ground*, not shared *conditions*: tiles within one acquisition
-  still share its calibration, incidence angle and wind regime. This measures
-  transfer to unseen ground, not to unseen weather.
+- **There was no held-out test set in runs A and B.** `test_fraction` was 0, so
+  val was the only cross-split number and it was used for model selection. A
+  footprint split removes shared *ground*, not shared *conditions*: tiles within
+  one acquisition still share its calibration, incidence angle and wind regime.
+  Run C measures what that costs.
 
 The run's own `claim` string says all of this, and says it conditionally — the
 `per_file_hash` caveat is no longer printed for a footprint split, because a
 caveat that appears on every run is boilerplate and boilerplate is how run A's
 leak survived being called verified.
+
+#### Run C — the same split, with a held-out test set
+
+```bash
+SENTINEL_TRAINING__TEST_FRACTION=0.1 python scripts/train.py --data-source real \
+    --epochs 10 --image-size 512 --batch-size 4 --max-pairs 150 \
+    --run-name real-10ep-512-holdout
+```
+
+`test_fraction=0.1` makes the held-out group 30 % of acquisitions, then splits it
+two-thirds val / one-third test. The archive's 195 acquisition areas become 909
+train / 194 val / 97 test tiles; the 150-pair cap trims that proportionally to
+**114 train / 24 val / 12 test** pairs across 41 / 8 / 6 acquisitions. Val and
+test are disjoint acquisition sets, so this is the first number in the project
+that no decision consulted: the best epoch is chosen by val IoU and test is
+scored once, afterwards, at that checkpoint.
+
+| metric | val @ the selected epoch | held-out test | gap |
+|---|---|---|---|
+| **IoU** | **0.5180** | **0.1447** | 0.3732 |
+| F1 | 0.6824 | 0.2529 | 0.4296 |
+| precision | 0.9507 | 0.1516 | 0.7991 |
+| recall | 0.5323 | 0.7618 | −0.2295 |
+
+Run C's val score is *higher* than run B's (0.2981) — a different acquisition mix,
+not an improvement, and the two are not comparable. What matters is the gap
+*inside* run C, because both numbers come from one model at one checkpoint.
+
+**The model does not transfer to unseen acquisitions, and it fails by
+over-predicting.** At the checkpoint val liked best it was conservative on val
+(precision 0.95, recall 0.53) and aggressive on test (precision 0.15, recall
+0.76). In pixels, on test it emitted **333,079 false positives against 59,513
+true positives** — about six wrong pixels per right one — while still finding
+76 % of the true oil. That is a shift in operating point, not small-sample noise.
+
+So the honest headline is **0.1447** — not 0.2981, and certainly not 0.8050.
+Every figure published before run C was a *val* number selected on the split it
+was reported from:
+
+| split | number | what it is |
+|---|---|---|
+| per-file, val | 0.8050 | leaked — an upper bound |
+| footprint, val (run B) | 0.2981 | selected on val, 8 acquisitions |
+| footprint, val (run C) | 0.5180 | selected on val, 8 acquisitions |
+| **footprint, held-out test (run C)** | **0.1447** | **quote this**, 6 acquisitions |
+
+Six acquisitions is few, so 0.1447 is wide. It is still the right quantity to
+report, and a wide estimate of the right quantity beats a tight estimate of the
+wrong one.
+
+Two defects had to be fixed before run C could exist at all: the index cache did
+not record the split parameters, so raising `test_fraction` reused a two-way
+manifest and reported an empty test split; and the trainer built a test split
+without ever scoring it, while the claim asserted "there is no held-out test set"
+on every run. Both are the same shape — code written for the state of the world
+that had already bitten, and never revisited.
 
 #### The two epochs of zero are not a defect
 

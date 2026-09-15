@@ -479,7 +479,41 @@ The trainer also asserts this itself and refuses to start on leakage
   its weather and geometry. The score measures transfer to unseen ground, not to
   unseen conditions.
 
-### 5.5 The training image
+### 5.5 Getting a held-out number
+
+By default the real path runs with `test_fraction=0.0`, so the only cross-split
+number is val — and val is what selects the best epoch, so it is optimistic by
+construction. To get a number nothing was tuned against:
+
+```bash
+SENTINEL_TRAINING__TEST_FRACTION=0.1 python scripts/train.py --data-source real \
+    --epochs 10 --image-size 512 --batch-size 4 --max-pairs 150 \
+    --run-name real-10ep-512-holdout
+```
+
+`test_fraction` is added to `val_fraction` to form the held-out group, which is
+then split two-thirds val / one-third test. With `val_fraction=0.2` and
+`test_fraction=0.1` that is 70 / 20 / 10 % of acquisitions.
+
+Three things to know:
+
+- **It forces an index rebuild.** The split is baked into the manifest, so
+  `source.json` records `val_fraction`/`test_fraction`/`seed` and any change to
+  them invalidates the cache. On the real archive that is ~7 minutes of header
+  reads. The log says why.
+- **`test_metrics` is scored once**, at the checkpoint val selected, and appears
+  in `run_report.json` alongside `best_val_iou`. It is deliberately *not* merged
+  into the val score: the gap between the two is the selection bias, and that is
+  the number worth watching.
+- **Read the gap, not the score.** The first run to use this scored val 0.5180
+  and test 0.1447 — a 0.3732 gap, with test precision collapsing to 0.15 while
+  val precision was 0.95. A footprint split removes shared *ground*, and that run
+  showed it does not remove shared *conditions*.
+
+If `test_metrics` is absent from a report, the run had no test split. The key is
+omitted rather than zeroed on purpose: a zero would read as a measurement.
+
+### 5.6 The training image
 
 ```bash
 docker build -f Dockerfile.train -t sentinel-train .
