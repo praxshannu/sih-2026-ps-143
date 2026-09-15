@@ -315,11 +315,14 @@ set -a; . ./.env; set +a
 export GDAL_DISABLE_READDIR_ON_OPEN=EMPTY_DIR   # 268 ms -> 1.8 ms per open
 
 # Real archive, read in place, full resolution. ~28 min for 10 epochs on MPS.
+# Requires SENTINEL_DATASOURCES__SCENE_GROUPING=footprint and the index that
+# mode builds; see 5.4. Without it the split is per file and the val IoU is an
+# upper bound rather than a result.
 $PY scripts/train.py --data-source real --epochs 10 --image-size 512 \
-    --batch-size 4 --max-scenes 120 --run-name real-10ep-512
+    --batch-size 4 --max-pairs 120 --run-name real-10ep-512-footprint
 
 # A smoke run: cheap, but still exercises the whole pipeline.
-$PY scripts/train.py --data-source real --epochs 3 --max-scenes 24 \
+$PY scripts/train.py --data-source real --epochs 3 --max-pairs 24 \
     --max-steps-per-epoch 1 --image-size 512
 
 # The matched synthetic set.
@@ -333,6 +336,14 @@ $PY scripts/train.py --data-source real      --run-name ab-real
 `--data-source` overrides `SENTINEL_DATA_SOURCE`; both override nothing else.
 `--max-steps-per-epoch` is what makes a smoke run cheap — the epoch still
 validates, so the whole pipeline is exercised.
+
+**`--max-pairs` counts image/mask pairs, not scenes.** It was called
+`--max-scenes` until it was noticed that it never capped scenes at all; the old
+spelling still parses so existing scripts keep working. The distinction is not
+pedantry: under footprint grouping one acquisition can be 114 pairs, so
+`--max-pairs 120` is roughly six scenes. The flag trims within a split, in name
+order, which shortens acquisitions but never moves one across the boundary — so
+it cannot reintroduce leakage.
 
 **Exit codes**: `0` ok, `2` bad arguments, `78` configuration error,
 `1` runtime failure, `130` interrupted (the last checkpoint is complete and
@@ -374,11 +385,98 @@ $PY -m json.tool runs/<run_id>/run_report.json | head -40
 ```
 
 `claim` states in words what the numbers are allowed to mean, and
-`scientifically_valid` is false whenever they are not a scientific result. On
-the real archive `claim` also carries the split caveat — the per-file split
-makes cross-split metrics optimistic, so `best_val_iou` is an upper bound.
+`scientifically_valid` is false whenever they are not a scientific result. Read
+it against `split_strategy`: under `per_file_hash` the claim calls
+`best_val_iou` an upper bound, and under `footprint_connected` it says instead
+that the split is sound but the evaluation is still not held out. The two
+sentences are different on purpose — see §5.4.
 
-### 5.4 The training image
+### 5.4 Scene grouping, and why the split needs it
+
+The archive carries no scene identifier — every GeoTIFF has only generic TIFF
+tags — so nothing in the data says which tiles came from the same pass. That
+matters because tiles cut from one acquisition are near-duplicates: they share
+the calibration, the incidence angle and the wind regime. If some land in train
+and some in val, the val score is partly measuring recall of tiles whose
+neighbours the model has already seen.
+
+`SENTINEL_DATASOURCES__SCENE_GROUPING` picks how tiles are grouped before the
+split:
+
+| mode | groups by | cost | leak-free? |
+|---|---|---|---|
+| `per_file` (default) | nothing — each tile is its own scene | none | **no** |
+| `grid` | a fixed 1° cell containing the tile's centroid | one header scan | no, and it is wrong at every cell boundary |
+| `footprint` | shared ground — union-find over tile bounding boxes | one header scan | **yes** |
+
+`grid` is a property of the coordinate system, not of the acquisition: it
+separates two touching tiles whenever a cell edge runs between them, and merges
+two tiles 30 km apart whenever one does not. `footprint` asks the question the
+split needs — do these two tiles show the same patch of sea? — and answers it
+from the rasters themselves.
+
+**Measured on the real archive** (1200 tiles, `docs/LIMITATIONS.md` B11):
+
+```
+acquisition areas (footprint groups)                    195
+  ... straddling a per-file split of all 1200 tiles      78
+  largest single area                                   114 tiles
+
+the 10-epoch run's tiles                                120 (96 train / 24 val)
+  acquisition areas it touched                           42
+  ... straddling its split                               11
+  tiles inside a straddling area                          58 of 120 (48.3%)
+```
+
+So nearly half of that run's tiles sat in an acquisition that appears on both
+sides of the boundary. Its `best_val_iou 0.8050` is an upper bound for that
+reason, and `run_report.json` says so in `claim`.
+
+**Rebuilding the index.** `grid` and `footprint` read all 1200 headers once,
+which is about seven minutes on cold removable media; the result is cached. The
+index records which mode produced it, and a run whose configured mode differs
+from the index's rebuilds it automatically — a cached split answers the question
+it was built for and no other, so reusing it silently would hand the experiment
+the previous grouping's validation set.
+
+```bash
+# once, ~7 min; the .env already sets the mode
+$PY -c "from sentinel_core.datasource import resolve_source; \
+        print(resolve_source('real', rebuild=True).split_strategy)"
+# -> footprint_connected
+```
+
+Then check the result rather than trusting it:
+
+```bash
+$PY -c "
+import json, collections
+from pathlib import Path
+rows = [json.loads(l) for l in Path('data/index/real/manifest.jsonl').read_text().splitlines() if l]
+by = collections.defaultdict(set)
+for r in rows: by[r['scene_id']].add(r['split'])
+straddle = {s: sorted(v) for s, v in by.items() if len(v) > 1}
+print(len(rows), 'tiles,', len(by), 'scenes,', len(straddle), 'straddling')
+assert not straddle, straddle
+"
+```
+
+The trainer also asserts this itself and refuses to start on leakage
+(`reason="scene_leakage"`).
+
+**Two caveats that survive the fix.**
+
+- **`val_fraction` counts scenes, not tiles.** Acquisitions range from 1 to 114
+  tiles, so `val_fraction=0.2` gave 39 of 195 scenes but only 141 of 1200 tiles
+  (11.7%). A scene-level split cannot hit a tile fraction, and the val split can
+  be much smaller than the fraction suggests.
+- **No held-out test set.** `test_fraction` is 0, so val is the only cross-split
+  number and it was used for model selection. A footprint split removes shared
+  *ground*, not shared *conditions*: tiles within one acquisition still share
+  its weather and geometry. The score measures transfer to unseen ground, not to
+  unseen conditions.
+
+### 5.5 The training image
 
 ```bash
 docker build -f Dockerfile.train -t sentinel-train .

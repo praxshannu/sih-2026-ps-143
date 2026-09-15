@@ -236,30 +236,70 @@ the Hugging Face hub, so a machine with no network cannot train with the default
 The trainer detects the failure and names the workaround
 (`--encoder-weights none`) rather than dying with a stack trace.
 
-### B11. Scene ids collapse to one value, so the leakage check is vacuous
+### B11. The split leaked, and it was measured rather than argued
 
-`default_scene_id` falls back to the nearest non-generic parent directory, which
-for a flat archive of tiles is the archive directory itself. Every one of the
-1200 scenes in `/Volumes/Ventoy/Oil` therefore reports as scene `"Oil"`, and the
-run report says `"n_scenes": 1` for both the 96-pair train split and the 24-pair
-val split.
+**Fixed in code; the verified run's number is still inflated.** The paragraph
+below is the original entry, kept because the reasoning is what the fix had to
+answer.
 
-The consequence is narrow but real: `scene_leakage` finds nothing to leak,
-because as far as it can tell there is only one scene. The split itself is still
-made per file (`split_strategy: per_file_hash`), and the trainer prints a loud
-warning that tiles were split per file rather than per acquisition and that
-cross-split metrics are therefore optimistic — so the risk is disclosed, just
-not in the field where a reader would look for it.
+The archive has no scene identifier — every GeoTIFF carries only generic TIFF
+tags — so there was nothing to split *by*. Two things went wrong at once:
 
-This is why the 10-epoch run's `best_val_iou 0.8050` (MODEL_CARD §2.4) is
-reported as an upper bound. With 2048² tiles from the same acquisitions on both
-sides of the boundary, that number partly measures memorisation.
+1. `default_scene_id` fell back to the nearest non-generic parent directory,
+   which for a flat archive of tiles is the archive directory itself. Every one
+   of the 1200 scenes reported as `"Oil"`, and the run report said
+   `"n_scenes": 1` for both splits.
+2. `SAROilSpillDataset` did not use the manifest's `scene_id` at all; it
+   re-derived ids from the file path, so the loader undid whatever grouping the
+   indexer had computed.
 
-This is not fixed here on purpose. Changing `default_scene_id` changes which
-files land in train and val, which would invalidate the end-to-end run that was
-just verified. The archive genuinely carries no scene identifier — every GeoTIFF
-has only generic TIFF tags — so the honest fix is an explicit
-`--scene-regex` (or a scene-grouping index), not a better guess from the path.
+Together those made the trainer's `scene_leakage` guard **structurally unable to
+fail**. It compares scene ids across splits; with one scene per archive there was
+nothing to leak, and with per-file ids every tile was its own scene, so the check
+passed vacuously in both arrangements. A guard that cannot fail is not a guard,
+and it is why the per-file split survived being called verified: the warning was
+in the log, it was accurate, and it was printed on every single run.
+
+**What the leakage actually was.** Tiles were grouped by the ground they share
+(union-find over bounding boxes; `scene_grouping="footprint"`), which is the fact
+a centroid or a grid cell was standing in for. Measured:
+
+| | count |
+|---|---|
+| tiles in the archive | 1200 |
+| acquisition areas (footprint groups) | 195 |
+| areas straddling a *per-file* split of all 1200 tiles | 78 |
+| largest single area | 114 tiles |
+| tiles in the 10-epoch run | 120 |
+| areas the run touched | 42 |
+| **areas straddling the run's split** | **11** |
+| **tiles inside a straddling area** | **58 of 120 (48.3%)** |
+
+So nearly half of the tiles the run trained and validated on came from an
+acquisition that appears on both sides of the boundary. The largest,
+`00045`, put 18 of its tiles across the split. This is why the run's
+`best_val_iou 0.8050` (MODEL_CARD §2.4) is an upper bound: the number was
+partly measuring memorisation of tiles the model had already seen the
+neighbours of.
+
+**What is fixed.** `scene_grouping="footprint"` assigns ids from shared ground;
+`SAROilSpillDataset` reads them from the manifest; the mode that produced an
+index is recorded in `source.json` and an index built by a different mode is
+rebuilt rather than reused; and the leakage guard now has something to check, so
+it can fail. The `--max-scenes` cap is leak-safe under this grouping — it trims
+within a split, in name order, which shortens acquisitions but never moves one
+across the boundary.
+
+**What is not fixed.** There is still no held-out test set, so the val split is
+the only cross-split number and it was used for model selection. And a footprint
+split removes near-duplicate *ground*, not shared *conditions*: tiles within one
+acquisition share its calibration, incidence angle and wind regime, so the score
+measures transfer to unseen ground, not to unseen weather. `_claim_text` now says
+this in the report instead of printing a per-file caveat that no longer applies.
+
+This was not fixed by changing `default_scene_id`. That would still be a guess
+from a path; the archive genuinely carries no scene identifier, so the honest fix
+is the explicit grouping index that now exists.
 
 ---
 
