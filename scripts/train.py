@@ -12,9 +12,9 @@ at any point.
 
 Examples::
 
-    # a bounded real-data run: 24 scenes, 3 epochs, one batch per epoch
+    # a bounded real-data run: 24 pairs, 3 epochs, one batch per epoch
     python scripts/train.py --data-source real --epochs 3 \\
-        --max-scenes 24 --max-steps-per-epoch 1
+        --max-pairs 24 --max-steps-per-epoch 1
 
     # the synthetic set, full length
     python scripts/train.py --data-source synthetic --epochs 10
@@ -73,10 +73,20 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="use none when the machine is offline",
     )
     parser.add_argument(
+        # `--max-scenes` never capped scenes: it caps image/mask pairs. That was
+        # survivable while a "scene" was one tile, but under
+        # scene_grouping=footprint one scene can be a hundred pairs, so the two
+        # readings differ by an order of magnitude. Keep the old spelling
+        # working; stop advertising it.
+        "--max-pairs",
         "--max-scenes",
+        dest="max_pairs",
         type=int,
         default=None,
-        help="cap the number of pairs; 0 means no cap",
+        help=(
+            "cap the number of image/mask pairs; 0 means no cap. Counts pairs, "
+            "not scenes — the two are not interchangeable under footprint grouping"
+        ),
     )
     parser.add_argument(
         "--max-steps-per-epoch",
@@ -107,7 +117,7 @@ def _overrides(args: argparse.Namespace) -> dict[str, object]:
     """Translate flags into validated Settings fields.
 
     Only flags the user actually passed are included, so a flag left at its
-    default never overrides the environment. ``--max-scenes 0`` is the explicit
+    default never overrides the environment. ``--max-pairs 0`` is the explicit
     way to clear a cap that came from the environment.
     """
     training: dict[str, object] = {}
@@ -127,8 +137,8 @@ def _overrides(args: argparse.Namespace) -> dict[str, object]:
     for key, value in mapping.items():
         if value is not None:
             training[key] = value
-    if args.max_scenes is not None:
-        training["max_scenes"] = args.max_scenes or None
+    if args.max_pairs is not None:
+        training["max_scenes"] = args.max_pairs or None
 
     overrides: dict[str, object] = {}
     if training:
@@ -178,7 +188,7 @@ def main(argv: list[str] | None = None) -> int:
             settings,
             data_source=args.data_source,
             epochs=args.epochs,
-            max_scenes=args.max_scenes if args.max_scenes is not None else None,
+            max_scenes=args.max_pairs if args.max_pairs is not None else None,
             max_steps_per_epoch=args.max_steps_per_epoch,
             resume=args.resume,
             rebuild_index=args.rebuild_index,
