@@ -160,7 +160,7 @@ Both exit `0` and write `runs/<run_id>/run_report.json`:
 | Pairs / splits | 1200 total, 24 used → train 19, val 5, test 0 | 120 total, 23 used → train 19, val 2, test 2 |
 | `provenance` | `real` | `synthetic_mock` |
 | `source_unchanged` | `True` | `True` |
-| Best val IoU | 0.0975 | 0.0000 |
+| Best val IoU | 0.0975 | 0.0222 |
 
 **The val IoU column is not a result and must not be quoted as one.** Both runs
 were bounded with `--max-steps-per-epoch 2` — two optimiser steps per epoch —
