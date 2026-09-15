@@ -58,6 +58,13 @@ SEA_FIELD_AMPLITUDE_DB = 1.6
 #: detector a boundary that no real SAR scene has.
 BLOB_EDGE_SIGMA = 2.0
 
+#: Raster suffixes a generation owns and may remove from its own split
+#: directories. Deliberately narrow: see :func:`_clear_split_rasters`.
+RASTER_SUFFIXES: tuple[str, ...] = (".tif", ".tiff")
+
+#: The split directories a generated dataset is laid out in.
+SPLIT_NAMES: tuple[str, ...] = ("train", "val", "test")
+
 #: Upper bound on the number of extreme patches stamped into one scene. VV's
 #: clutter needs ~6000 single-pixel spikes at 2048^2; this only guards against
 #: a profile that reports an implausible coverage.
@@ -326,15 +333,34 @@ def _nodata_canvas(rng: np.random.Generator, size: int, target_fraction: float) 
     return canvas
 
 
+def _pick_extreme_record(
+    rng: np.random.Generator, profile: DistributionProfile, name: str
+) -> dict[str, Any]:
+    """One *measured scene's* extreme record, for one generated scene.
+
+    Sampling a scene rather than averaging across scenes is the whole point. The
+    pooled tail of a dataset is set by its brightest scenes; an averaged curve
+    has no brightest scene, so a generator built on it can never reach the
+    dataset's p99.9. Falls back to the mean aggregate for a profile written
+    before the per-scene records existed.
+    """
+    record = (profile.extremes or {}).get(name) or {}
+    per_scene = record.get("per_scene") or []
+    if per_scene:
+        return dict(per_scene[int(rng.integers(0, len(per_scene)))])
+    return dict(record)
+
+
 def _apply_extremes(
     rng: np.random.Generator,
     band_db: np.ndarray,
-    profile: DistributionProfile,
-    name: str,
+    record: dict[str, Any],
     prefix: str,
     height: int,
     width: int,
     area_scale: float,
+    *,
+    scene_sea_level: float,
 ) -> np.ndarray:
     """Overwrite the bright or dark extreme pixels with measured dB levels.
 
@@ -342,8 +368,13 @@ def _apply_extremes(
     The component size is in pixels, so it is scaled with the scene area to keep
     objects the same size *relative to the scene* — with a one-pixel floor,
     because a component smaller than a pixel does not exist.
+
+    Brightness is written as an *offset from the scene's own sea level*, not as
+    an absolute level. The record came from a scene whose sea sat at some other
+    level, and a vessel is bright relative to the water it is in — writing the
+    recorded absolute value into a scene 2 dB darker would put the object 2 dB
+    too close to the noise floor.
     """
-    record = (profile.extremes or {}).get(name) or {}
     fraction = float(record.get(f"{prefix}_fraction", 0.0))
     component_px = max(float(record.get(f"{prefix}_component_px", 0.0)) * area_scale, 1.0)
     if fraction <= 0.0 or component_px <= 0.0:
@@ -354,12 +385,21 @@ def _apply_extremes(
     if count == 0:
         return band_db
 
+    # Every recorded knot, not a fixed trio, so extending the profile's knot set
+    # does not silently leave the generator behind it. ``_curve_arrays`` expects
+    # keys of the form ``p10``, so the band and direction prefix is stripped.
+    prefix_key = f"{prefix}_db_"
     curve = {
-        "p10": float(record.get(f"{prefix}_db_p10", 0.0)),
-        "p50": float(record.get(f"{prefix}_db_p50", 0.0)),
-        "p90": float(record.get(f"{prefix}_db_p90", 0.0)),
+        key[len(prefix_key) :]: float(value)
+        for key, value in record.items()
+        if key.startswith(prefix_key) and isinstance(value, int | float)
     }
-    band_db[canvas] = _sample_many(rng, curve, count)
+    if not curve:
+        return band_db
+
+    reference_sea = float(record.get("sea_level_db", scene_sea_level))
+    shift = float(scene_sea_level) - reference_sea
+    band_db[canvas] = _sample_many(rng, curve, count) + shift
     return band_db
 
 
@@ -439,11 +479,19 @@ def synthesize_scene(
         band_db = sea_level + field_db + speckle_db - per_blob * alpha
 
         # Pixels Gamma speckle cannot produce. Overwritten rather than added:
-        # the profile recorded the absolute dB level of these pixels, so writing
-        # that level reproduces the measured tail directly.
+        # the profile recorded the dB level of these pixels relative to their
+        # own scene's sea, so reproducing that offset reproduces the tail.
+        extreme_record = _pick_extreme_record(rng, profile, name)
         for prefix in ("bright", "dark"):
             band_db = _apply_extremes(
-                rng, band_db, profile, name, prefix, height, width, area_scale
+                rng,
+                band_db,
+                extreme_record,
+                prefix,
+                height,
+                width,
+                area_scale,
+                scene_sea_level=sea_level,
             )
 
         image[index] = np.clip(band_db, DB_MIN, DB_MAX)
@@ -528,6 +576,35 @@ def _write_scene(
     return image_path.stat().st_size, mask_path.stat().st_size
 
 
+def _clear_split_rasters(root: Path) -> int:
+    """Remove rasters a previous generation left in this dataset's splits.
+
+    ``generate_dataset`` rewrites every scene it is asked for and then rewrites
+    the manifest — but it does not know what an *earlier* run wrote. Generating
+    120 scenes at 2048 over an earlier run's 120 at 512 leaves the old files in
+    place, and the next ``resolve_source(rebuild=True)`` enumerates the
+    directory rather than the manifest, so those files are indexed as part of
+    the dataset. The manifest said 120; the dataset held 123, at two different
+    resolutions, and the run reported success.
+
+    Clearing first is what makes the written manifest authoritative.
+
+    Scoped to ``<root>/<split>/{images,masks}`` and to raster suffixes only, so
+    a mistyped root cannot delete anything that is not a generated scene.
+    """
+    removed = 0
+    for split in SPLIT_NAMES:
+        for kind in ("images", "masks"):
+            directory = root / split / kind
+            if not directory.is_dir():
+                continue
+            for path in directory.iterdir():
+                if path.is_file() and path.suffix.lower() in RASTER_SUFFIXES:
+                    path.unlink()
+                    removed += 1
+    return removed
+
+
 def generate_dataset(
     profile: DistributionProfile,
     root: Path,
@@ -536,11 +613,25 @@ def generate_dataset(
     pixel_size: float = DEFAULT_PIXEL_SIZE_DEG,
     origin: tuple[float, float] = DEFAULT_ORIGIN,
     band_names: Sequence[str] = ("VV", "VH"),
+    clean: bool = True,
 ) -> dict[str, Any]:
-    """Write a complete synthetic dataset and return a summary of what it did."""
+    """Write a complete synthetic dataset and return a summary of what it did.
+
+    With ``clean`` (the default) the split directories are emptied of rasters
+    first, so the dataset on disk is exactly the dataset this call wrote.
+    """
     counts = config.split_counts()
     rng = np.random.default_rng(config.seed)
     root.mkdir(parents=True, exist_ok=True)
+
+    if clean:
+        removed = _clear_split_rasters(root)
+        if removed:
+            logger.info(
+                "removed {} stale raster(s) from a previous generation; the manifest "
+                "is only authoritative if the directories match it",
+                removed,
+            )
 
     rows: list[dict[str, Any]] = []
     scene_index = 0

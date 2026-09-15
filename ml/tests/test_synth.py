@@ -18,9 +18,11 @@ import pytest
 
 from ml.synth.generate import (
     GenerationConfig,
+    _apply_extremes,
     _blob_patch,
     _extreme_canvas,
     _nodata_canvas,
+    _pick_extreme_record,
     generate_dataset,
     synthesize_scene,
 )
@@ -324,6 +326,173 @@ def test_generate_dataset_writes_a_manifest_and_provenance(tmp_path: Path) -> No
     assert len({row["scene_id"] for row in rows}) == 6
     assert (out / "source.json").is_file()
     assert (out / "distribution.json").is_file()
+
+
+def test_regenerating_replaces_the_dataset_instead_of_adding_to_it(tmp_path: Path) -> None:
+    """A second generation must not inherit the first one's scenes.
+
+    The manifest is rewritten whole, but the scenes are written into the split
+    directories. Generating over an existing dataset without clearing first
+    leaves the old files behind, and the dataset loader enumerates the
+    directory rather than the manifest -- so a 120-scene run landed on top of
+    three stale files from an earlier 512-pixel run and produced a 123-scene
+    dataset at two different resolutions, while reporting 120.
+    """
+    images, masks = build_fixture(tmp_path / "fixture")
+    profile = profile_scenes(images, masks)
+    out = tmp_path / "synthetic"
+
+    summary = generate_dataset(
+        profile, out, GenerationConfig(n_scenes=8, size=64, seed=1, compression="deflate")
+    )
+    first = sorted((out / "train" / "images").glob("*.tif"))
+    assert len(first) == summary["split_counts"]["train"]
+    assert len(first) > 0
+
+    summary = generate_dataset(
+        profile, out, GenerationConfig(n_scenes=4, size=64, seed=2, compression="deflate")
+    )
+
+    assert summary["n_rows"] == 4
+    on_disk = sum(len(list((out / split / "images").glob("*.tif"))) for split in ("train", "val", "test"))
+    assert on_disk == 4
+    masks_on_disk = sum(
+        len(list((out / split / "masks").glob("*.tif"))) for split in ("train", "val", "test")
+    )
+    assert masks_on_disk == 4
+
+    rows = [
+        json.loads(line)
+        for line in (out / "manifest.jsonl").read_text().splitlines()
+        if line.strip()
+    ]
+    assert len(rows) == 4
+
+
+def test_regenerating_at_a_new_resolution_leaves_no_old_resolution_behind(
+    tmp_path: Path,
+) -> None:
+    """The concrete failure: a 512-pixel scene surviving into a 2048-pixel set."""
+    import rasterio
+
+    images, masks = build_fixture(tmp_path / "fixture")
+    profile = profile_scenes(images, masks)
+    out = tmp_path / "synthetic"
+
+    generate_dataset(
+        profile, out, GenerationConfig(n_scenes=4, size=64, seed=1, compression="deflate")
+    )
+    generate_dataset(
+        profile, out, GenerationConfig(n_scenes=4, size=128, seed=2, compression="deflate")
+    )
+
+    sizes = set()
+    for split in ("train", "val", "test"):
+        for path in (out / split / "images").glob("*.tif"):
+            with rasterio.open(path) as src:
+                sizes.add((src.width, src.height))
+    assert sizes == {(128, 128)}, f"mixed resolutions survived: {sizes}"
+
+
+def test_clearing_is_scoped_to_generated_rasters(tmp_path: Path) -> None:
+    """A stray file that is not a scene must not be deleted."""
+    images, masks = build_fixture(tmp_path / "fixture")
+    profile = profile_scenes(images, masks)
+    out = tmp_path / "synthetic"
+    keep = out / "train" / "images" / "notes.txt"
+    keep.parent.mkdir(parents=True, exist_ok=True)
+    keep.write_text("not a scene")
+
+    generate_dataset(
+        profile, out, GenerationConfig(n_scenes=4, size=64, seed=1, compression="deflate")
+    )
+    assert keep.is_file()
+
+
+# ---------------------------------------------------------------------------
+# Extreme-value records
+# ---------------------------------------------------------------------------
+
+
+def test_profile_keeps_the_per_scene_extreme_records(tmp_path: Path) -> None:
+    """The mean curve is not enough; the generator needs the spread.
+
+    A pooled tail is set by the dataset's brightest scenes. An average over
+    scenes has no brightest scene, so a generator fitted to the mean cannot
+    reach the dataset's own p99.9.
+    """
+    images, masks = build_fixture(tmp_path, n_scenes=4)
+    profile = profile_scenes(images, masks)
+    for band in ("VV", "VH"):
+        record = profile.extremes[band]
+        assert "per_scene" in record
+        assert len(record["per_scene"]) == 4
+        for entry in record["per_scene"]:
+            assert "sea_level_db" in entry
+            assert "bright_fraction" in entry
+
+
+def test_extreme_records_carry_more_than_three_knots(tmp_path: Path) -> None:
+    """Three knots truncate the population at its 10th and 90th percentiles.
+
+    The scene-level statistics that are checked live in the region those knots
+    cannot describe, so the curve needs knots out towards the ends.
+    """
+    images, masks = build_fixture(tmp_path, n_scenes=4)
+    profile = profile_scenes(images, masks)
+    for band in ("VV", "VH"):
+        entry = profile.extremes[band]["per_scene"][0]
+        knots = sorted(key for key in entry if "_db_p" in key)
+        assert "bright_db_p1" in knots
+        assert "bright_db_p99" in knots
+        assert "dark_db_p1" in knots
+        assert "dark_db_p99" in knots
+
+
+def test_the_generator_uses_the_extended_knot_set(tmp_path: Path) -> None:
+    """The curve the generator samples must be the curve the profile recorded."""
+    images, masks = build_fixture(tmp_path, n_scenes=4)
+    profile = profile_scenes(images, masks)
+    record = _pick_extreme_record(np.random.default_rng(0), profile, "VV")
+    prefix_key = "bright_db_"
+    curve = {
+        key[len(prefix_key) :]: value
+        for key, value in record.items()
+        if key.startswith(prefix_key)
+    }
+    assert set(curve) == {"p1", "p10", "p50", "p90", "p99"}
+
+
+def test_extremes_are_placed_relative_to_the_scene_sea_level() -> None:
+    """The recorded offset must be preserved when the scene's sea moves.
+
+    The record came from a scene whose sea sat at some level; writing its
+    absolute brightness into a scene 2 dB darker would put a vessel 2 dB closer
+    to the noise floor than the measurement says.
+    """
+    record = {
+        "bright_fraction": 0.5,
+        "bright_component_px": 1.0,
+        "bright_db_p1": -10.0,
+        "bright_db_p10": -10.0,
+        "bright_db_p50": -10.0,
+        "bright_db_p90": -10.0,
+        "bright_db_p99": -10.0,
+        "sea_level_db": -30.0,
+    }
+    band = np.full((32, 32), -32.0, dtype=np.float32)
+    out = _apply_extremes(
+        np.random.default_rng(0),
+        band,
+        record,
+        "bright",
+        32,
+        32,
+        1.0,
+        scene_sea_level=-32.0,
+    )
+    # 20 dB above a sea level of -30 becomes 20 dB above -32.
+    assert float(out.max()) == pytest.approx(-12.0, abs=1e-4)
 
 
 # ---------------------------------------------------------------------------

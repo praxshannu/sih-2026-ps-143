@@ -82,6 +82,18 @@ EXTREME_THRESHOLD_DB = 8.0
 #: measurement.
 _MIN_EXTREME_PIXELS = 64
 
+#: Percentiles recorded for the bright and dark extreme populations.
+#:
+#: Five knots rather than three, because the generator samples this curve as an
+#: inverse CDF and the scene-level statistics that are checked live *outside*
+#: the body of the extreme population. Measured on this archive, VV's brightest
+#: 0.1% of pixels is the top 22% of its bright population, and VH's is the top
+#: 40% — both inside [p10, p90], but only just, and a three-knot piecewise
+#: linear curve straightens out exactly the curvature that decides where they
+#: land. The tails are where a detector's threshold sits, so they are worth the
+#: extra two numbers.
+_EXTREME_PERCENTILES = (1.0, 10.0, 50.0, 90.0, 99.0)
+
 
 def read_bands(path: Path) -> np.ndarray:
     """Read a raster as ``(C, H, W)`` float32 without touching global state."""
@@ -201,19 +213,20 @@ def _extremes(band: np.ndarray, valid: np.ndarray, sea_level: float) -> dict[str
     Recording all three numbers — coverage, brightness and component size —
     is what lets the generator reproduce the tail instead of approximating it
     with more noise, which would widen the body as well.
+
+    Brightness is recorded as a five-knot inverse CDF rather than a mean, and
+    the scene's own sea level is recorded alongside it, so the generator can
+    place these pixels at the measured *offset from their scene's sea* instead
+    of at an absolute level. Writing absolute levels into every scene is what
+    decouples the extremes from the sea they sit on.
     """
-    out: dict[str, float] = {
-        "bright_fraction": 0.0,
-        "bright_db_p10": 0.0,
-        "bright_db_p50": 0.0,
-        "bright_db_p90": 0.0,
-        "bright_component_px": 0.0,
-        "dark_fraction": 0.0,
-        "dark_db_p10": 0.0,
-        "dark_db_p50": 0.0,
-        "dark_db_p90": 0.0,
-        "dark_component_px": 0.0,
-    }
+    out: dict[str, float] = {"sea_level_db": round(float(sea_level), 4)}
+    for prefix in ("bright", "dark"):
+        out[f"{prefix}_fraction"] = 0.0
+        out[f"{prefix}_component_px"] = 0.0
+        for level in _EXTREME_PERCENTILES:
+            out[f"{prefix}_db_p{level:g}"] = 0.0
+
     for prefix, selection in (
         ("bright", valid & (band > sea_level + EXTREME_THRESHOLD_DB)),
         ("dark", valid & (band < sea_level - EXTREME_THRESHOLD_DB)),
@@ -221,10 +234,9 @@ def _extremes(band: np.ndarray, valid: np.ndarray, sea_level: float) -> dict[str
         out[f"{prefix}_fraction"] = float(selection.mean())
         if int(selection.sum()) < _MIN_EXTREME_PIXELS:
             continue
-        p10, p50, p90 = np.percentile(band[selection], (10.0, 50.0, 90.0))
-        out[f"{prefix}_db_p10"] = round(float(p10), 4)
-        out[f"{prefix}_db_p50"] = round(float(p50), 4)
-        out[f"{prefix}_db_p90"] = round(float(p90), 4)
+        values = np.percentile(band[selection], _EXTREME_PERCENTILES)
+        for level, value in zip(_EXTREME_PERCENTILES, values, strict=True):
+            out[f"{prefix}_db_p{level:g}"] = round(float(value), 4)
         out[f"{prefix}_component_px"] = round(_component_median_px(selection), 3)
     return out
 
@@ -553,12 +565,29 @@ def profile_scenes(
         # typical object size towards zero.
         records = extremes_by_band[band_index]
         if records:
+            _extreme_keys = [
+                key
+                for key in records[0]
+                if key.endswith("_fraction")
+                or "_db_p" in key
+                or key.endswith("_component_px")
+                or key == "sea_level_db"
+            ]
             extremes[name] = {
                 key: round(float(np.mean([rec[key] for rec in records])), 6)
-                for key in records[0]
-                if key.endswith("_fraction") or key.endswith("_db_p10")
-                or key.endswith("_db_p50") or key.endswith("_db_p90")
+                for key in _extreme_keys
+                if key != "sea_level_db"
             }
+            # The per-scene records are kept, and they are what the generator
+            # samples from. A mean curve carries no between-scene variation, and
+            # the between-scene variation of extreme brightness is most of what
+            # decides the pooled tail: VV's brightest 0.1% of pixels comes from
+            # whichever scenes had bright objects, not from the average scene.
+            # Collapsing to the mean is why a generated VV p99.9 came out 3.4 dB
+            # too dim while its own bright-extreme p90 matched.
+            extremes[name]["per_scene"] = [
+                {key: float(rec[key]) for key in _extreme_keys} for rec in records
+            ]
             for prefix in ("bright", "dark"):
                 sizes = [
                     rec[f"{prefix}_component_px"]
