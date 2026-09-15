@@ -141,3 +141,71 @@ def test_datasource_settings_reject_absurd_band_counts() -> None:
         DataSourceSettings(require_bands=0)
     with pytest.raises(ValidationError):
         DataSourceSettings(require_bands=1000)
+
+
+def test_scene_grouping_defaults_to_per_file() -> None:
+    """The default must not read removable media: a fresh clone has no archive."""
+    assert DataSourceSettings().resolved_scene_grouping() == "per_file"
+
+
+def test_the_legacy_spatial_flag_resolves_to_the_grid() -> None:
+    cfg = DataSourceSettings(spatial_scene_grouping=True)
+    assert cfg.resolved_scene_grouping() == "grid"
+    # The alias is not rewritten in place; both keys survive into the dump so a
+    # reader can see which one was set.
+    assert cfg.spatial_scene_grouping is True
+
+
+def test_an_explicit_mode_beats_the_legacy_flag() -> None:
+    cfg = DataSourceSettings(spatial_scene_grouping=True, scene_grouping="footprint")
+    assert cfg.resolved_scene_grouping() == "footprint"
+
+
+def test_the_legacy_flag_does_not_override_an_explicit_per_file() -> None:
+    """A stale boolean must not overrule a mode the operator actually wrote.
+
+    This is why the resolver reads ``model_fields_set`` rather than comparing
+    ``scene_grouping`` against its default: the two cases are indistinguishable
+    from the value alone, and treating a deliberate ``per_file`` as "unset"
+    would silently re-enable a header scan the operator had turned off.
+    """
+    cfg = DataSourceSettings(spatial_scene_grouping=True, scene_grouping="per_file")
+    assert cfg.resolved_scene_grouping() == "per_file"
+
+
+def test_scene_grouping_rejects_an_unknown_mode() -> None:
+    with pytest.raises(ValidationError):
+        DataSourceSettings(scene_grouping="spatial")  # type: ignore[arg-type]
+
+
+def test_scene_grouping_is_settable_from_the_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("SENTINEL_DATASOURCES__SCENE_GROUPING", "footprint")
+    settings = reload_settings()
+    assert settings.datasources.resolved_scene_grouping() == "footprint"
+    datasources = settings.describe()["datasources"]
+    assert isinstance(datasources, dict)
+    assert datasources["scene_grouping"] == "footprint"
+    monkeypatch.delenv("SENTINEL_DATASOURCES__SCENE_GROUPING")
+    reload_settings()
+
+
+def test_an_env_supplied_mode_also_beats_the_legacy_flag(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``model_fields_set`` must be populated from the environment, not just kwargs.
+
+    The whole point of reading it is that a value arriving from a deployment's
+    env file counts as deliberate. If it were only populated by constructor
+    arguments, every env-configured deployment would still be silently
+    overridden by a stale boolean.
+    """
+    monkeypatch.setenv("SENTINEL_DATASOURCES__SPATIAL_SCENE_GROUPING", "true")
+    monkeypatch.setenv("SENTINEL_DATASOURCES__SCENE_GROUPING", "per_file")
+    settings = reload_settings()
+    assert settings.datasources.spatial_scene_grouping is True
+    assert settings.datasources.resolved_scene_grouping() == "per_file"
+    monkeypatch.delenv("SENTINEL_DATASOURCES__SPATIAL_SCENE_GROUPING")
+    monkeypatch.delenv("SENTINEL_DATASOURCES__SCENE_GROUPING")
+    reload_settings()

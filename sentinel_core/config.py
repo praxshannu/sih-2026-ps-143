@@ -42,6 +42,7 @@ __all__ = [
     "DataSourceKind",
     "DataSourceSettings",
     "LoggingSettings",
+    "SceneGrouping",
     "Settings",
     "TrainingSettings",
     "get_settings",
@@ -51,6 +52,18 @@ __all__ = [
 
 DataSourceKind = Literal["real", "synthetic"]
 Environment = Literal["dev", "ci", "prod"]
+#: How tiles are grouped into "scenes" before the train/val/test split.
+#:
+#: ``per_file`` — one scene per file. Instant (no header scan) but two tiles cut
+#:   from the same acquisition can land on opposite sides of the split, so
+#:   cross-split metrics are optimistic.
+#: ``grid`` — group by the coarse lat/lon cell holding each tile's *centroid*.
+#:   Cheaper than ``footprint`` only in that it ignores extents; a tile near a
+#:   cell boundary still gets a different id from its neighbour, so it does not
+#:   close the leak.
+#: ``footprint`` — group tiles whose extents actually share ground. This is the
+#:   one that matches the intent, because the extents are read from the data.
+SceneGrouping = Literal["per_file", "grid", "footprint"]
 
 _ROOT_MARKER = "pyproject.toml"
 #: Where the bulk SAR archive is expected to be mounted. Only a default: the
@@ -126,12 +139,30 @@ class DataSourceSettings(BaseModel):
     )
     allow_synthetic_fallback: bool = False
     require_bands: int = Field(default=2, ge=1, le=64)
-    #: Group tiles by the coarse grid cell containing their centroid, as a proxy
-    #: for "same acquisition", so train/test do not share a pass. Off by default
-    #: because it requires reading the header of every scene, and on the external
-    #: archive a *cold* file open costs ~0.3 s — roughly six minutes for 1200
-    #: files. The result is cached in the index, so the cost is paid once.
+    #: Deprecated alias for ``scene_grouping="grid"``. Kept because it is what
+    #: existing deployments set; an explicit ``scene_grouping`` wins over it.
     spatial_scene_grouping: bool = False
+    #: How tiles are grouped into "scenes" before the split. See
+    #: :data:`SceneGrouping`. Defaults to ``per_file`` so that an existing index —
+    #: and the verified run made against it — stays reproducible. ``footprint`` is
+    #: what a held-out evaluation actually needs.
+    scene_grouping: SceneGrouping = "per_file"
+
+    def resolved_scene_grouping(self) -> SceneGrouping:
+        """The effective grouping mode, folding in the deprecated boolean.
+
+        ``spatial_scene_grouping=True`` predates ``scene_grouping`` and means the
+        grid. It is consulted only when ``scene_grouping`` was *not* given, which
+        is why this reads ``model_fields_set`` rather than comparing against the
+        default value: an operator who writes ``scene_grouping="per_file"``
+        alongside a stale ``spatial_scene_grouping=True`` has said what they want,
+        and a boolean left over from an older config must not overrule it.
+        """
+        explicit = "scene_grouping" in self.model_fields_set
+        if not explicit and self.spatial_scene_grouping:
+            return "grid"
+        return self.scene_grouping
+
     #: Refuse to start if the real dataset is on a filesystem we may write to.
     #: Guards the "train in place" contract: the source archive is input only.
     real_read_only_expected: bool = True
@@ -282,6 +313,7 @@ class Settings(BaseSettings):
                 "allow_synthetic_fallback": self.datasources.allow_synthetic_fallback,
                 "require_bands": self.datasources.require_bands,
                 "spatial_scene_grouping": self.datasources.spatial_scene_grouping,
+                "scene_grouping": self.datasources.resolved_scene_grouping(),
             },
             "training": self.training.model_dump(),
             "logging": self.logging.model_dump(),
