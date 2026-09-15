@@ -39,15 +39,15 @@ logs:
 	docker compose -f docker-compose.txt logs -f
 
 test:
-	$(RUN_PY) -m pytest services/ ml/ --tb=short -q
+	$(RUN_PY) -m pytest services/ ml/ sentinel_core/ --tb=short -q
 
 lint:
-	$(RUN_PY) -m ruff check services/ ml/ scripts/
-	$(RUN_PY) -m ruff format --check services/ ml/ scripts/
+	$(RUN_PY) -m ruff check services/ ml/ scripts/ sentinel_core/
+	$(RUN_PY) -m ruff format --check services/ ml/ scripts/ sentinel_core/
 
 format:
-	$(RUN_PY) -m ruff format services/ ml/ scripts/
-	$(RUN_PY) -m ruff check --fix services/ ml/ scripts/
+	$(RUN_PY) -m ruff format services/ ml/ scripts/ sentinel_core/
+	$(RUN_PY) -m ruff check --fix services/ ml/ scripts/ sentinel_core/
 
 mypy-each: $(MYPY_TARGETS)
 
@@ -56,6 +56,7 @@ $(MYPY_TARGETS): mypy-%:
 
 typecheck: mypy-each
 	$(RUN_PY) -m mypy ml/ --ignore-missing-imports
+	$(RUN_PY) -m mypy sentinel_core/ --ignore-missing-imports
 
 seed:
 	$(PYTHON) scripts/seed_demo_case.py

@@ -5,7 +5,7 @@ description = "SENTINEL - Autonomous Maritime Oil Spill Intelligence Platform (S
 requires-python = ">=3.11"
 
 [tool.pytest.ini_options]
-testpaths = ["services", "ml"]
+testpaths = ["services", "ml", "sentinel_core"]
 pythonpath = ["."]
 asyncio_mode = "auto"
 filterwarnings = [
