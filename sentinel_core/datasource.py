@@ -492,6 +492,50 @@ def _build_real(settings: Settings, *, rebuild: bool, grid_deg: float) -> DataSo
     )
 
 
+def _load_manifest_rows(path: Path) -> list[dict[str, Any]]:
+    """Read a manifest's rows, or ``[]`` if it is missing or unreadable."""
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:
+        return []
+    rows: list[dict[str, Any]] = []
+    for line in text.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError:
+            return []
+        if isinstance(row, dict) and row.get("image"):
+            rows.append(row)
+    return rows
+
+
+def _synthetic_spec(
+    root: Path,
+    meta: dict[str, Any],
+    *,
+    n_pairs: int,
+    bands: int,
+    split_strategy: str,
+) -> DataSourceSpec:
+    return DataSourceSpec(
+        kind="synthetic",
+        prepared_root=root,
+        images_dir=root,
+        masks_dir=root,
+        n_pairs=n_pairs,
+        bands=bands,
+        provenance=DataProvenance.SYNTHETIC,
+        in_place=False,
+        read_only=False,
+        split_strategy=split_strategy,
+        warnings=tuple(meta.get("warnings", ())),
+        note=str(meta.get("note", synthetic_warning("synthetic dataset"))),
+    )
+
+
 def _build_synthetic(settings: Settings, *, rebuild: bool) -> DataSourceSpec:
     cfg = settings.datasources
     root = cfg.synthetic_root
@@ -505,24 +549,52 @@ def _build_synthetic(settings: Settings, *, rebuild: bool) -> DataSourceSpec:
 
     meta_path = root / SOURCE_META_NAME
     manifest_path = root / MANIFEST_NAME
-    if manifest_path.is_file() and meta_path.is_file() and not rebuild:
-        meta = json.loads(meta_path.read_text(encoding="utf-8"))
-        return DataSourceSpec(
-            kind="synthetic",
-            prepared_root=root,
-            images_dir=root,
-            masks_dir=root,
-            n_pairs=int(meta.get("n_rows", 0)),
-            bands=int(meta.get("bands", cfg.require_bands)),
-            provenance=DataProvenance.SYNTHETIC,
-            in_place=False,
-            read_only=False,
-            split_strategy=str(meta.get("split_strategy", "unknown")),
-            warnings=tuple(meta.get("warnings", ())),
-            note=str(meta.get("note", "generated dataset")),
-        )
+    meta: dict[str, Any] = {}
+    if meta_path.is_file():
+        try:
+            meta = json.loads(meta_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            meta = {}
 
-    # No manifest: index the split directories directly.
+    # The manifest defines the dataset. The directory listing does not.
+    #
+    # Enumerating the split directories is what turned a real defect into a
+    # corrupt dataset: a re-generation rewrites the scenes it was asked for and
+    # rewrites the manifest whole, but it does not remove what an earlier run
+    # left behind. Generating 120 scenes at 2048 over an earlier run's 120 at
+    # 512 therefore produced a spec claiming 123 pairs at two different
+    # resolutions, and the run reported success. Reading the manifest makes
+    # those leftovers inert instead of authoritative.
+    if manifest_path.is_file():
+        manifest_rows = _load_manifest_rows(manifest_path)
+        if manifest_rows:
+            bands = int(meta.get("bands", cfg.require_bands))
+            if not rebuild:
+                return _synthetic_spec(
+                    root,
+                    meta,
+                    n_pairs=len(manifest_rows),
+                    bands=bands,
+                    split_strategy="manifest",
+                )
+            missing = [row for row in manifest_rows if not Path(row["image"]).is_file()]
+            if not missing:
+                return _synthetic_spec(
+                    root,
+                    meta,
+                    n_pairs=len(manifest_rows),
+                    bands=bands,
+                    split_strategy="manifest",
+                )
+            logger.warning(
+                "{} of {} row(s) in {} name files that no longer exist; "
+                "re-enumerating the split directories instead",
+                len(missing),
+                len(manifest_rows),
+                manifest_path,
+            )
+
+    # No usable manifest: index the split directories directly.
     images: list[Path] = []
     masks: list[Path] = []
     for split in ("train", "val", "test"):
@@ -563,19 +635,8 @@ def _build_synthetic(settings: Settings, *, rebuild: bool) -> DataSourceSpec:
             "note": synthetic_warning("synthetic dataset"),
         },
     )
-    return DataSourceSpec(
-        kind="synthetic",
-        prepared_root=root,
-        images_dir=root,
-        masks_dir=root,
-        n_pairs=len(rows),
-        bands=bands,
-        provenance=DataProvenance.SYNTHETIC,
-        in_place=False,
-        read_only=False,
-        split_strategy="directory",
-        warnings=(),
-        note=synthetic_warning("synthetic dataset"),
+    return _synthetic_spec(
+        root, meta, n_pairs=len(rows), bands=bands, split_strategy="directory"
     )
 
 

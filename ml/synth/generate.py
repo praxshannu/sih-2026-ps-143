@@ -576,33 +576,34 @@ def _write_scene(
     return image_path.stat().st_size, mask_path.stat().st_size
 
 
-def _clear_split_rasters(root: Path) -> int:
-    """Remove rasters a previous generation left in this dataset's splits.
+def _stale_rasters(root: Path, written: Sequence[Path]) -> list[Path]:
+    """Rasters in this dataset's split directories that this run did not write.
 
     ``generate_dataset`` rewrites every scene it is asked for and then rewrites
-    the manifest — but it does not know what an *earlier* run wrote. Generating
-    120 scenes at 2048 over an earlier run's 120 at 512 leaves the old files in
-    place, and the next ``resolve_source(rebuild=True)`` enumerates the
-    directory rather than the manifest, so those files are indexed as part of
-    the dataset. The manifest said 120; the dataset held 123, at two different
-    resolutions, and the run reported success.
+    the manifest whole, but it has no idea what an *earlier* run left behind.
+    Generating 120 scenes at 2048 on top of an earlier run's 120 at 512 leaves
+    the old files in place.
 
-    Clearing first is what makes the written manifest authoritative.
-
-    Scoped to ``<root>/<split>/{images,masks}`` and to raster suffixes only, so
-    a mistyped root cannot delete anything that is not a generated scene.
+    They are reported rather than deleted. Deleting a few hundred files inside a
+    user's data directory to tidy up after ourselves is a destructive operation
+    that the operator did not ask for, and it is not necessary: the manifest is
+    written atomically and completely, so it — not the directory listing — is
+    what defines the dataset. ``sentinel_core.datasource`` now reads it that way,
+    which is the actual fix. This function exists so the leftovers are not
+    silent, because a directory that disagrees with its manifest is a trap for
+    whoever looks at it next.
     """
-    removed = 0
+    owned = {path.resolve() for path in written}
+    stale: list[Path] = []
     for split in SPLIT_NAMES:
         for kind in ("images", "masks"):
             directory = root / split / kind
             if not directory.is_dir():
                 continue
-            for path in directory.iterdir():
-                if path.is_file() and path.suffix.lower() in RASTER_SUFFIXES:
-                    path.unlink()
-                    removed += 1
-    return removed
+            for path in sorted(directory.iterdir()):
+                if path.suffix.lower() in RASTER_SUFFIXES and path.resolve() not in owned:
+                    stale.append(path)
+    return stale
 
 
 def generate_dataset(
@@ -613,25 +614,16 @@ def generate_dataset(
     pixel_size: float = DEFAULT_PIXEL_SIZE_DEG,
     origin: tuple[float, float] = DEFAULT_ORIGIN,
     band_names: Sequence[str] = ("VV", "VH"),
-    clean: bool = True,
 ) -> dict[str, Any]:
     """Write a complete synthetic dataset and return a summary of what it did.
 
-    With ``clean`` (the default) the split directories are emptied of rasters
-    first, so the dataset on disk is exactly the dataset this call wrote.
+    The manifest written here is the definition of the dataset. Rasters left by
+    a previous generation are reported in the summary as ``stale_rasters`` and
+    excluded from it; see :func:`_stale_rasters`.
     """
     counts = config.split_counts()
     rng = np.random.default_rng(config.seed)
     root.mkdir(parents=True, exist_ok=True)
-
-    if clean:
-        removed = _clear_split_rasters(root)
-        if removed:
-            logger.info(
-                "removed {} stale raster(s) from a previous generation; the manifest "
-                "is only authoritative if the directories match it",
-                removed,
-            )
 
     rows: list[dict[str, Any]] = []
     scene_index = 0
@@ -678,6 +670,19 @@ def generate_dataset(
             sink.write(json.dumps(row, sort_keys=True) + "\n")
     tmp_manifest.replace(manifest)
 
+    written = [Path(row["image"]) for row in rows] + [Path(row["mask"]) for row in rows]
+    stale = _stale_rasters(root, written)
+    if stale:
+        logger.warning(
+            "{} raster(s) in {} were not written by this run and are NOT part of the "
+            "dataset; the manifest defines it. They are left in place rather than "
+            "deleted — remove them yourself if you want the directory to match. "
+            "First few: {}",
+            len(stale),
+            root,
+            ", ".join(path.name for path in stale[:5]),
+        )
+
     oil_fractions = [meta["oil_fraction"] for stats in per_split_stats.values() for meta in stats]
     nodata_fractions = [
         meta["nodata_fraction"] for stats in per_split_stats.values() for meta in stats
@@ -695,6 +700,10 @@ def generate_dataset(
         "provenance": DataProvenance.SYNTHETIC.value,
         "note": synthetic_warning("synthetic dataset"),
         "fitted_from": profile.source,
+        #: Rasters present in the split directories that this run did not write.
+        #: Excluded from the dataset (the manifest defines it), reported so a
+        #: directory that disagrees with its manifest is not a silent trap.
+        "stale_rasters": [str(path) for path in stale],
         "oil_fraction_mean": round(float(np.mean(oil_fractions)), 6) if oil_fractions else 0.0,
         "oil_fraction_zero_rate": round(
             float(np.mean([value <= 0.0 for value in oil_fractions])), 6

@@ -15,6 +15,7 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+import rasterio
 
 from ml.synth.generate import (
     GenerationConfig,
@@ -32,6 +33,8 @@ from ml.synth.profile import (
     compare_profiles,
     profile_scenes,
 )
+from sentinel_core.config import DataSourceSettings, Settings
+from sentinel_core.datasource import _build_synthetic
 
 SCENE = 256
 
@@ -328,39 +331,20 @@ def test_generate_dataset_writes_a_manifest_and_provenance(tmp_path: Path) -> No
     assert (out / "distribution.json").is_file()
 
 
-def test_regenerating_replaces_the_dataset_instead_of_adding_to_it(tmp_path: Path) -> None:
-    """A second generation must not inherit the first one's scenes.
-
-    The manifest is rewritten whole, but the scenes are written into the split
-    directories. Generating over an existing dataset without clearing first
-    leaves the old files behind, and the dataset loader enumerates the
-    directory rather than the manifest -- so a 120-scene run landed on top of
-    three stale files from an earlier 512-pixel run and produced a 123-scene
-    dataset at two different resolutions, while reporting 120.
-    """
+def test_regenerating_rewrites_the_manifest_whole(tmp_path: Path) -> None:
+    """The second generation's manifest must describe the second generation."""
     images, masks = build_fixture(tmp_path / "fixture")
     profile = profile_scenes(images, masks)
     out = tmp_path / "synthetic"
 
-    summary = generate_dataset(
+    generate_dataset(
         profile, out, GenerationConfig(n_scenes=8, size=64, seed=1, compression="deflate")
     )
-    first = sorted((out / "train" / "images").glob("*.tif"))
-    assert len(first) == summary["split_counts"]["train"]
-    assert len(first) > 0
-
     summary = generate_dataset(
         profile, out, GenerationConfig(n_scenes=4, size=64, seed=2, compression="deflate")
     )
 
     assert summary["n_rows"] == 4
-    on_disk = sum(len(list((out / split / "images").glob("*.tif"))) for split in ("train", "val", "test"))
-    assert on_disk == 4
-    masks_on_disk = sum(
-        len(list((out / split / "masks").glob("*.tif"))) for split in ("train", "val", "test")
-    )
-    assert masks_on_disk == 4
-
     rows = [
         json.loads(line)
         for line in (out / "manifest.jsonl").read_text().splitlines()
@@ -369,44 +353,119 @@ def test_regenerating_replaces_the_dataset_instead_of_adding_to_it(tmp_path: Pat
     assert len(rows) == 4
 
 
-def test_regenerating_at_a_new_resolution_leaves_no_old_resolution_behind(
+def test_stale_rasters_are_reported_rather_than_silently_included(
     tmp_path: Path,
 ) -> None:
-    """The concrete failure: a 512-pixel scene surviving into a 2048-pixel set."""
-    import rasterio
+    """A shorter re-generation leaves files behind; that must not be invisible.
 
+    Generating 8 scenes and then 4 overwrites the first four stems and orphans
+    the rest -- 4 images and 4 masks. They are reported so a directory that
+    disagrees with its manifest is not a trap for whoever looks at it next.
+    """
+    images, masks = build_fixture(tmp_path / "fixture")
+    profile = profile_scenes(images, masks)
+    out = tmp_path / "synthetic"
+
+    first = generate_dataset(
+        profile, out, GenerationConfig(n_scenes=8, size=64, seed=1, compression="deflate")
+    )
+    assert first["stale_rasters"] == []
+
+    before = {
+        path
+        for split in ("train", "val", "test")
+        for kind in ("images", "masks")
+        for path in (out / split / kind).glob("*.tif")
+    }
+
+    summary = generate_dataset(
+        profile, out, GenerationConfig(n_scenes=4, size=64, seed=2, compression="deflate")
+    )
+
+    rows = [
+        json.loads(line)
+        for line in (out / "manifest.jsonl").read_text().splitlines()
+        if line.strip()
+    ]
+    current = {Path(row["image"]) for row in rows} | {Path(row["mask"]) for row in rows}
+    expected = before - current
+
+    # The premise: a shorter re-generation genuinely leaves files behind. Which
+    # ones depends on the split arithmetic -- run 2's val scene is stem 00003,
+    # which does not collide with run 1's val scene at 00006 -- so the count is
+    # derived rather than hardcoded.
+    assert expected, "the premise of this test is that files are left behind"
+    assert {Path(path) for path in summary["stale_rasters"]} == expected
+    for path in expected:
+        assert path.is_file()
+
+
+def test_the_manifest_defines_the_dataset_not_the_directory(tmp_path: Path) -> None:
+    """The defect this guards: 120 scenes at 2048 over 120 at 512 gave 123 pairs.
+
+    A generation cannot clean up after an earlier one, so leftovers are
+    inevitable. The dataset is defined by the manifest -- which is written
+    atomically and completely -- so the leftovers must be inert.
+    """
     images, masks = build_fixture(tmp_path / "fixture")
     profile = profile_scenes(images, masks)
     out = tmp_path / "synthetic"
 
     generate_dataset(
-        profile, out, GenerationConfig(n_scenes=4, size=64, seed=1, compression="deflate")
+        profile, out, GenerationConfig(n_scenes=8, size=64, seed=1, compression="deflate")
     )
     generate_dataset(
         profile, out, GenerationConfig(n_scenes=4, size=128, seed=2, compression="deflate")
     )
 
+    # The directory genuinely holds both generations -- that is the premise.
+    on_disk = sum(
+        len(list((out / split / "images").glob("*.tif"))) for split in ("train", "val", "test")
+    )
+    assert on_disk > 4
+
+    settings = Settings(datasources=DataSourceSettings(synthetic_root=out))
+    for rebuild in (False, True):
+        spec = _build_synthetic(settings, rebuild=rebuild)
+        assert spec.n_pairs == 4, f"rebuild={rebuild} indexed the leftovers"
+
+    # And every pair the spec claims must be a real, single-resolution file.
+    rows = [
+        json.loads(line)
+        for line in (out / "manifest.jsonl").read_text().splitlines()
+        if line.strip()
+    ]
     sizes = set()
-    for split in ("train", "val", "test"):
-        for path in (out / split / "images").glob("*.tif"):
-            with rasterio.open(path) as src:
-                sizes.add((src.width, src.height))
-    assert sizes == {(128, 128)}, f"mixed resolutions survived: {sizes}"
+    for row in rows:
+        with rasterio.open(row["image"]) as src:
+            sizes.add((src.width, src.height))
+    assert sizes == {(128, 128)}, f"the dataset mixed resolutions: {sizes}"
 
 
-def test_clearing_is_scoped_to_generated_rasters(tmp_path: Path) -> None:
-    """A stray file that is not a scene must not be deleted."""
+def test_the_manifest_is_trusted_even_when_files_are_missing(tmp_path: Path) -> None:
+    """With rebuild=False the manifest is the answer; it is not re-derived.
+
+    Re-deriving on every call is what made the directory listing authoritative.
+    A missing file is only escalated when the caller explicitly asked to rebuild.
+    """
     images, masks = build_fixture(tmp_path / "fixture")
     profile = profile_scenes(images, masks)
     out = tmp_path / "synthetic"
-    keep = out / "train" / "images" / "notes.txt"
-    keep.parent.mkdir(parents=True, exist_ok=True)
-    keep.write_text("not a scene")
-
     generate_dataset(
         profile, out, GenerationConfig(n_scenes=4, size=64, seed=1, compression="deflate")
     )
-    assert keep.is_file()
+
+    rows = [
+        json.loads(line)
+        for line in (out / "manifest.jsonl").read_text().splitlines()
+        if line.strip()
+    ]
+    Path(rows[0]["image"]).unlink()
+
+    settings = Settings(datasources=DataSourceSettings(synthetic_root=out))
+    assert _build_synthetic(settings, rebuild=False).n_pairs == 4
+    # rebuild=True notices the gap and falls back to the directory listing.
+    assert _build_synthetic(settings, rebuild=True).n_pairs == 3
 
 
 # ---------------------------------------------------------------------------
