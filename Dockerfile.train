@@ -23,7 +23,7 @@
 #     -v /Volumes/Ventoy/Oil:/data/real:ro \
 #     -v "$PWD/runs:/app/runs" \
 #     -e SENTINEL_DATASOURCES__REAL_IMAGES_DIR=/data/real \
-#     sentinel-train --data-source real --epochs 3 --max-scenes 24
+#     sentinel-train --data-source real --epochs 3 --max-pairs 24
 FROM python:3.11-slim AS base
 
 WORKDIR /app

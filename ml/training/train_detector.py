@@ -42,7 +42,7 @@ and the run is marked failed.
 
 Usage::
 
-    python scripts/train.py --data-source real --epochs 3 --max-scenes 24
+    python scripts/train.py --data-source real --epochs 3 --max-pairs 24
     python scripts/train.py --data-source synthetic --epochs 5
 """
 
@@ -666,8 +666,9 @@ def _cap_scenes(
         kept.extend(group[:n])
         counts[split] = n
     note = (
-        f"max_scenes={max_scenes} capped this run to {len(kept)} of {total} pair(s) "
-        f"({', '.join(f'{k}={v}' for k, v in sorted(counts.items()))})"
+        f"max_pairs={max_scenes} capped this run to {len(kept)} of {total} pair(s) "
+        f"({', '.join(f'{k}={v}' for k, v in sorted(counts.items()))}). This counts "
+        "image/mask pairs, not scenes."
     )
     return kept, note
 

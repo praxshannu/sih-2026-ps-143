@@ -139,22 +139,43 @@ ever reaching an analyst.
 implemented and unit-tested against fixtures; it has never seen the real
 archives (40.7 GB + 45.9 GB + 9.9 GB monolithic `.7z` — the disk cannot take it).
 
-### 2.4 The training pipeline exists, and has now trained on the real archive
+### 2.4 The training pipeline exists, and has now been run twice on the real archive
 
 This does **not** change the status above: no trained model is deployed. What
 changed is that the pipeline which would produce one is real, runs to
-completion, and has been run for a full 10 epochs over the real archive at the
-configured resolution.
+completion, and has been run for a full 10 epochs over the real archive twice —
+once on a leaky split, once on a leak-free one. The second run is the one worth
+reading.
 
-#### The real run
+#### Two runs, one budget
+
+Both runs used the same budget: 120 image/mask pairs, 512², batch 4, 10 epochs,
+MPS, the archive read in place. The only difference is how tiles were grouped
+before the split.
+
+| | run A | run B |
+|---|---|---|
+| run id | `20260915T154010Z-real-10ep-512-828cee` | `20260915T164046Z-real-10ep-512-footprint-b79e83` |
+| `scene_grouping` | `per_file` | `footprint` |
+| split strategy | `per_file_hash` | `footprint_connected` |
+| train | 96 pairs / 1 "scene" | 106 pairs / **33 acquisitions** |
+| val | 24 pairs / 1 "scene" | 14 pairs / **8 acquisitions** |
+| val oil fraction | 15.2 % | 3.6 % |
+| duration | 1703 s | 1581 s |
+| **best val IoU** | **0.8050** | **0.2981** |
+| `source_unchanged` | True | True |
+
+Run A's `n_scenes: 1` is not a typo. The archive has no scene identifier and the
+loader was deriving ids from the file path, which for a flat archive collapses
+to the archive directory name — so the trainer's leakage guard saw one scene and
+had nothing to check. See LIMITATIONS B11.
+
+#### Run A — per-file split
 
 ```bash
 python scripts/train.py --data-source real --epochs 10 --image-size 512 \
-    --batch-size 4 --max-scenes 120 --run-name real-10ep-512
+    --batch-size 4 --max-pairs 120 --run-name real-10ep-512
 ```
-
-`runs/20260915T154010Z-real-10ep-512-828cee/` — 10 epochs in 1703 s (28.4 min)
-on MPS, exit `0`, `source_unchanged: True`.
 
 | epoch | train IoU | val IoU | val precision | val recall | val F1 |
 |---|---|---|---|---|---|
@@ -169,57 +190,105 @@ on MPS, exit `0`, `source_unchanged: True`.
 | 9 | 0.5740 | 0.7594 | 0.8126 | 0.9207 | 0.8633 |
 | 10 | 0.5922 | **0.8050** | 0.9153 | 0.8698 | 0.8920 |
 
-`best_val_iou 0.8050` at epoch 10 (0-based index 9). Train IoU sits *below* val
-IoU throughout because train is measured under augmentation — random flips,
-90° rotations and crops — while val uses the eval transform. Train is the
-harder measurement, so the two are not comparable to each other.
+`best_val_iou 0.8050` at epoch 10.
 
-#### 0.8050 is an upper bound, not a generalisation estimate
+#### Run B — footprint split
 
-**This number must not be quoted as a detection performance.** The run's own
-claim string says why:
+```bash
+python scripts/train.py --data-source real --epochs 10 --image-size 512 \
+    --batch-size 4 --max-pairs 120 --run-name real-10ep-512-footprint
+```
 
-> Trained on real SAR scenes read in place from /Volumes/Ventoy/Oil. Split
-> strategy: `per_file_hash`. The archive carries no scene identifier, so if the
-> split is per file rather than per acquisition, cross-split metrics are
-> optimistic — treat them as an upper bound.
+Tiles were grouped by the ground they share, so no acquisition appears on both
+sides of the boundary. 1200 tiles resolve to 195 acquisition areas; the 120 kept
+here span 33 train acquisitions and 8 val ones, and **zero** straddle the split
+(verified independently against the manifest, and enforced by the trainer).
 
-The archive carries no scene identifier (every GeoTIFF has only generic TIFF
-tags), so `n_scenes` is 1 for both splits and `scene_leakage` cannot see
-anything: tiles from one acquisition can straddle the train/val boundary. A
-per-file split of 2048² tiles is not a held-out set. See LIMITATIONS B11.
+| epoch | train IoU | val IoU | val precision | val recall | val F1 |
+|---|---|---|---|---|---|
+| 1 | 0.1779 | 0.0000 | 0.0000 | 0.0000 | 0.0000 |
+| 2 | 0.3621 | 0.0000 | 0.0000 | 0.0000 | 0.0000 |
+| 3 | 0.4333 | 0.2458 | 0.3230 | 0.5070 | 0.3946 |
+| 4 | 0.3646 | 0.2764 | 0.4957 | 0.3845 | 0.4331 |
+| 5 | 0.5688 | 0.2520 | 0.4314 | 0.3774 | 0.4026 |
+| 6 | 0.5611 | 0.2663 | 0.3175 | 0.6227 | 0.4206 |
+| 7 | 0.5994 | 0.2071 | 0.2527 | 0.5342 | 0.3431 |
+| 8 | 0.6469 | **0.2981** | 0.4289 | 0.4943 | 0.4593 |
+| 9 | 0.5857 | 0.2865 | 0.3352 | 0.6639 | 0.4454 |
+| 10 | 0.7044 | 0.2552 | 0.3213 | 0.5537 | 0.4066 |
 
-The run is also bounded to 120 of 1200 pairs (96 train / 24 val) by
-`--max-scenes`, and there is no test split at all — `test_fraction` defaults to
-`0.0`. So this is one training run, on a quarter of one archive, with no
-held-out evaluation. It demonstrates that the network learns; it does not
-measure how well it would detect a spill it has not seen.
+`best_val_iou 0.2981` at epoch 8. Train IoU sits *below* val IoU for most of the
+run because train is measured under augmentation — random flips, 90° rotations
+and crops — while val uses the eval transform. Train is the harder measurement,
+so the two are not comparable to each other.
+
+#### What the difference between them measures
+
+**0.8050 − 0.2981 = 0.5069.** About **63 % of the number run A reported was the
+leak.** That is the honest headline of this section, and it is the reason run A's
+figure was labelled an upper bound rather than a result.
+
+Three details make it more than an arithmetic comparison:
+
+- **Train went up while val went down.** Run A's final train IoU was 0.5922; run
+  B's is 0.7044. The model fits its training tiles *better* on the leak-free
+  split and generalises *worse*. That is exactly what removing a leak looks
+  like: with near-duplicate tiles on both sides, the validation set was a
+  slightly harder copy of the training set, and the model could score well on it
+  without learning anything transferable.
+- **The two val sets are not the same difficulty.** Run A's val tiles were 15.2 %
+  oil; run B's are 3.6 %. A quarter of the positives, so far less room to be
+  right by accident.
+- **Run B's val IoU stops improving.** It reaches 0.2458 at epoch 3 and then
+  oscillates between 0.21 and 0.30 for seven more epochs with no trend, while
+  train IoU climbs to 0.70. Run A climbed steadily to 0.8050. The plateau is the
+  more informative shape: on unseen ground this model has stopped learning.
+
+#### 0.2981 is not a detection performance either
+
+It is a better number than 0.8050 because it is not inflated, not because it is
+good. Two limitations survive the fix:
+
+- **The val split is thin.** 14 tiles across 8 acquisitions. `val_fraction=0.2`
+  counts *scenes*, and acquisitions range from 1 to 114 tiles, so a scene-level
+  fraction cannot hit a tile fraction — this run got 11.7 % of tiles for a 20 %
+  scene fraction. One unusually easy or hard acquisition would move the score a
+  lot.
+- **There is no held-out test set.** `test_fraction` is 0, so val is the only
+  cross-split number and it was used for model selection. A footprint split
+  removes shared *ground*, not shared *conditions*: tiles within one acquisition
+  still share its calibration, incidence angle and wind regime. This measures
+  transfer to unseen ground, not to unseen weather.
+
+The run's own `claim` string says all of this, and says it conditionally — the
+`per_file_hash` caveat is no longer printed for a footprint split, because a
+caveat that appears on every run is boilerplate and boilerplate is how run A's
+leak survived being called verified.
 
 #### The two epochs of zero are not a defect
 
-Epochs 1–2 report val IoU `0.0000`, and epoch 2 reports `precision 1.0000`
-alongside it. Both are arithmetically correct and both are the same phenomenon:
-at the 0.5 threshold the model predicted almost nothing on held-out tiles.
+Epochs 1–2 report val IoU `0.0000` in both runs. In run B both also report
+precision `0.0000`, which is the honest reading: at the 0.5 threshold the model
+predicted **nothing at all** — `tp 0, fp 0, fn 131129` — against a val set that
+is 3.6 % oil. The train IoU over those same epochs was 0.18–0.36 because train
+metrics accumulate on batches the optimiser has just stepped on, while val is
+seen without a gradient. The model was sitting near the class prior and had not
+yet escaped it. It escaped at epoch 3 in both runs.
 
-- Epoch 1 predicted **6 pixels out of 6,291,456**, and all 6 were correct —
-  hence precision `1.0000`, recall `6e-6`.
-- Epoch 2 predicted none at all, against 954,535 positive pixels.
+`degenerate_no_positive_evidence` is `0.0` for every epoch of both runs, which
+is correct: it means `union == 0`, i.e. nothing predicted *and* nothing labelled.
+Here there were 131,129 labelled positive pixels, so the metric is well-defined
+and the zero is a real measurement.
 
-The train IoU over those same epochs was 0.19–0.40 because train metrics
-accumulate on batches the optimiser has just stepped on, while val is seen
-without a gradient. The model was sitting near the class prior (6% of train
-pixels and 15% of val pixels are oil) and had not yet escaped it. It escaped at
-epoch 3 and never returned. The small numbers are the metric working: the model
-was predicting nothing, and the report says so.
-
-#### What the run does establish
+#### What the runs establish
 
 - **The archive is read where it lies.** Two independent checks. The trainer's
   `SourceFingerprint` records `mtime_ns`, entry count and `st_dev` for both
   `/Volumes/Ventoy/Oil` (2400 entries, `st_dev 16777238`) and the mask
-  directory, and re-checks them at the end → `source_unchanged: True`. And a
-  SHA-256 over every filename, size and `mtime_ns` in the archive, taken before
-  and after the 10 epochs, is **identical**:
+  directory, and re-checks them at the end → `source_unchanged: True` in both
+  runs. And a SHA-256 over every filename, size and `mtime_ns` in the archive,
+  taken before and after, is **identical** across the whole session — the index
+  rebuild, the header scan and the 10 epochs:
 
   ```
   before: {"dir_mtime_ns": 1682009727000000000, "entries": 2400,
@@ -234,10 +303,14 @@ was predicting nothing, and the report says so.
 - **Checkpoints, `run_report.json` and `metrics.jsonl` are written atomically**
   and carry the provenance stamp, the normalization statistics, the exact
   source directories and the fingerprints.
+- **The split can be checked rather than trusted.** The trainer refuses to start
+  if any scene id appears in more than one split (`reason="scene_leakage"`), and
+  that guard is now capable of failing — under `per_file` it could not.
 
 #### Defects these runs found, and fixed
 
-Four, all of which had made training impossible or the report wrong:
+Five, all of which had made training impossible, the report wrong, or the
+number meaningless:
 
 1. **The geometry transforms were written for a 2-D mask** while the loader
    supplies `(1, H, W)`. `mask[rows, cols]` on a 3-D array means
@@ -256,11 +329,20 @@ Four, all of which had made training impossible or the report wrong:
    were seeded into local variables but never into the report, so a resumed run
    that did not beat its checkpoint reported `best val IoU 0.0000 at epoch -1`
    while holding a checkpoint that scored better than that.
+5. **The split leaked, and the guard meant to catch it could not.** Two bugs at
+   once: `default_scene_id` collapsed every tile to the archive directory name,
+   and `SAROilSpillDataset` ignored the manifest's `scene_id` column and
+   re-derived ids from the path. Either alone made `scene_leakage` vacuous. The
+   fix is footprint grouping plus reading the id the index actually wrote; the
+   measurement of what it was worth is run A versus run B above. LIMITATIONS B11.
 
 #### Per-band normalization, and an unverified band order
 
-The run fitted per-band statistics from 32 training scenes:
-`VV mean −32.34 std 4.63`, `VH mean −20.16 std 4.04` (dB).
+Run B fitted per-band statistics from 32 training scenes:
+`VV mean −32.35 std 4.26`, `VH mean −19.99 std 3.53` (dB). Run A's were
+`−32.34 / 4.63` and `−20.16 / 4.04`; they differ because the training subset
+changed, which is expected and is why the statistics are recorded in the report
+rather than assumed.
 
 Those labels are an assumption, not a measurement — see LIMITATIONS B12. The
 archive has no band metadata, and band 1 is 12.2 dB *brighter* than band 0,
@@ -311,10 +393,12 @@ suspect list.
 | A deterministic detector runs on real Sentinel-1 data | **Verified**, 4 scenes, reproduced twice |
 | It produces Wilson 95 % CIs, never point estimates | **Verified** by test |
 | Its confidence is a calibrated P(oil) | **False.** Pixel-evidence interval only. |
-| A trained segmentation model exists | **Half true.** One has been trained (§2.4). None is deployed, evaluated on held-out data, or fit for use. |
-| The training pipeline runs end-to-end on both data sources | **Verified**, 10 real epochs plus a synthetic run, `source_unchanged: True` |
+| A trained segmentation model exists | **Half true.** Two 10-epoch runs exist (§2.4). Neither is deployed; neither was evaluated on held-out data; neither is fit for use. |
+| The training pipeline runs end-to-end on both data sources | **Verified**, two 10-epoch real runs plus a synthetic run, `source_unchanged: True` in both |
 | The real archive is read in place and never written | **Verified** — trainer fingerprint plus an independent SHA-256 either side of a run |
-| The 10-epoch run produced a useful model | **False.** Val IoU 0.8050 is on a per-file split with no scene separation and no test set. Upper bound, not a detection performance. |
+| Val IoU 0.8050 is a detection performance | **False.** 0.5069 of it — 63 % — was leakage from a per-file split. The leak-free run on the same budget scores **0.2981**. |
+| The leak-free run produced a useful model | **False.** 0.2981 rests on 14 val tiles across 8 acquisitions with no held-out test set, and val IoU stops improving after epoch 3. It is an honest number, not a good one. |
+| No acquisition straddles the train/val split | **Verified** for the current index — 195 acquisition areas, 0 straddling — independently against the manifest and enforced by the trainer. |
 | `--resume` reports the checkpoint's own best, not its last epoch | **Verified** by test and in situ |
 | The `VV`/`VH` band order of the archive is known | **False.** No band metadata; the measured levels suggest `(VH, VV)` is stored. LIMITATIONS B12. |
 | The synthetic set reproduces the real distribution | **26 of 28 checks.** Both misses are pooled `p99.9` tails — see LIMITATIONS A10. |

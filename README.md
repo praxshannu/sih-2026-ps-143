@@ -209,9 +209,9 @@ local machine, and the run fails if the source directory changed while it ran.
 
 ```bash
 # Train the oil spill detector (UNet++) on the real archive, read in place.
-# --max-scenes/--max-steps bound a laptop-sized run.
+# --max-pairs/--max-steps bound a laptop-sized run.
 python scripts/train.py --data-source real \
-  --epochs 3 --max-scenes 24 --max-steps-per-epoch 1
+  --epochs 3 --max-pairs 24 --max-steps-per-epoch 1
 
 # Train on the matched synthetic set (no external disk required)
 python scripts/train.py --data-source synthetic --epochs 10

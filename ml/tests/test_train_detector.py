@@ -392,8 +392,14 @@ def test_cap_scenes_reports_what_it_did() -> None:
     rows = make_rows(96, 12, 12)
     _, note = _cap_scenes(rows, 20)
     assert note is not None
-    assert "max_scenes=20" in note
+    assert "max_pairs=20" in note
     assert "of 120" in note
+    # The unit matters. This note used to say "max_scenes=", which was the flag
+    # name, and the flag was renamed because it never capped scenes — under
+    # footprint grouping one acquisition can be 114 pairs. A log line that says
+    # "scenes" while counting pairs is the kind of thing an operator reads
+    # correctly once and then trusts for a year.
+    assert "pairs, not scenes" in note
 
 
 def test_cap_scenes_does_not_mutate_the_input() -> None:

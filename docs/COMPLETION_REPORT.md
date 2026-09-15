@@ -1,9 +1,9 @@
 # SENTINEL — Completion Report
 
 **Project:** SIH26143 / NTRO — Autonomous Maritime Oil Spill Intelligence Platform
-**Report date:** 2026-09-14
+**Report date:** 2026-09-15
 **Machine:** Apple M2 (arm64), 16 GB RAM, ~22 GB free disk, **no NVIDIA GPU**
-**Git:** branch `main`, 15 commits, working tree clean
+**Git:** branch `main`, 62 commits, working tree clean
 
 This report states what was **verified live**, what was **tested locally**, what
 data is **real**, what is **synthetic**, what remains **unavailable**, and what
@@ -18,11 +18,11 @@ Every command below was run on this machine. Output is quoted, not paraphrased.
 
 | # | Gate | Command | Result |
 |---|---|---|---|
-| 1 | Test suite | `pytest services/ ml/ sentinel_core/ -q` | **281 passed, 0 failed** (21.8 s) |
-| 2 | Test suite, fresh clone | `git clone . /tmp/x && pytest services/ ml/ sentinel_core/ -q` | **276 passed, 5 skipped** |
+| 1 | Test suite | `pytest services/ ml/ sentinel_core/ -q` | **302 passed, 0 failed** (115 services + 112 ml + 75 core) |
+| 2 | Test suite, fresh clone | `git clone . /tmp/x && pytest services/ ml/ sentinel_core/ -q` | **297 passed, 5 skipped** |
 | 3 | Lint | `ruff check services/ ml/ scripts/ sentinel_core/ conftest.py` | **All checks passed!** |
-| 4 | Format | `ruff format --check …` | **141 files already formatted** |
-| 5 | Types | `mypy services/<each of 6>`, `mypy ml/`, `mypy sentinel_core/` | **0 errors** |
+| 4 | Format | `ruff format --check …` | **152 files already formatted** |
+| 5 | Types | `mypy services/<each of 6>`, `mypy ml/`, `mypy sentinel_core/`, `mypy scripts/` | **0 errors** |
 | 6 | Compose (full) | `docker compose -f docker-compose.txt config` | **valid** |
 | 7 | Compose (lite) | `docker compose -f docker-compose.lite.yml config` | **valid**, exactly 8 services |
 | 8 | Real Sentinel-1 inference | `DetectPipeline.run(wakashio_20200810_peak.tif)` | **`state: ok`, 11 detections** |
@@ -33,6 +33,7 @@ Every command below was run on this machine. Output is quoted, not paraphrased.
 | 13 | No hardcoded UI coordinates | `grep` over `services/ui/src` | **no matches** |
 | 14 | Git clean | `git status --short` | **clean** |
 | 15 | Training runs on the real archive, in place | `scripts/train.py --data-source real --epochs 10 --image-size 512` | **exit 0, 10 epochs, `source_unchanged: True`**, archive byte-identical either side |
+| 16 | Training on a leak-free split | `scene_grouping=footprint`, then the same 10-epoch command | **exit 0, 195 acquisition areas, 0 straddling**, `best_val_iou 0.2981` vs 0.8050 on the leaky split |
 
 The 5 skips in gate 2 are the real-scene tests, which require `data/sar/`
 (gitignored). They skip **with a stated reason**, never silently — a skip means

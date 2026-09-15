@@ -19,7 +19,7 @@ open http://localhost:3000    # Scene Intake is at /intake
 
 # train the detector on either data source, switchable at runtime (§5)
 $PY scripts/train.py --data-source synthetic --epochs 10
-$PY scripts/train.py --data-source real --epochs 3 --max-scenes 24 --max-steps-per-epoch 1
+$PY scripts/train.py --data-source real --epochs 3 --max-pairs 24 --max-steps-per-epoch 1
 ```
 
 ---
@@ -59,10 +59,10 @@ Run these before believing anything:
 cd /Users/praxsmac/projects/claude1/sentinel
 PY=/Users/praxsmac/.workbuddy-ai/binaries/python/envs/default/bin/python
 
-# 1. Tests — expect "281 passed"
+# 1. Tests — expect "302 passed"
 $PY -m pytest services/ ml/ sentinel_core/ -q
 
-# 2. Lint and format — expect "All checks passed!" and "141 files already formatted"
+# 2. Lint and format — expect "All checks passed!" and "152 files already formatted"
 $PY -m ruff check services/ ml/ scripts/ sentinel_core/ conftest.py
 $PY -m ruff format --check services/ ml/ scripts/ sentinel_core/ conftest.py
 
@@ -75,7 +75,7 @@ $PY -m mypy sentinel_core/
 docker compose -f docker-compose.txt config >/dev/null && echo "base OK"
 docker compose -f docker-compose.lite.yml config >/dev/null && echo "lite OK"
 
-# 5. Fresh-clone reproducibility — expect "276 passed, 5 skipped"
+# 5. Fresh-clone reproducibility — expect "297 passed, 5 skipped"
 rm -rf /tmp/sentinel_clone && git clone -q . /tmp/sentinel_clone
 cd /tmp/sentinel_clone && $PY -m pytest services/ ml/ sentinel_core/ -q
 ```
@@ -109,7 +109,7 @@ is lost, so it reads as "the suite is broken".
 SENTINEL_PYTEST_TMP=/tmp/sentinel_pytest $PY -m pytest services/ ml/ sentinel_core/ -q
 ```
 
-281 passed is the real number. A run that reports failures *and* prints a
+302 passed is the real number. A run that reports failures *and* prints a
 `[safe-delete][SAFE_DELETE_BULK_CONFIRM_REQUIRED]` line has been interfered with;
 re-run it before believing anything.
 
@@ -351,32 +351,35 @@ resumable with `--resume`).
 
 ### 5.3 What a good run looks like
 
-The full 10-epoch real run, verbatim:
+The 10-epoch real run on a leak-free split, verbatim (timestamps trimmed):
 
 ```
 data source: 1200 pair(s), 2 band(s), images=/Volumes/Ventoy/Oil in_place=True read_only=False
 device: mps (auto: Apple MPS available, no CUDA)
-max_scenes=120 capped this run to 120 of 1200 pair(s) (train=96, val=24)
-splits: train=96 val=24 test=0
+max_pairs=120 capped this run to 120 of 1200 pair(s) (train=106, val=14). This counts image/mask pairs, not scenes.
+splits: train=106 val=14 test=0
 computing per-band normalization from 32 training scene(s)
-normalization mean=[-32.34, -20.155] std=[4.629, 4.042]
+normalization mean=[-32.348, -19.988] std=[4.264, 3.531]
 model: UNet++/resnet34 in_channels=2 params=24,719,654 trainable=24,719,654
 MPS: running fp32; CUDA-only AMP is not applied
-epoch 4/10 train loss=2.3881 iou=0.4940 | val loss=2.5211 iou=0.7840 f1=0.8789 precision=0.9252 recall=0.8371 (210.2s)
-done: 10 epoch(s) in 1703.4s, best val IoU 0.8050 at epoch 10
+epoch 1/10 train loss=25.1221 iou=0.1779 | val loss=7.1586 iou=0.0000 f1=0.0000 precision=0.0000 recall=0.0000 (154.1s)
+done: 10 epoch(s) in 1581.3s, best val IoU 0.2981 at epoch 8
 source unchanged: True
 ```
 
-Two things in that output look wrong and are not:
+Three things in that output look wrong and are not:
 
-- **The first two epochs report `val iou=0.0000`**, one of them with
-  `precision=1.0000`. Both are arithmetic, not a fault: at the 0.5 threshold the
-  model predicted 6 pixels out of 6.29 M in epoch 2 (all 6 correct, hence
-  precision 1.0) and none at all in epoch 1. It was sitting near the class prior
-  and had not escaped it yet. It escaped at epoch 3. See MODEL_CARD §2.4.
-- **Train IoU is lower than val IoU.** Train is measured under augmentation,
-  val under the eval transform, so train is the harder measurement. They are not
-  comparable to each other.
+- **The first two epochs report `val iou=0.0000`.** Arithmetic, not a fault: at
+  the 0.5 threshold the model predicted *nothing at all* on val — `tp 0, fp 0,
+  fn 131129` — against a val set that is 3.6 % oil. It was sitting near the
+  class prior and had not escaped it yet. It escaped at epoch 3. See MODEL_CARD
+  §2.4.
+- **Train IoU is lower than val IoU** for most of the run. Train is measured
+  under augmentation, val under the eval transform, so train is the harder
+  measurement. They are not comparable to each other.
+- **`best val IoU 0.2981` is far below the 0.8050** that the same command
+  reported before the split was fixed. That is the point, not a regression —
+  see §5.4 and MODEL_CARD §2.4. About 63 % of 0.8050 was leakage.
 
 Then read the report, not the log line:
 
@@ -482,7 +485,7 @@ The trainer also asserts this itself and refuses to start on leakage
 docker build -f Dockerfile.train -t sentinel-train .
 docker run --rm -v /Volumes/Ventoy/Oil:/data/real:ro -v "$PWD/runs:/app/runs" \
     -e SENTINEL_DATASOURCES__REAL_IMAGES_DIR=/data/real \
-    sentinel-train --data-source real --epochs 3 --max-scenes 24
+    sentinel-train --data-source real --epochs 3 --max-pairs 24
 ```
 
 **This image has never been built** — Docker is not installed on the machine it

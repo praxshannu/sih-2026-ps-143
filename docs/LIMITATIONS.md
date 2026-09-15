@@ -24,10 +24,12 @@ model would, and its thresholds were calibrated on the Wakashio scenes and the
 scene-statistics envelope in `pipeline.py`.
 
 A Tier-B learned model now exists in the sense that one has been *trained* —
-10 epochs on the real archive, `best_val_iou 0.8050` (MODEL_CARD §2.4). It is
-still not deployed and must not be treated as validated: it has no held-out
-evaluation, no benchmark, and its only metric comes from a per-file split with
-no scene separation (B11). "Trained" is not "usable".
+twice, for 10 epochs each on the real archive (MODEL_CARD §2.4). The first run
+scored `best_val_iou 0.8050` on a per-file split; once the split was made
+leak-free the same command scored **0.2981**, so about 63 % of the first number
+was leakage (B11). Neither is deployed and neither must be treated as validated:
+there is no held-out evaluation and no benchmark, and the leak-free number rests
+on 14 val tiles across 8 acquisitions. "Trained" is not "usable".
 
 See `MODEL_CARD.md` §1 and §2.4.
 
@@ -286,7 +288,7 @@ neighbours of.
 `SAROilSpillDataset` reads them from the manifest; the mode that produced an
 index is recorded in `source.json` and an index built by a different mode is
 rebuilt rather than reused; and the leakage guard now has something to check, so
-it can fail. The `--max-scenes` cap is leak-safe under this grouping — it trims
+it can fail. The `--max-pairs` cap is leak-safe under this grouping — it trims
 within a split, in name order, which shortens acquisitions but never moves one
 across the boundary.
 
