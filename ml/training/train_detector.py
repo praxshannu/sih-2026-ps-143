@@ -563,6 +563,31 @@ class RunReport:
         return path
 
 
+def seed_report_from_checkpoint(report: RunReport, payload: Mapping[str, Any]) -> tuple[int, float]:
+    """Seed ``report``'s best-so-far from a checkpoint; return where to resume.
+
+    Returns ``(start_epoch, best_val_iou)``.
+
+    The run report is the artifact people quote, so its ``best_val_iou`` has to
+    start where the checkpoint left off rather than at the dataclass default.
+    Left at the default, a resumed run that does not beat the checkpoint it
+    started from reports ``best val IoU 0.0000 at epoch -1`` while holding a
+    checkpoint that scores better than that — the report contradicting, and
+    understating, the artifact it names.
+
+    A checkpoint written before ``best_val_iou``/``best_epoch`` existed carries
+    only ``val_iou``, the score of its own epoch. That is the best estimate of
+    the best available, so it is used, and the epoch it belongs to is the one
+    the checkpoint came from.
+    """
+    resumed_epoch = int(payload.get("epoch", -1))
+    best_val_iou = float(payload.get("best_val_iou", payload.get("val_iou", -1.0)))
+    if best_val_iou >= 0.0:
+        report.best_val_iou = best_val_iou
+        report.best_epoch = int(payload.get("best_epoch", resumed_epoch))
+    return resumed_epoch + 1, best_val_iou
+
+
 def _environment_snapshot() -> dict[str, Any]:
     return {
         "python": sys.version.split()[0],
@@ -922,8 +947,7 @@ def train(
             scheduler.load_state_dict(payload["scheduler_state_dict"])
         if scaler is not None and "scaler" in payload:
             scaler.load_state_dict(payload["scaler"])
-        start_epoch = int(payload.get("epoch", -1)) + 1
-        best_val_iou = float(payload.get("val_iou", -1.0))
+        start_epoch, best_val_iou = seed_report_from_checkpoint(report, payload)
         logger.info(
             "resumed from {} at epoch {} (best val IoU {:.4f})",
             resume,
@@ -992,13 +1016,25 @@ def train(
             entry["epoch_seconds"],
         )
 
+        epoch_iou = val_metrics.to_dict()["iou"]
+        if epoch_iou > best_val_iou:
+            best_val_iou = epoch_iou
+            report.best_epoch = epoch
+            report.best_val_iou = best_val_iou
+
+        # `best_val_iou`/`best_epoch` travel with the checkpoint so a resumed run
+        # knows what it is continuing from. `val_iou` is *this* epoch's score,
+        # which for `last.pth` is not the best one, so seeding a resume from it
+        # alone would report the wrong best.
         payload = {
             "epoch": epoch,
             "model_state_dict": model.state_dict(),
             "optimizer_state_dict": optimizer.state_dict(),
             "scheduler_state_dict": scheduler.state_dict(),
-            "val_iou": val_metrics.to_dict()["iou"],
+            "val_iou": epoch_iou,
             "val_f1": val_metrics.to_dict()["f1"],
+            "best_val_iou": best_val_iou,
+            "best_epoch": report.best_epoch,
             "run_id": run_id,
             "in_channels": in_channels,
             "encoder": training.encoder,
@@ -1012,10 +1048,7 @@ def train(
             payload["scaler"] = scaler.state_dict()
 
         atomic_torch_save(payload, checkpoint_dir / LAST_CHECKPOINT_NAME)
-        if val_metrics.to_dict()["iou"] > best_val_iou:
-            best_val_iou = val_metrics.to_dict()["iou"]
-            report.best_epoch = epoch
-            report.best_val_iou = best_val_iou
+        if report.best_epoch == epoch:
             best_path = atomic_torch_save(payload, checkpoint_dir / CHECKPOINT_NAME)
             logger.info("new best val IoU {:.4f} -> {}", best_val_iou, best_path)
 

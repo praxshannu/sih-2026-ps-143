@@ -27,6 +27,7 @@ import torch
 from ml.training.train_detector import (
     BCEDiceLoss,
     DiceLoss,
+    RunReport,
     SourceFingerprint,
     SplitMetrics,
     _cap_scenes,
@@ -36,6 +37,7 @@ from ml.training.train_detector import (
     load_checkpoint,
     resolve_device,
     seed_everything,
+    seed_report_from_checkpoint,
 )
 from sentinel_core.datasource import DataSourceSpec
 from sentinel_core.errors import CheckpointError, TrainingError
@@ -397,3 +399,76 @@ def test_cap_scenes_does_not_mutate_the_input() -> None:
     original = list(rows)
     _cap_scenes(rows, 4)
     assert rows == original
+
+
+# ---------------------------------------------------------------------------
+# Resuming must not reset the report's headline metric
+# ---------------------------------------------------------------------------
+
+
+def blank_report() -> RunReport:
+    """A report as ``train()`` builds it, i.e. before any epoch has run."""
+    return RunReport(run_id="test", started_utc="2026-01-01T00:00:00Z")
+
+
+def test_resume_seeds_the_report_from_the_checkpoint() -> None:
+    """The report's best-so-far starts where the checkpoint left off.
+
+    ``best_val_iou``/``best_epoch`` default to ``0.0``/``-1``. Without seeding
+    them, a resumed run that never beats its checkpoint reports
+    ``best val IoU 0.0000 at epoch -1`` while holding a checkpoint that scores
+    better than that.
+    """
+    report = blank_report()
+    payload = {"epoch": 2, "val_iou": 0.0052, "best_val_iou": 0.0052, "best_epoch": 2}
+
+    start_epoch, best = seed_report_from_checkpoint(report, payload)
+
+    assert start_epoch == 3
+    assert best == pytest.approx(0.0052)
+    assert report.best_val_iou == pytest.approx(0.0052)
+    assert report.best_epoch == 2
+
+
+def test_resume_prefers_the_recorded_best_over_the_last_epoch() -> None:
+    """``last.pth`` carries this epoch's score, which is not the best one.
+
+    Resuming from it and trusting ``val_iou`` would report the wrong best — here
+    the checkpoint's best is 0.42 from epoch 2 while its last epoch scored 0.05.
+    """
+    report = blank_report()
+    payload = {"epoch": 5, "val_iou": 0.05, "best_val_iou": 0.42, "best_epoch": 2}
+
+    start_epoch, best = seed_report_from_checkpoint(report, payload)
+
+    assert start_epoch == 6
+    assert best == pytest.approx(0.42)
+    assert report.best_val_iou == pytest.approx(0.42)
+    assert report.best_epoch == 2, "the best epoch is not the last epoch"
+
+
+def test_resume_reads_a_checkpoint_written_before_the_best_keys_existed() -> None:
+    """Older checkpoints carry only ``val_iou``; it is the best estimate there is."""
+    report = blank_report()
+    payload = {"epoch": 7, "val_iou": 0.31}
+
+    start_epoch, best = seed_report_from_checkpoint(report, payload)
+
+    assert start_epoch == 8
+    assert best == pytest.approx(0.31)
+    assert report.best_val_iou == pytest.approx(0.31)
+    assert report.best_epoch == 7
+
+
+def test_resume_of_a_payload_with_no_metrics_leaves_the_report_alone() -> None:
+    """Nothing to seed from: the report keeps its defaults and epoch 0 starts."""
+    report = blank_report()
+    report.best_val_iou = 0.0
+    report.best_epoch = -1
+
+    start_epoch, best = seed_report_from_checkpoint(report, {})
+
+    assert start_epoch == 0
+    assert best == -1.0
+    assert report.best_val_iou == 0.0
+    assert report.best_epoch == -1
