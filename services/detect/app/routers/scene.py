@@ -29,6 +29,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from app.paths import SAR_DIR
 from app.pipeline import DETECTOR_ID, DetectPipeline, PipelineOptions
 from fastapi import APIRouter, Header, HTTPException, Query, Request
 from loguru import logger
@@ -36,10 +37,6 @@ from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
 
 router = APIRouter(prefix="/detect/scene", tags=["detect:scene"])
-
-# services/detect/app/routers/scene.py -> 5 levels up is the project root.
-ROOT = Path(__file__).resolve().parents[4]
-SAR_DIR = ROOT / "data" / "sar"
 
 ALLOWED_SUFFIXES = {".tif", ".tiff"}
 MAX_UPLOAD_BYTES = 512 * 1024 * 1024  # 512 MB; a full IW GRDH scene is ~1 GB
@@ -242,7 +239,16 @@ async def upload_and_infer(
             ),
         )
 
-    SAR_DIR.mkdir(parents=True, exist_ok=True)
+    try:
+        SAR_DIR.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        # A read-only scene root (external disk, mounted archive) is a
+        # deployment condition, not a server fault: 503 tells the caller to
+        # retry elsewhere, 500 would claim we broke.
+        raise HTTPException(
+            status_code=503,
+            detail=f"scene store {SAR_DIR} is not writable: {exc}",
+        ) from exc
     stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     tif_path = SAR_DIR / f"{_safe_stem(filename)}_{stamp}.tif"
 

@@ -16,17 +16,12 @@ plus trained weights under ``app/models/weights/``.
 
 from __future__ import annotations
 
-from pathlib import Path
-
 from fastapi import FastAPI
 from loguru import logger
 
+from app.paths import SAR_DIR
 from app.routers.deterministic import router as deterministic_router
 from app.routers.scene import router as scene_router
-
-# services/detect/app/main_det.py → 4 levels up is the project root.
-DATA_DIR = Path(__file__).resolve().parent.parent.parent.parent / "data"
-SAR_DIR = DATA_DIR / "sar"
 
 app = FastAPI(
     title="SENTINEL Detect — Tier-A (deterministic)",
@@ -41,23 +36,34 @@ app = FastAPI(
 
 @app.on_event("startup")
 async def _startup() -> None:
-    SAR_DIR.mkdir(parents=True, exist_ok=True)
+    # The scene directory is often a read-only mount (an external disk, a
+    # mounted archive). Failing to *create* it is not a reason to refuse to
+    # start — failing to *read* it is, and /health reports that instead.
+    writable = True
+    try:
+        SAR_DIR.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        writable = False
+        logger.warning("SAR dir {} is not creatable ({}); continuing read-only", SAR_DIR, exc)
     logger.info(
-        "sentinel-det (deterministic) started — SAR dir={} | existing scenes={}",
+        "sentinel-det (deterministic) started — SAR dir={} | writable={} | existing scenes={}",
         SAR_DIR,
-        len(list(SAR_DIR.glob("*.tif"))),
+        writable,
+        sum(1 for _ in SAR_DIR.glob("*.tif")) if SAR_DIR.is_dir() else 0,
     )
 
 
 @app.get("/health")
 async def health() -> dict[str, object]:
     """Probe: the service is up, the SAR dir is reachable, and the detector imports."""
-    scene_count = sum(1 for _ in SAR_DIR.glob("*.tif"))
+    exists = SAR_DIR.is_dir()
+    scene_count = sum(1 for _ in SAR_DIR.glob("*.tif")) if exists else 0
     return {
         "ok": True,
         "service": "sentinel-det-det",
         "variant": "deterministic",
         "sar_dir": str(SAR_DIR),
+        "sar_dir_exists": exists,
         "scene_count": scene_count,
         "ml_available": False,
         "detector": "deterministic-lee-adaptive-v1",
