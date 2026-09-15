@@ -65,6 +65,11 @@ class RasterHeader:
     dtype: str
     crs: str | None
     centre: tuple[float, float] | None
+    #: ``(left, bottom, right, top)`` in the raster's own CRS, or ``None`` when
+    #: it is not georeferenced. The centroid is not enough to tell whether two
+    #: tiles share ground: two 20 km tiles can have nearby centres and still be
+    #: disjoint, or distant centres and overlap.
+    bounds: tuple[float, float, float, float] | None = None
 
     @property
     def geo_key(self) -> str:
@@ -106,12 +111,14 @@ def header_info(path: str | Path) -> RasterHeader:
     try:
         with open_raster(target) as src:
             centre: tuple[float, float] | None = None
+            extent: tuple[float, float, float, float] | None = None
             if src.crs is not None and src.bounds is not None:
                 bounds = src.bounds
                 centre = (
                     (bounds.left + bounds.right) / 2.0,
                     (bounds.bottom + bounds.top) / 2.0,
                 )
+                extent = (bounds.left, bounds.bottom, bounds.right, bounds.top)
             return RasterHeader(
                 path=target,
                 bands=int(src.count),
@@ -120,6 +127,7 @@ def header_info(path: str | Path) -> RasterHeader:
                 dtype=str(src.dtypes[0]) if src.count else "unknown",
                 crs=src.crs.to_string() if src.crs is not None else None,
                 centre=centre,
+                bounds=extent,
             )
     except Exception as exc:
         raise DataSourceMismatchError(
