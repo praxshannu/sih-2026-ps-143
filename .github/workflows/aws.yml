@@ -43,4 +43,4 @@ jobs:
           script: |
             cd /opt/sentinel/  # <-- Updated from /path/to/sentinel
             git pull origin main
-            docker compose -f docker-compose.aws.yml up -d --build ui
+            docker compose -f docker-compose.aws.yml up -d --build sentinel-ui
