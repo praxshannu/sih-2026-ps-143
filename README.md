@@ -294,6 +294,3 @@ Natural phenomena (algal blooms, sun glint, internal waves) are filtered using:
 - Shape metrics (compactness, elongation)
 - Wind speed threshold (> 3 m/s reduces false positives)
 
-## License
-
-MIT
