@@ -38,7 +38,7 @@ interface SyntheticDataNoticeProps {
 }
 
 const HATCH =
-  'repeating-linear-gradient(45deg, #d97706 0 4px, #121820 4px 8px)';
+  'repeating-linear-gradient(45deg, #d97706 0 4px, #1E293B 4px 8px)';
 
 function formatStamp(iso?: string | null) {
   if (!iso) return '—';

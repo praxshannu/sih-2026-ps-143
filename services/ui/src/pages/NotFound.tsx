@@ -14,15 +14,15 @@ export default function NotFound() {
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="glass-panel max-w-md p-8 text-center"
+        className="ops-panel max-w-md p-8 text-center"
       >
-        <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-sentinel-warning/10">
-          <AlertTriangle size={32} className="text-sentinel-warning" />
+        <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full" style={{ background: 'rgba(217,119,6,0.10)' }}>
+          <AlertTriangle size={32} className="text-sentinel-caution" />
         </div>
-        <h1 className="mb-2 font-display text-3xl font-bold text-sentinel-text">
+        <h1 className="mb-2 font-display text-3xl font-bold text-sentinel-text-hi">
           404
         </h1>
-        <h2 className="mb-1 font-display text-lg text-sentinel-text">
+        <h2 className="mb-1 font-display text-lg text-sentinel-text-hi">
           Sector Not Found
         </h2>
         <p className="mb-6 text-sm text-sentinel-muted">
@@ -30,7 +30,7 @@ export default function NotFound() {
         </p>
         <Link
           to="/"
-          className="inline-flex items-center gap-2 rounded-lg bg-sentinel-primary px-4 py-2 font-display text-sm font-semibold text-white transition-colors hover:bg-sentinel-primary/80"
+          className="inline-flex items-center gap-2 rounded bg-sentinel-data px-4 py-2 font-display text-sm font-semibold text-white transition-colors hover:bg-sentinel-data-hi"
         >
           <ArrowLeft size={16} />
           Return to Watch Room

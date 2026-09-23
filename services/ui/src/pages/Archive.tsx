@@ -543,9 +543,9 @@ export default function Archive() {
   return (
     <div className="flex h-full">
       {/* ── LEFT: search rail ─────────────────────────────────────────── */}
-      <aside className="flex w-72 flex-col border-r border-sentinel-border bg-sentinel-panel">
+      <aside className="flex w-72 flex-col border-r border-sentinel-border bg-sentinel-surface">
         <div className="ops-header">
-          <Search size={12} className="text-sentinel-amber" />
+          <Search size={12} className="text-sentinel-data" />
           <span className="ops-label">ARCHIVE QUERY</span>
           <span className="ml-auto font-mono text-2xs text-sentinel-muted-hi">{SYSTEM_ID}</span>
         </div>
@@ -569,7 +569,7 @@ export default function Archive() {
                         b[idx] = v;
                         updateBbox(b);
                       }}
-                      className="w-full bg-sentinel-surface border border-sentinel-border px-1.5 py-1 font-mono text-2xs tabular-nums text-sentinel-text-hi focus:border-sentinel-amber focus:outline-none"
+                      className="w-full bg-sentinel-surface border border-sentinel-border px-1.5 py-1 font-mono text-2xs tabular-nums text-sentinel-text-hi focus:border-sentinel-data focus:outline-none focus:ring-0"
                     />
                   </div>
                 );
@@ -578,17 +578,17 @@ export default function Archive() {
             <div className="mt-1 flex gap-1">
               <button
                 onClick={useCurrentView}
-                className="flex-1 border border-sentinel-border bg-sentinel-surface px-2 py-1 font-mono text-2xs uppercase tracking-wider text-sentinel-text hover:border-sentinel-amber"
+                className="flex-1 border border-sentinel-border bg-sentinel-surface px-2 py-1 font-mono text-2xs uppercase tracking-wider text-sentinel-text hover:border-sentinel-data hover:text-sentinel-data transition-colors"
               >
                 <Crosshair size={10} className="mr-1 inline-block" /> Use View
               </button>
               <button
                 onClick={() => { setDrawMode((v) => !v); setDrawStart(null); setDrawEnd(null); }}
                 className={
-                  'flex-1 border px-2 py-1 font-mono text-2xs uppercase tracking-wider ' +
+                  'flex-1 border px-2 py-1 font-mono text-2xs uppercase tracking-wider transition-colors ' +
                   (drawMode
-                    ? 'border-sentinel-amber bg-sentinel-amber/10 text-sentinel-amber'
-                    : 'border-sentinel-border bg-sentinel-surface text-sentinel-text hover:border-sentinel-amber')
+                    ? 'border-sentinel-data bg-sentinel-data-dim text-sentinel-data'
+                    : 'border-sentinel-border bg-sentinel-surface text-sentinel-text hover:border-sentinel-data hover:text-sentinel-data')
                 }
               >
                 {drawMode ? 'Click corner' : 'Draw AOI'}
@@ -602,7 +602,7 @@ export default function Archive() {
                 <button
                   key={p.name}
                   onClick={() => { updateBbox(p.bbox); }}
-                  className="block w-full border border-sentinel-border bg-sentinel-surface px-2 py-1 text-left font-mono text-2xs text-sentinel-text hover:border-sentinel-amber"
+                  className="block w-full border border-sentinel-border bg-sentinel-surface px-2 py-1 text-left font-mono text-2xs text-sentinel-text hover:border-sentinel-data hover:text-sentinel-data transition-colors"
                 >
                   {p.name}
                 </button>
@@ -1149,9 +1149,9 @@ function DetectionPanel({
             className={
               'flex items-center justify-between border-b border-sentinel-border px-3 py-1.5 font-mono text-2xs last:border-b-0 ' +
               (active
-                ? 'border-l-2 border-l-sentinel-amber bg-[#1a1206]'
+                ? 'border-l-2 border-l-sentinel-data bg-sentinel-data/15'
                 : selectable
-                  ? 'cursor-pointer hover:bg-[#0e1117]'
+                  ? 'cursor-pointer hover:bg-sentinel-panel'
                   : 'opacity-60')
             }
           >

@@ -161,7 +161,7 @@ export default function AttributionPanel({
         <button
           onClick={run}
           disabled={running || !seed}
-          className="border border-sentinel-border px-2 py-0.5 font-mono text-2xs uppercase tracking-wider text-sentinel-muted-hi hover:border-sentinel-amber hover:text-sentinel-amber disabled:opacity-40"
+          className="border border-sentinel-border px-2 py-0.5 font-mono text-2xs uppercase tracking-wider text-sentinel-muted-hi hover:border-sentinel-data hover:text-sentinel-data disabled:opacity-40 transition-colors"
           aria-label="Run backward attribution"
         >
           {running ? 'Running…' : 'Run'}
@@ -178,7 +178,7 @@ export default function AttributionPanel({
             className={
               'border px-1.5 py-0.5 font-mono text-2xs tabular-nums transition-colors ' +
               (durationH === h
-                ? 'border-sentinel-amber text-sentinel-amber'
+                ? 'border-sentinel-data text-sentinel-data'
                 : 'border-sentinel-border text-sentinel-muted-hi hover:text-sentinel-text-hi')
             }
           >
@@ -263,7 +263,7 @@ export default function AttributionPanel({
           </div>
 
           {syntheticForcing && (
-            <div className="flex items-start gap-1.5 border-b border-sentinel-border bg-[#1a1206] px-3 py-1.5">
+            <div className="flex items-start gap-1.5 border-b border-sentinel-border bg-sentinel-amber/10 px-3 py-1.5">
               <AlertTriangle size={10} className="mt-0.5 flex-shrink-0 text-sentinel-amber" />
               <p className="font-mono text-2xs leading-relaxed text-sentinel-amber">
                 Forcing is partly synthetic. The origin below is a model artefact,
@@ -273,7 +273,7 @@ export default function AttributionPanel({
           )}
 
           {weakEnsemble && (
-            <div className="flex items-start gap-1.5 border-b border-sentinel-border bg-[#1a1206] px-3 py-1.5">
+            <div className="flex items-start gap-1.5 border-b border-sentinel-border bg-sentinel-amber/10 px-3 py-1.5">
               <AlertTriangle size={10} className="mt-0.5 flex-shrink-0 text-sentinel-amber" />
               <p className="font-mono text-2xs leading-relaxed text-sentinel-amber">
                 Only {result.origin.n_particles} particles survived the backtrack —
@@ -365,9 +365,9 @@ export default function AttributionPanel({
                     key={h}
                     onClick={() => setFcHours(h)}
                     className={
-                      'border px-1.5 py-0.5 font-mono text-2xs tabular-nums ' +
+                      'border px-1.5 py-0.5 font-mono text-2xs tabular-nums transition-colors ' +
                       (fcHours === h
-                        ? 'border-sentinel-amber text-sentinel-amber'
+                        ? 'border-sentinel-data text-sentinel-data'
                         : 'border-sentinel-border text-sentinel-muted-hi hover:text-sentinel-text-hi')
                     }
                   >
@@ -377,7 +377,7 @@ export default function AttributionPanel({
                 <button
                   onClick={runForecast}
                   disabled={fcRunning}
-                  className="border border-sentinel-border px-2 py-0.5 font-mono text-2xs uppercase tracking-wider text-sentinel-muted-hi hover:border-sentinel-amber hover:text-sentinel-amber disabled:opacity-40"
+                  className="border border-sentinel-border px-2 py-0.5 font-mono text-2xs uppercase tracking-wider text-sentinel-muted-hi hover:border-sentinel-data hover:text-sentinel-data disabled:opacity-40 transition-colors"
                 >
                   {fcRunning ? '…' : 'Run'}
                 </button>

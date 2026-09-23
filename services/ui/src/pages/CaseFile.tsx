@@ -43,15 +43,15 @@ export default function CaseFile() {
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
-      <header className="border-b border-sentinel-border bg-sentinel-surface/50 px-5 py-3 backdrop-blur-md">
+      <header className="border-b border-sentinel-border bg-sentinel-surface px-5 py-3" style={{ boxShadow: '0 1px 3px 0 rgba(0,0,0,0.04)' }}>
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <button className="rounded-lg bg-sentinel-bg/50 p-1.5 text-sentinel-muted hover:text-sentinel-text">
+            <button className="rounded bg-sentinel-panel p-1.5 text-sentinel-muted hover:text-sentinel-text-hi border border-sentinel-border transition-colors">
               <ArrowLeft size={16} />
             </button>
-            <FileText size={16} className="text-sentinel-primary" />
+            <FileText size={16} className="text-sentinel-data" />
             <div>
-              <h1 className="font-display text-sm font-bold text-sentinel-text">
+              <h1 className="font-display text-sm font-bold text-sentinel-text-hi">
                 CASE FILE
               </h1>
               <p className="font-mono text-[10px] text-sentinel-muted">
@@ -60,11 +60,11 @@ export default function CaseFile() {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <button className="glass-panel flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-mono text-sentinel-muted hover:text-sentinel-text">
+            <button className="btn-ghost flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-mono">
               <Printer size={12} />
               Print
             </button>
-            <button className="glass-panel flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-mono text-sentinel-muted hover:text-sentinel-text">
+            <button className="btn-ghost flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-mono">
               <Download size={12} />
               Export
             </button>
@@ -73,7 +73,7 @@ export default function CaseFile() {
       </header>
 
       <div className="flex flex-1 overflow-hidden">
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-sentinel-bg">
           <motion.div
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
@@ -84,13 +84,8 @@ export default function CaseFile() {
             />
           </motion.div>
 
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.1 }}
-            className="glass-panel p-4"
-          >
-            <h3 className="mb-3 font-display text-xs font-semibold text-sentinel-text uppercase">
+          <div className="ops-panel p-4">
+            <h3 className="mb-3 font-display text-xs font-semibold text-sentinel-text-hi uppercase">
               Evidence Chain of Custody
             </h3>
             <div className="space-y-2">
@@ -100,21 +95,21 @@ export default function CaseFile() {
                   initial={{ opacity: 0, x: -10 }}
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ delay: i * 0.03 }}
-                  className={`glass-panel cursor-pointer p-3 transition-all ${
+                  className={`ops-panel cursor-pointer p-3 transition-all ${
                     selectedEvidence?.id === ev.id
-                      ? 'border-sentinel-primary/50'
-                      : 'hover:border-sentinel-border'
+                      ? 'ring-2 ring-sentinel-data border-sentinel-data'
+                      : 'hover:shadow-card-hover'
                   }`}
                   onClick={() => setSelectedEvidence(ev)}
                 >
                   <div className="flex items-center gap-3">
                     <div
-                      className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg font-mono text-[9px] font-bold"
+                      className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded font-mono text-[9px] font-bold"
                       style={{
-                        backgroundColor: `${COLORS.primary}15`,
-                        color: COLORS.primary,
-                      }}
-                    >
+                        backgroundColor: 'rgba(64, 150, 255, 0.10)',
+                        color: '#4096FF',
+                      }}>
+
                       {EVIDENCE_TYPE_ICONS[ev.type] ?? '??'}
                     </div>
                     <div className="flex-1 min-w-0">
@@ -137,51 +132,51 @@ export default function CaseFile() {
                 </motion.div>
               ))}
             </div>
-          </motion.div>
+          </div>
         </div>
 
         {selectedEvidence && (
-          <aside className="w-96 border-l border-sentinel-border bg-sentinel-surface/30 overflow-y-auto">
-            <div className="border-b border-sentinel-border p-4">
-              <h3 className="font-display text-sm font-semibold text-sentinel-text">
+          <aside className="w-96 border-l border-sentinel-border bg-sentinel-surface overflow-y-auto">
+            <div className="border-b border-sentinel-border p-4 bg-sentinel-panel">
+              <h3 className="font-display text-sm font-semibold text-sentinel-text-hi">
                 {selectedEvidence.title}
               </h3>
-              <p className="mt-1 text-[10px] text-sentinel-muted">
+              <p className="mt-1 text-[10px] text-sentinel-muted-hi">
                 {selectedEvidence.type.replace('_', ' ')}
               </p>
             </div>
             <div className="p-4 space-y-4">
-              <div className="glass-panel p-3">
-                <div className="text-[10px] text-sentinel-muted mb-1">Description</div>
-                <p className="text-xs text-sentinel-text leading-relaxed">
+              <div className="ops-inset p-3">
+                <div className="text-[10px] text-sentinel-muted font-medium mb-1 uppercase tracking-wider">Description</div>
+                <p className="text-xs text-sentinel-text-hi leading-relaxed">
                   {selectedEvidence.description}
                 </p>
               </div>
 
-              <div className="glass-panel p-3">
-                <div className="text-[10px] text-sentinel-muted mb-1">Source</div>
-                <div className="font-mono text-xs text-sentinel-text">
+              <div className="ops-inset p-3">
+                <div className="text-[10px] text-sentinel-muted font-medium mb-1 uppercase tracking-wider">Source</div>
+                <div className="font-mono text-xs text-sentinel-text-hi">
                   {selectedEvidence.source}
                 </div>
               </div>
 
-              <div className="glass-panel p-3">
-                <div className="text-[10px] text-sentinel-muted mb-1">Timestamp</div>
-                <div className="font-mono text-xs text-sentinel-text">
+              <div className="ops-inset p-3">
+                <div className="text-[10px] text-sentinel-muted font-medium mb-1 uppercase tracking-wider">Timestamp</div>
+                <div className="font-mono text-xs text-sentinel-text-hi">
                   {new Date(selectedEvidence.timestamp).toISOString()}
                 </div>
               </div>
 
-              <div className="glass-panel p-3">
-                <div className="text-[10px] text-sentinel-muted mb-1">Confidence</div>
+              <div className="ops-inset p-3">
+                <div className="text-[10px] text-sentinel-muted font-medium mb-1 uppercase tracking-wider">Confidence</div>
                 <ConfidenceBadge value={selectedEvidence.confidence} size="lg" />
               </div>
 
-              <div className="glass-panel p-3">
-                <div className="text-[10px] text-sentinel-muted mb-2">Evidence Preview</div>
-                <div className="flex h-48 items-center justify-center rounded-lg bg-sentinel-bg/50 border border-dashed border-sentinel-border">
+              <div className="ops-inset p-3">
+                <div className="text-[10px] text-sentinel-muted font-medium mb-2 uppercase tracking-wider">Evidence Preview</div>
+                <div className="flex h-48 items-center justify-center rounded bg-sentinel-surface border border-dashed border-sentinel-border">
                   <div className="text-center">
-                    <FileText size={24} className="mx-auto mb-2 text-sentinel-border" />
+                    <FileText size={24} className="mx-auto mb-2 text-sentinel-border-hi" />
                     <div className="font-mono text-[10px] text-sentinel-muted">
                       {selectedEvidence.url ? 'Evidence file' : 'No preview available'}
                     </div>

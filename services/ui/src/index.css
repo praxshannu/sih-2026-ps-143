@@ -1,9 +1,4 @@
-/* One request, four families, only the weights actually used.
-   Space Grotesk 500/700 — headings and labels
-   IBM Plex Mono 400/500/600 — every number, ID and coordinate
-   IBM Plex Sans 400/500 — running interface text
-   Newsreader 400/500 italic — the analyst narrative, and nothing else */
-@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Newsreader:ital,opsz,wght@0,6..72,400;1,6..72,400&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -17,49 +12,49 @@ html, body, #root {
   height: 100%;
   width: 100%;
   overflow: hidden;
-  background: #070b10;
-  color: #c9d1d9;
-  font-family: 'IBM Plex Sans', system-ui, sans-serif;
-  font-size: 12px;
-  line-height: 1.45;
+  background: #0A0E17;
+  color: #E2E8F0;
+  font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: 13px;
+  line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
 
-/* Paper grain. A single 3% opacity noise tile over the ink base — the
-   difference between "black rectangle" and "dark surface" on an OLED panel.
-   Purely textural; it carries no meaning and never sits over data. */
-body::after {
-  content: '';
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  z-index: 1;
-  opacity: 0.03;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");
-}
-
-/* ── Scrollbar — thin, no radius, warms on hover ─────────────────────── */
+/* ── Scrollbar — dark tactical ───────────────────────────────────────── */
 ::-webkit-scrollbar { width: 5px; height: 5px; }
-::-webkit-scrollbar-track { background: #070b10; }
-::-webkit-scrollbar-thumb { background: #1b2430; }
-::-webkit-scrollbar-thumb:hover { background: #8a5f1c; }
+::-webkit-scrollbar-track { background: #060A11; }
+::-webkit-scrollbar-thumb { background: #1A273D; border-radius: 99px; }
+::-webkit-scrollbar-thumb:hover { background: #2A3E5E; }
 
-/* ── Selection — cyan, because a selection is a measurement of intent ── */
-::selection { background: #2b6d78; color: #eef2f6; }
+/* ── Selection — cyan glow ───────────────────────────────────────────── */
+::selection { background: #083344; color: #00D2FF; }
 
 /* ── Panels ──────────────────────────────────────────────────────────── */
 
-/* Hard-border panel — no blur, no radius, no shadow. */
-.ops-panel { @apply border border-sentinel-border bg-sentinel-panel; }
+/* Primary card/panel: dark console surface, hairline border, soft depth. */
+.ops-panel {
+  @apply bg-sentinel-surface border border-sentinel-border;
+  border-radius: 4px;
+  box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.5);
+}
 
-/* Inset panel for nested data — one step darker, never lighter. */
-.ops-inset { @apply border border-sentinel-border bg-sentinel-surface; }
+/* glass-panel — compatibility shim */
+.glass-panel {
+  @apply bg-sentinel-surface border border-sentinel-border;
+  border-radius: 4px;
+  box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.5);
+}
 
-/* Instrument panel: hairline top rule instead of a full box. Used where a
-   full border would add a fifth competing edge to a dense column. */
+/* Inset panel — darker for nested telemetry surfaces. */
+.ops-inset {
+  @apply border border-sentinel-border bg-sentinel-panel;
+  border-radius: 3px;
+}
+
+/* Instrument section: hairline top rule */
 .ops-section {
-  @apply border-t border-sentinel-border bg-sentinel-panel;
+  @apply border-t border-sentinel-border bg-sentinel-surface;
 }
 .ops-section:first-child { border-top: none; }
 
@@ -67,118 +62,132 @@ body::after {
 .ops-row {
   @apply flex items-center justify-between border-b border-sentinel-border px-3.5;
   min-height: 1.75rem;
+  transition: background 100ms ease;
 }
 .ops-row:last-child { border-bottom: none; }
-.ops-row:hover { background: #151d27; }
+.ops-row:hover {
+  background: #111A29;
+  box-shadow: inset 2px 0 0 0 #00D2FF;
+}
 
-/* A row whose value is a measurement gets a left cyan tick, so the eye can
-   find data columns without reading them. */
-.ops-row-data { box-shadow: inset 2px 0 0 0 #2b6d78; }
+/* Measurement row with persistent left accent */
+.ops-row-data { box-shadow: inset 2px 0 0 0 #00D2FF; }
 
 /* ── Label / value ───────────────────────────────────────────────────── */
-.ops-label { @apply font-mono text-2xs uppercase tracking-instrument text-sentinel-muted; }
+.ops-label { @apply font-mono text-2xs uppercase tracking-instrument text-sentinel-muted-hi; }
 .ops-value { @apply font-mono text-xs text-sentinel-text tabular-nums; }
 .ops-value-hi { @apply font-mono text-xs font-semibold text-sentinel-text-hi tabular-nums; }
 
-/* ── Semantic text — one meaning per colour, no exceptions ───────────── */
-.ops-oil      { color: #e8a33d; }   /* oil. only oil. */
-.ops-data     { color: #5ec8d8; }   /* a measurement */
-.ops-danger   { color: #c8453a; }
-.ops-caution  { color: #c08a2e; }
-.ops-nominal  { color: #4f9d69; }
-/* Legacy aliases — kept so the pre-existing pages keep rendering. */
-.ops-amber    { color: #d97706; }
+/* ── Semantic text ───────────────────────────────────────────────────── */
+.ops-oil      { color: #F59E0B; }
+.ops-data     { color: #00D2FF; }
+.ops-danger   { color: #EF4444; }
+.ops-caution  { color: #F59E0B; }
+.ops-nominal  { color: #10B981; }
+.ops-amber    { color: #F59E0B; }
 
 /* ── Headers ─────────────────────────────────────────────────────────── */
 .ops-header {
   @apply flex items-center gap-2 border-b border-sentinel-border bg-sentinel-surface px-3.5 py-2;
+  border-radius: 4px 4px 0 0;
 }
 .ops-header-label {
-  @apply font-display text-2xs font-medium uppercase tracking-instrument text-sentinel-muted-hi;
+  @apply font-display text-2xs font-semibold uppercase tracking-instrument text-sentinel-muted-hi;
 }
 
-/* Page title — display face, tight, with a hairline rule that stops short of
-   the full width. The short rule is the point: a full-width rule reads as a
-   divider, a partial one reads as a decision. */
+/* Page title */
 .ops-title {
-  @apply font-display text-lg font-medium tracking-tight text-sentinel-text-hi;
+  @apply font-display text-lg font-bold tracking-tight text-sentinel-text-hi;
 }
 .ops-title-rule {
   @apply mt-1.5 block h-px bg-sentinel-border-hi;
   width: 4.5rem;
 }
 
-/* ── Status: glyph + letter code, never a coloured pill ──────────────── */
+/* ── Status: glyph + letter code ─────────────────────────────────────── */
 .ops-status {
   @apply inline-flex items-center gap-1.5 font-mono text-2xs uppercase tracking-instrument;
 }
-.ops-status-nominal { color: #4f9d69; }
-.ops-status-caution { color: #c08a2e; }
-.ops-status-danger  { color: #c8453a; }
-.ops-status-idle    { color: #5b6673; }
-.ops-status-active  { color: #e8a33d; }
+.ops-status-nominal { color: #10B981; }
+.ops-status-caution { color: #F59E0B; }
+.ops-status-danger  { color: #EF4444; }
+.ops-status-idle    { color: #64748B; }
+.ops-status-active  { color: #00D2FF; }
 
-/* Static status squares. Kept for the older pages; prefer .ops-status. */
-.status-sq { @apply inline-block h-2 w-2 flex-shrink-0; }
-.status-sq.nominal  { background: #4f9d69; }
-.status-sq.caution  { background: #c08a2e; }
-.status-sq.danger   { background: #c8453a; }
-.status-sq.offline  { background: #5b6673; }
-.status-sq.active   { background: #e8a33d; }
+/* Status squares — tactical glowing indicator lights */
+.status-sq {
+  @apply inline-block h-2 w-2 flex-shrink-0;
+  border-radius: 1px;
+}
+.status-sq.nominal  {
+  background: #10B981;
+  box-shadow: 0 0 8px 0 rgba(16, 185, 129, 0.6);
+}
+.status-sq.caution  {
+  background: #F59E0B;
+  box-shadow: 0 0 8px 0 rgba(245, 158, 11, 0.6);
+}
+.status-sq.danger   {
+  background: #EF4444;
+  box-shadow: 0 0 8px 0 rgba(239, 68, 68, 0.6);
+}
+.status-sq.offline  {
+  background: #334155;
+}
+.status-sq.active   {
+  background: #00D2FF;
+  box-shadow: 0 0 8px 0 rgba(0, 210, 255, 0.6);
+}
 
 /* ── Confidence bar ──────────────────────────────────────────────────── */
-.conf-bar-track { @apply h-0.5 w-full bg-sentinel-border; }
-.conf-bar-fill { @apply h-0.5; transition: width 600ms cubic-bezier(0.22, 0.61, 0.36, 1); }
+.conf-bar-track { @apply h-1 w-full bg-sentinel-border; border-radius: 1px; }
+.conf-bar-fill  {
+  @apply h-1;
+  border-radius: 1px;
+  transition: width 600ms cubic-bezier(0.22, 0.61, 0.36, 1);
+}
 
 /* ── Provenance strip ────────────────────────────────────────────────── */
-/* A screenshot must label itself. This strip is designed to be legible in a
-   cropped screenshot, so it is a solid band, not a subtle badge. */
 .ops-provenance {
-  @apply flex items-center gap-2 border-y border-sentinel-border bg-sentinel-surface px-3.5 py-1.5
+  @apply flex items-center gap-2 border-y border-sentinel-border bg-sentinel-panel px-3.5 py-1.5
          font-mono text-3xs uppercase tracking-instrument;
 }
-.ops-provenance-real      { color: #4f9d69; }
-.ops-provenance-synthetic { color: #e8a33d; background: rgba(232, 163, 61, 0.07); }
-.ops-provenance-unavailable { color: #5b6673; }
-.ops-provenance-failed    { color: #c8453a; background: rgba(200, 69, 58, 0.07); }
+.ops-provenance-real        { color: #10B981; }
+.ops-provenance-synthetic   { color: #F59E0B; background: rgba(245, 158, 11, 0.1); }
+.ops-provenance-unavailable { color: #64748B; }
+.ops-provenance-failed      { color: #EF4444; background: rgba(239, 68, 68, 0.1); }
 
 /* ── Serif narrative ─────────────────────────────────────────────────── */
-/* The one place a serif belongs. Measures capped near 68 characters because
-   a serif line that runs the width of a 27" display is unreadable. */
 .ops-narrative {
   @apply font-serif text-lede text-sentinel-text;
   max-width: 68ch;
   font-feature-settings: 'kern' 1, 'liga' 1;
 }
-.ops-narrative em { font-style: italic; color: #eef2f6; }
+.ops-narrative em { font-style: italic; color: #F8FAFC; }
 
-/* ── Stencil numerals for case IDs ───────────────────────────────────── */
+/* ── Stencil numerals ────────────────────────────────────────────────── */
 .ops-stencil {
   @apply font-mono font-semibold uppercase tracking-stencil text-sentinel-muted-hi;
   font-variant-numeric: tabular-nums;
 }
 
 /* ── Graticule tick ruler ────────────────────────────────────────────── */
-/* Sits along a map edge. Major ticks every 5th position, uneven by design —
-   an evenly spaced ruler reads as a CSS repeating-gradient, a graduated one
-   reads as a surveying instrument. */
 .ops-graticule {
   display: flex;
   align-items: flex-end;
   height: 0.75rem;
-  background: linear-gradient(to right, #1b2430 0 1px, transparent 1px 100%);
+  background: linear-gradient(to right, #1A273D 0 1px, transparent 1px 100%);
   background-size: 12.5% 100%;
 }
 .ops-graticule-tick {
   width: 1px;
-  background: #2a3644;
+  background: #1A273D;
   height: 0.375rem;
   margin-right: calc(12.5% - 1px);
 }
-.ops-graticule-tick.major { height: 0.75rem; background: #5b6673; }
+.ops-graticule-tick.major { height: 0.75rem; background: #2A3E5E; }
 
 /* ── Reticle ─────────────────────────────────────────────────────────── */
-/* Cursor crosshair with a live readout. Only rendered over the map. */
 .ops-reticle {
   position: absolute;
   pointer-events: none;
@@ -191,60 +200,173 @@ body::after {
 .ops-reticle::after {
   content: '';
   position: absolute;
-  background: rgba(94, 200, 216, 0.55);
+  background: rgba(0, 210, 255, 0.75);
 }
 .ops-reticle::before { left: 50%; top: 0; width: 1px; height: 100%; }
-.ops-reticle::after { top: 50%; left: 0; height: 1px; width: 100%; }
+.ops-reticle::after  { top: 50%; left: 0; height: 1px; width: 100%; }
 .ops-reticle-readout {
   @apply font-mono text-3xs tabular-nums;
   position: absolute;
   left: 14px;
   top: 12px;
   white-space: nowrap;
-  color: #8fe0ec;
-  text-shadow: 0 1px 2px rgba(7, 11, 16, 0.9);
+  color: #00D2FF;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.9);
 }
 
-/* ── Nav rail ────────────────────────────────────────────────────────── */
+/* ── Nav rail — dark sidebar ────────────────────────────────────────── */
 .nav-item {
-  @apply flex h-9 w-full items-center gap-2.5 border-l-2 border-transparent px-3.5 text-sentinel-muted;
-  transition: color 120ms cubic-bezier(0.22, 0.61, 0.36, 1),
-              background 120ms cubic-bezier(0.22, 0.61, 0.36, 1),
-              border-color 120ms cubic-bezier(0.22, 0.61, 0.36, 1);
+  @apply flex h-9 w-full items-center gap-2.5 border-l-2 border-transparent px-3.5;
+  color: #64748B;
+  transition: color 120ms ease, background 120ms ease, border-color 120ms ease;
 }
-.nav-item:hover { @apply border-l-sentinel-border-hi bg-sentinel-panel text-sentinel-text-hi; }
-.nav-item.active { @apply border-l-sentinel-oil bg-sentinel-panel text-sentinel-oil; }
+.nav-item:hover {
+  background: #111A29;
+  border-left-color: #38BDF8;
+  color: #F8FAFC;
+}
+.nav-item.active {
+  background: #0C1E33;
+  border-left-color: #00D2FF;
+  color: #FFFFFF;
+  box-shadow: inset 4px 0 20px 0 rgba(0, 210, 255, 0.15);
+}
 .nav-item-label { @apply font-display text-2xs uppercase tracking-instrument; }
 
 /* ── Drop target ─────────────────────────────────────────────────────── */
 .ops-drop {
   @apply flex flex-col items-center justify-center border border-dashed border-sentinel-border-hi
-         bg-sentinel-surface px-6 py-8 text-center;
-  transition: border-color 180ms cubic-bezier(0.22, 0.61, 0.36, 1),
-              background 180ms cubic-bezier(0.22, 0.61, 0.36, 1);
+         bg-sentinel-panel px-6 py-8 text-center;
+  border-radius: 4px;
+  transition: border-color 180ms ease, background 180ms ease;
 }
-.ops-drop-active { @apply border-sentinel-data bg-sentinel-raised; }
+.ops-drop-active {
+  border-color: #00D2FF;
+  background: #0C1E33;
+}
 
 /* ── Tooltip ─────────────────────────────────────────────────────────── */
 .ops-tooltip {
-  @apply ops-panel px-3 py-2 font-mono text-xs text-sentinel-text;
+  @apply bg-sentinel-surface border border-sentinel-border-hi px-3 py-2 font-mono text-xs;
+  color: #F8FAFC;
   pointer-events: none;
   position: fixed;
   z-index: 999;
+  border-radius: 4px;
+  box-shadow: 0 4px 20px 0 rgba(0,0,0,0.8);
 }
 
 /* ── Live feed cursor ────────────────────────────────────────────────── */
-.cursor-blink::after { content: '▌'; color: #e8a33d; animation: blink 1.2s step-end infinite; }
+.cursor-blink::after {
+  content: '▌';
+  color: #00D2FF;
+  animation: blink 1.2s step-end infinite;
+}
 
 /* ── Tables ──────────────────────────────────────────────────────────── */
 .ops-table { @apply w-full border-collapse font-mono text-xs; }
 .ops-table thead th {
-  @apply border-b border-sentinel-border-hi px-3 py-1.5 text-left font-medium uppercase
-         tracking-instrument text-3xs text-sentinel-muted;
+  @apply border-b border-sentinel-border px-3 py-2 text-left font-medium uppercase
+         tracking-instrument text-3xs text-sentinel-muted-hi;
+  background: #080D17;
 }
-.ops-table tbody td { @apply border-b border-sentinel-border px-3 py-1.5 tabular-nums; }
-.ops-table tbody tr:hover { background: #151d27; }
+.ops-table tbody td { @apply border-b border-sentinel-border px-3 py-2 tabular-nums text-sentinel-text; }
+.ops-table tbody tr:hover {
+  background: #101B2B;
+  box-shadow: inset 2px 0 0 0 #00D2FF;
+}
+
+/* ── Form elements ───────────────────────────────────────────────────── */
+input[type="text"],
+input[type="number"],
+input[type="date"],
+input[type="datetime-local"],
+select,
+textarea {
+  background: #0F1726;
+  border: 1px solid #1A273D;
+  color: #F8FAFC;
+  border-radius: 3px;
+  transition: border-color 150ms ease, box-shadow 150ms ease;
+}
+input[type="text"]:focus,
+input[type="number"]:focus,
+input[type="date"]:focus,
+input[type="datetime-local"]:focus,
+select:focus,
+textarea:focus {
+  outline: none;
+  border-color: #00D2FF;
+  box-shadow: 0 0 0 2px rgba(0, 210, 255, 0.25);
+}
+input::placeholder,
+textarea::placeholder { color: #64748B; }
+
+/* ── Buttons ─────────────────────────────────────────────────────────── */
+.btn-primary {
+  @apply inline-flex items-center gap-1.5 font-mono text-xs uppercase tracking-wider font-bold;
+  background: #00D2FF;
+  color: #060A11;
+  border: 1px solid #00D2FF;
+  border-radius: 3px;
+  padding: 0.375rem 0.875rem;
+  transition: background 150ms ease, box-shadow 150ms ease;
+  cursor: pointer;
+}
+.btn-primary:hover  { background: #38BDF8; border-color: #38BDF8; box-shadow: 0 0 10px rgba(0, 210, 255, 0.4); }
+.btn-primary:active { background: #0284C7; }
+.btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.btn-ghost {
+  @apply inline-flex items-center gap-1.5 font-mono text-xs uppercase tracking-wider;
+  background: #0B111D;
+  color: #94A3B8;
+  border: 1px solid #1A273D;
+  border-radius: 3px;
+  padding: 0.375rem 0.875rem;
+  transition: border-color 150ms ease, color 150ms ease, background 150ms ease;
+  cursor: pointer;
+}
+.btn-ghost:hover {
+  border-color: #00D2FF;
+  color: #00D2FF;
+  background: #111A29;
+}
+
+/* ── Scanline overlay ────────────────────────────────────────────────── */
+.scanline-overlay::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 10;
+  background: repeating-linear-gradient(
+    to bottom,
+    transparent 0px,
+    transparent 2px,
+    rgba(0, 0, 0, 0.2) 2px,
+    rgba(0, 0, 0, 0.2) 4px
+  );
+}
 
 /* ── Utilities ───────────────────────────────────────────────────────── */
 .tabular { font-variant-numeric: tabular-nums; }
 .ops-hairline { @apply h-px w-full bg-sentinel-border; }
+
+/* ── Keyframes ───────────────────────────────────────────────────────── */
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0; }
+}
+@keyframes heartbeat {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.35; }
+}
+@keyframes badge-pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.7; }
+}
+@keyframes fade-up {
+  0%   { opacity: 0; transform: translateY(6px); }
+  100% { opacity: 1; transform: translateY(0); }
+}

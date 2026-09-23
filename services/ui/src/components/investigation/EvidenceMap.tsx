@@ -12,11 +12,11 @@ export default function EvidenceMap({ spill }: EvidenceMapProps) {
   const [activeLayer, setActiveLayer] = useState<'sar' | 'attribution'>('sar');
 
   return (
-    <div className="glass-panel overflow-hidden">
+    <div className="ops-panel overflow-hidden">
       <div className="flex items-center justify-between border-b border-sentinel-border px-4 py-2">
         <div className="flex items-center gap-2">
-          <Map size={14} className="text-sentinel-primary" />
-          <span className="font-display text-sm font-semibold text-sentinel-text">
+          <Map size={14} className="text-sentinel-data" />
+          <span className="font-display text-sm font-semibold text-sentinel-text-hi">
             Evidence Map
           </span>
         </div>
@@ -25,10 +25,10 @@ export default function EvidenceMap({ spill }: EvidenceMapProps) {
             <button
               key={layer}
               onClick={() => setActiveLayer(layer)}
-              className={`rounded px-2 py-1 text-[10px] font-mono uppercase transition-colors ${
+              className={`rounded px-2.5 py-1 text-[10px] font-mono uppercase transition-colors ${
                 activeLayer === layer
-                  ? 'bg-sentinel-primary/20 text-sentinel-primary'
-                  : 'text-sentinel-muted hover:text-sentinel-text'
+                  ? 'bg-sentinel-data/20 border border-sentinel-data text-sentinel-data font-semibold'
+                  : 'border border-sentinel-border text-sentinel-muted hover:border-sentinel-data hover:text-sentinel-data'
               }`}
             >
               {layer === 'sar' ? 'SAR' : 'Attribution'}
@@ -37,26 +37,26 @@ export default function EvidenceMap({ spill }: EvidenceMapProps) {
         </div>
       </div>
 
-      <div className="relative h-64 w-full bg-sentinel-bg">
+      <div className="relative h-64 w-full bg-sentinel-panel">
         <div className="absolute inset-0 flex items-center justify-center">
           <div className="text-center">
-            <Layers size={32} className="mx-auto mb-2 text-sentinel-border" />
-            <div className="font-mono text-xs text-sentinel-muted">
+            <Layers size={32} className="mx-auto mb-2 text-sentinel-border-hi" />
+            <div className="font-mono text-xs font-medium text-sentinel-text-hi">
               {activeLayer === 'sar'
                 ? 'SAR Composite Layer'
                 : 'Attribution Analysis Layer'}
             </div>
-            <div className="mt-1 font-mono text-[10px] text-sentinel-muted/60">
+            <div className="mt-1 font-mono text-[10px] text-sentinel-muted-hi">
               Centroid: {spill.centroid.latitude.toFixed(4)}N{' '}
               {spill.centroid.longitude.toFixed(4)}E
             </div>
-            <div className="mt-1 font-mono text-[10px] text-sentinel-warning">
+            <div className="mt-1 font-mono text-[10px] text-sentinel-caution font-medium">
               Area: {spill.area_km2.toFixed(1)} km&sup2; | Confidence: {spill.confidence}%
             </div>
           </div>
         </div>
 
-        <div className="absolute bottom-2 left-2 rounded bg-sentinel-bg/80 px-2 py-1 font-mono text-[9px] text-sentinel-muted">
+        <div className="absolute bottom-2 left-2 rounded bg-sentinel-surface/90 border border-sentinel-border px-2 py-1 font-mono text-[9px] text-sentinel-muted">
           MAP_STYLE: {activeLayer.toUpperCase()}
         </div>
       </div>

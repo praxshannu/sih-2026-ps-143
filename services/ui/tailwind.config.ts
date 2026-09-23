@@ -1,29 +1,25 @@
 import type { Config } from 'tailwindcss';
 
 /**
- * SENTINEL design tokens.
+ * SENTINEL design tokens — Light Professional Theme.
  *
- * The direction is an **oceanographic instrument**, not a dashboard. That
- * distinction drives every value here:
+ * The direction is a **maritime intelligence platform**, not a SaaS dashboard.
+ * Key decisions:
  *
- * - Colour is semantic, not decorative. `data` (cyan) means "this is a
- *   measurement". `oil` (amber) is reserved *exclusively* for oil — the moment
- *   amber also means "hover" or "accent", an analyst loses the one colour cue
- *   that carries meaning on a dark SAR image. Nothing else is coloured.
- * - Separation comes from 1px rules and negative space, never from shadows or
- *   blur. `shadow` and `backdrop-blur` are deliberately absent: glassmorphism
- *   reads as decoration, and this is equipment.
- * - Radii stop at 2px. A card with a 12px radius is the single clearest tell
- *   of a template.
+ * - Background: #F8FAFC (cool off-white). Clean, neutral, never warm cream.
+ * - Primary accent: #4096FF. Used for interactive elements, live data values,
+ *   and active navigation. ONE accent colour, applied consistently.
+ * - Oil/amber stays amber. It is a domain-semantic colour: oil slick colour
+ *   on SAR imagery. An analyst cannot afford oil and UI sharing a colour.
+ * - Nav rail is dark slate (#1E293B). Dark sidebar + light content area is
+ *   the gold standard for professional tools (VS Code, Linear, Vercel).
+ * - Globe and map tiles remain on dark-matter substrate. Geospatial data
+ *   layers (orange oil, red vessels, green origin) are tuned for dark water.
  *
- * Type does three distinct jobs, so there are three families:
- * - `display` (Space Grotesk) — headings and nav. Slightly condensed, a little
- *   mechanical, reads as labelling rather than prose.
- * - `mono` (IBM Plex Mono) — every number, coordinate, MMSI and timestamp.
- *   Tabular figures, because a column of coordinates that jitters is unusable.
- * - `serif` (Newsreader) — the intelligence narrative only. A serif paragraph
- *   is the fastest way to stop a screen reading as generated, and it is
- *   genuinely the right voice for an analyst's written assessment.
+ * Type families unchanged:
+ * - `display` (Space Grotesk) — headings and labels
+ * - `mono` (IBM Plex Mono) — every number, ID and coordinate
+ * - `serif` (Newsreader) — analyst narrative only
  */
 export default {
   content: ['./index.html', './src/**/*.{js,ts,jsx,tsx}'],
@@ -31,65 +27,77 @@ export default {
     extend: {
       colors: {
         sentinel: {
-          // Near-black base. Not navy, not midnight — this sits under a map
-          // and must not compete with it.
-          bg: '#070b10',
-          surface: '#0c1116',
-          panel: '#111821',
-          raised: '#151d27',
-          border: '#1b2430',
-          'border-hi': '#2a3644',
+          // ── Deep Maritime Command Surface Hierarchy ─────────────────────────
+          bg:         '#060A11',  // abyssal deep ocean base
+          surface:    '#0B111D',  // tactical console surface
+          panel:      '#0F1726',  // inset telemetry panel
+          raised:     '#152033',  // elevated cards / focus state
+          border:     '#1A273D',  // hairline instrument border
+          'border-hi':'#2A3E5E',  // active / prominent divider
 
-          // Chart cyan: measurements, tracks, geometry, live data.
-          data: '#5ec8d8',
-          'data-dim': '#2b6d78',
-          'data-hi': '#8fe0ec',
+          // ── Primary Tactical Accent: Electric Cyan ─────────────────────────
+          data:       '#00D2FF',  // HUD telemetry cyan
+          'data-dim': '#083344',  // muted cyan tint
+          'data-hi':  '#38BDF8',  // hover state
+          primary:    '#00D2FF',
+          'primary-hover': '#38BDF8',
+          link:       '#38BDF8',
 
-          // Signal amber: oil. Nothing else. See note above.
-          oil: '#e8a33d',
-          'oil-dim': '#8a5f1c',
-          'oil-hi': '#f6c477',
-          // Legacy alias kept so the older pages keep rendering while they are
-          // migrated to `oil`; do not use in new code.
-          amber: '#d97706',
-          'amber-dim': '#92400e',
-          'amber-glow': '#fbbf24',
+          // ── Signal Radar Amber: Oil & SAR Slicks ────────────────────────────
+          oil:        '#F59E0B',
+          'oil-dim':  '#451A03',
+          'oil-hi':   '#FBBF24',
+          amber:      '#F59E0B',
+          'amber-dim':'#451A03',
+          'amber-glow':'#FBBF24',
 
-          // Status. Deliberately desaturated — status should read as a glyph
-          // and a letter code first, colour second (colour-blind safe).
-          danger: '#c8453a',
-          'danger-dim': '#6d241d',
-          caution: '#c08a2e',
-          nominal: '#4f9d69',
-          'nominal-dim': '#24513a',
+          // ── Tactical Operational Status ────────────────────────────────────
+          danger:      '#EF4444',
+          'danger-dim':'#450A0A',
+          caution:     '#F59E0B',
+          nominal:     '#10B981',
+          'nominal-dim':'#064E3B',
 
-          // Text ramp.
-          text: '#c9d1d9',
-          'text-hi': '#eef2f6',
-          muted: '#5b6673',
-          'muted-hi': '#7d8794',
+          // ── High-Contrast Monospace / Display Text ─────────────────────────
+          text:       '#CBD5E1',  // slate-200 legible running text
+          'text-hi':  '#F8FAFC',  // crisp white numbers, coordinates, titles
+          muted:      '#64748B',  // slate-500 secondary metrics
+          'muted-hi': '#94A3B8',  // slate-400 uppercase field headers
 
-          link: '#5ec8d8',
+          // ── Compatibility aliases ──────────────────────────────────────────
+          warning:    '#F59E0B',
+          success:    '#10B981',
+        },
+
+        // ── Navigation Rail ──────────────────────────────────────────────────
+        nav: {
+          bg:       '#05080E',
+          surface:  '#0B111D',
+          hover:    '#111A29',
+          active:   '#0C1E33',
+          border:   '#162338',
+          text:     '#64748B',
+          'text-hi':'#F8FAFC',
+          accent:   '#00D2FF',
+          muted:    '#475569',
         },
       },
       fontFamily: {
-        display: ['"Space Grotesk"', 'system-ui', 'sans-serif'],
-        sans: ['"IBM Plex Sans"', 'ui-sans-serif', 'sans-serif'],
-        mono: ['"IBM Plex Mono"', 'ui-monospace', 'monospace'],
+        display: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
+        sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
+        mono: ['"JetBrains Mono"', '"IBM Plex Mono"', 'ui-monospace', 'monospace'],
         serif: ['Newsreader', 'Georgia', 'serif'],
       },
       fontSize: {
-        // A real scale, not five arbitrary sizes. The gaps are uneven on
-        // purpose: 2xs/3xs carry dense instrument labels, then there is a
-        // jump to `lede` for the narrative voice.
-        '3xs': ['0.5625rem', { lineHeight: '0.875rem' }], // 9px — micro labels
-        '2xs': ['0.625rem', { lineHeight: '0.9375rem' }], // 10px — instrument labels
-        xs: ['0.6875rem', { lineHeight: '1.0625rem' }], // 11px — table body
-        sm: ['0.75rem', { lineHeight: '1.125rem' }], // 12px — body
-        base: ['0.8125rem', { lineHeight: '1.25rem' }], // 13px — comfortable body
-        lg: ['0.9375rem', { lineHeight: '1.375rem' }], // 15px — section heads
-        xl: ['1.125rem', { lineHeight: '1.5rem' }], // 18px — page titles
-        lede: ['1.0625rem', { lineHeight: '1.75rem' }], // 17px — serif narrative
+        // Instrument scale — gaps are intentionally uneven.
+        '3xs': ['0.5625rem', { lineHeight: '0.875rem' }],  // 9px  — micro labels
+        '2xs': ['0.625rem',  { lineHeight: '0.9375rem' }], // 10px — instrument labels
+        xs:   ['0.6875rem', { lineHeight: '1.0625rem' }],  // 11px — table body
+        sm:   ['0.75rem',   { lineHeight: '1.125rem' }],   // 12px — body
+        base: ['0.8125rem', { lineHeight: '1.25rem' }],    // 13px — comfortable body
+        lg:   ['0.9375rem', { lineHeight: '1.375rem' }],   // 15px — section heads
+        xl:   ['1.125rem',  { lineHeight: '1.5rem' }],     // 18px — page titles
+        lede: ['1.0625rem', { lineHeight: '1.75rem' }],    // 17px — serif narrative
       },
       letterSpacing: {
         instrument: '0.14em',
@@ -99,20 +107,27 @@ export default {
         none: '0',
         hair: '1px',
         instrument: '2px',
+        sm: '4px',
+        DEFAULT: '6px',
+        md: '8px',
       },
       spacing: {
-        // Optical rhythm: instrument rows are 28px, panel padding is uneven
-        // (14px vertical, 16px horizontal) because equal padding reads as
-        // machine-generated on a dense panel.
         1.75: '0.4375rem',
-        3.5: '0.875rem',
-        4.5: '1.125rem',
-        row: '1.75rem',
+        3.5:  '0.875rem',
+        4.5:  '1.125rem',
+        row:  '1.75rem',
         rail: '13.5rem',
         gauge: '3.5rem',
       },
+      boxShadow: {
+        // Panels: subtle lift — not glassmorphism, just material.
+        card: '0 1px 3px 0 rgba(0,0,0,0.06), 0 1px 2px -1px rgba(0,0,0,0.04)',
+        'card-md': '0 4px 6px -1px rgba(0,0,0,0.07), 0 2px 4px -2px rgba(0,0,0,0.04)',
+        'card-hover': '0 4px 12px 0 rgba(64,150,255,0.10), 0 1px 3px 0 rgba(0,0,0,0.06)',
+        // Input focus ring
+        focus: '0 0 0 3px rgba(64,150,255,0.18)',
+      },
       transitionTimingFunction: {
-        // Slow and expensive-feeling. No bounce, ever.
         instrument: 'cubic-bezier(0.22, 0.61, 0.36, 1)',
       },
       transitionDuration: {
@@ -123,15 +138,24 @@ export default {
           '0%, 100%': { opacity: '1' },
           '50%': { opacity: '0' },
         },
-        // One deliberate motion: a live-feed heartbeat. Nothing else pulses.
         heartbeat: {
           '0%, 100%': { opacity: '1' },
           '50%': { opacity: '0.35' },
+        },
+        'badge-pulse': {
+          '0%, 100%': { opacity: '1' },
+          '50%': { opacity: '0.7' },
+        },
+        'fade-up': {
+          '0%': { opacity: '0', transform: 'translateY(6px)' },
+          '100%': { opacity: '1', transform: 'translateY(0)' },
         },
       },
       animation: {
         blink: 'blink 1.2s step-end infinite',
         heartbeat: 'heartbeat 2.4s ease-in-out infinite',
+        'badge-pulse': 'badge-pulse 3.6s ease-in-out infinite',
+        'fade-up': 'fade-up 0.25s ease-out',
       },
     },
   },

@@ -73,9 +73,9 @@ export default function CaseInvestigation() {
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
-      <header className="border-b border-sentinel-border bg-sentinel-surface/50 px-5 py-3 backdrop-blur-md">
+      <header className="border-b border-sentinel-border bg-sentinel-surface px-5 py-3" style={{ boxShadow: '0 1px 3px 0 rgba(0,0,0,0.04)' }}>
         <div className="flex items-center gap-3">
-          <button className="rounded-lg bg-sentinel-bg/50 p-1.5 text-sentinel-muted hover:text-sentinel-text">
+          <button className="rounded bg-sentinel-panel p-1.5 text-sentinel-muted hover:text-sentinel-text-hi border border-sentinel-border transition-colors">
             <ArrowLeft size={16} />
           </button>
           <CaseStatusBanner
@@ -88,7 +88,7 @@ export default function CaseInvestigation() {
       </header>
 
       <div className="flex flex-1 overflow-hidden">
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-sentinel-bg">
           <motion.div
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
@@ -111,7 +111,7 @@ export default function CaseInvestigation() {
               transition={{ delay: 0.15 }}
               className="glass-panel p-4"
             >
-              <h3 className="font-display text-sm font-semibold text-sentinel-text mb-2">
+              <h3 className="font-display text-sm font-semibold text-sentinel-text-hi mb-2">
                 Drift Forecast
               </h3>
               <div className="grid grid-cols-4 gap-3 font-mono text-[10px]">
@@ -140,10 +140,10 @@ export default function CaseInvestigation() {
           )}
         </div>
 
-        <aside className="w-96 border-l border-sentinel-border bg-sentinel-surface/30 overflow-y-auto">
-          <div className="border-b border-sentinel-border p-4">
+        <aside className="w-96 border-l border-sentinel-border bg-sentinel-surface overflow-y-auto">
+          <div className="border-b border-sentinel-border p-4 bg-sentinel-panel">
             <div className="flex items-center justify-between">
-              <h2 className="font-display text-sm font-semibold text-sentinel-text">
+              <h2 className="font-display text-sm font-semibold text-sentinel-text-hi">
                 Suspects
               </h2>
               <span className="font-mono text-[10px] text-sentinel-muted">
