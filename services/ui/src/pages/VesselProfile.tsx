@@ -75,16 +75,16 @@ export default function VesselProfile() {
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
-      <header className="border-b border-sentinel-border bg-sentinel-surface/50 px-5 py-3 backdrop-blur-md">
+      <header className="border-b border-sentinel-border bg-sentinel-surface px-5 py-3" style={{ boxShadow: '0 1px 3px 0 rgba(0,0,0,0.04)' }}>
         <div className="flex items-center gap-3">
-          <button className="rounded-lg bg-sentinel-bg/50 p-1.5 text-sentinel-muted hover:text-sentinel-text">
+          <button className="rounded bg-sentinel-panel p-1.5 text-sentinel-muted hover:text-sentinel-text-hi border border-sentinel-border transition-colors">
             <ArrowLeft size={16} />
           </button>
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-sentinel-primary/10">
-            <Ship size={16} className="text-sentinel-primary" />
+          <div className="flex h-8 w-8 items-center justify-center rounded" style={{ background: 'rgba(64,150,255,0.10)' }}>
+            <Ship size={16} className="text-sentinel-data" />
           </div>
           <div>
-            <h1 className="font-display text-sm font-bold text-sentinel-text">
+            <h1 className="font-display text-sm font-bold text-sentinel-text-hi">
               {vessel.name}
             </h1>
             <p className="font-mono text-[10px] text-sentinel-muted">
@@ -101,7 +101,7 @@ export default function VesselProfile() {
         </div>
       </header>
 
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+      <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-sentinel-bg">
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
           {sections.map((section, i) => (
             <motion.div
@@ -109,11 +109,11 @@ export default function VesselProfile() {
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: i * 0.05 }}
-              className="glass-panel p-4"
+              className="ops-panel p-4"
             >
               <div className="mb-3 flex items-center gap-2">
-                <section.icon size={14} className="text-sentinel-primary" />
-                <h3 className="font-display text-xs font-semibold text-sentinel-text uppercase">
+                <section.icon size={14} className="text-sentinel-data" />
+                <h3 className="font-display text-xs font-semibold text-sentinel-text-hi uppercase">
                   {section.title}
                 </h3>
               </div>
@@ -133,36 +133,36 @@ export default function VesselProfile() {
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.15 }}
-          className="glass-panel p-4"
+          className="ops-panel p-4"
         >
-          <h3 className="mb-3 flex items-center gap-2 font-display text-xs font-semibold text-sentinel-text uppercase">
+          <h3 className="mb-3 flex items-center gap-2 font-display text-xs font-semibold text-sentinel-text-hi uppercase">
             <AlertTriangle size={14} className="text-sentinel-danger" />
             Risk Assessment
           </h3>
           <div className="grid grid-cols-4 gap-3">
-            <div className="rounded-lg bg-sentinel-bg/50 p-3 text-center">
+            <div className="rounded ops-inset p-3 text-center">
               <div className="font-mono text-lg font-bold text-sentinel-danger">
                 {vessel.risk_score}
               </div>
-              <div className="text-[9px] text-sentinel-muted">RISK SCORE</div>
+              <div className="text-[9px] text-sentinel-muted mt-0.5">RISK SCORE</div>
             </div>
-            <div className="rounded-lg bg-sentinel-bg/50 p-3 text-center">
-              <div className="font-mono text-lg font-bold text-sentinel-warning">
+            <div className="rounded ops-inset p-3 text-center">
+              <div className="font-mono text-lg font-bold text-sentinel-caution">
                 {vessel.prior_incidents}
               </div>
-              <div className="text-[9px] text-sentinel-muted">PRIOR INCIDENTS</div>
+              <div className="text-[9px] text-sentinel-muted mt-0.5">PRIOR INCIDENTS</div>
             </div>
-            <div className="rounded-lg bg-sentinel-bg/50 p-3 text-center">
-              <div className={`font-mono text-lg font-bold ${vessel.sanctions_history ? 'text-sentinel-danger' : 'text-sentinel-success'}`}>
+            <div className="rounded ops-inset p-3 text-center">
+              <div className={`font-mono text-lg font-bold ${vessel.sanctions_history ? 'text-sentinel-danger' : 'text-sentinel-nominal'}`}>
                 {vessel.sanctions_history ? 'YES' : 'NO'}
               </div>
-              <div className="text-[9px] text-sentinel-muted">SANCTIONS</div>
+              <div className="text-[9px] text-sentinel-muted mt-0.5">SANCTIONS</div>
             </div>
-            <div className="rounded-lg bg-sentinel-bg/50 p-3 text-center">
-              <div className="font-mono text-lg font-bold text-sentinel-primary">
+            <div className="rounded ops-inset p-3 text-center">
+              <div className="font-mono text-lg font-bold text-sentinel-data">
                 {vessel.flag}
               </div>
-              <div className="text-[9px] text-sentinel-muted">FLAG STATE</div>
+              <div className="text-[9px] text-sentinel-muted mt-0.5">FLAG STATE</div>
             </div>
           </div>
         </motion.div>
@@ -171,10 +171,10 @@ export default function VesselProfile() {
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2 }}
-          className="glass-panel p-4"
+          className="ops-panel p-4"
         >
-          <h3 className="mb-3 flex items-center gap-2 font-display text-xs font-semibold text-sentinel-text uppercase">
-            <MapPin size={14} className="text-sentinel-primary" />
+          <h3 className="mb-3 flex items-center gap-2 font-display text-xs font-semibold text-sentinel-text-hi uppercase">
+            <MapPin size={14} className="text-sentinel-data" />
             Last Known Position
           </h3>
           <div className="flex items-center gap-4 font-mono text-[11px]">

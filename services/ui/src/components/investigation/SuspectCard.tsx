@@ -69,8 +69,8 @@ export default function SuspectCard({ suspect, selected, onClick }: Props) {
   return (
     <div
       onClick={onClick}
-      className={`border-b border-sentinel-border cursor-pointer ${
-        selected ? 'bg-sentinel-panel border-l-2 border-l-sentinel-amber' : 'hover:bg-sentinel-panel'
+      className={`border-b border-sentinel-border cursor-pointer transition-all ${
+        selected ? 'bg-sentinel-data/15 border-l-2 border-l-sentinel-data' : 'hover:bg-sentinel-panel'
       }`}
     >
       {/* Header row */}

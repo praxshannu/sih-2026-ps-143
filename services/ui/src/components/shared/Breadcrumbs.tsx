@@ -26,17 +26,17 @@ export default function Breadcrumbs() {
   }
 
   return (
-    <nav aria-label="Breadcrumb" className="flex items-center gap-1.5 px-5 py-2 font-mono text-[11px] bg-sentinel-surface/50 border-b border-sentinel-border backdrop-blur-md">
+    <nav aria-label="Breadcrumb" className="flex items-center gap-1.5 px-5 py-2 font-mono text-[11px] bg-sentinel-surface border-b border-sentinel-border">
       <Globe size={12} className="text-sentinel-muted" />
       {crumbs.map((crumb, i) => (
         <span key={crumb.to} className="flex items-center gap-1.5">
-          {i > 0 && <ChevronRight size={10} className="text-sentinel-border" />}
+          {i > 0 && <ChevronRight size={10} className="text-sentinel-border-hi" />}
           {i === crumbs.length - 1 ? (
-            <span className="text-sentinel-text" aria-current="page">{crumb.label}</span>
+            <span className="text-sentinel-text-hi font-semibold" aria-current="page">{crumb.label}</span>
           ) : (
-            <Link to={crumb.to} className="text-sentinel-muted hover:text-sentinel-primary transition-colors">
+            <a href={crumb.to} className="text-sentinel-muted hover:text-sentinel-data transition-colors">
               {crumb.label}
-            </Link>
+            </a>
           )}
         </span>
       ))}

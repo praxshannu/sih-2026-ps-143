@@ -1,25 +1,24 @@
 // ── Color tokens (sync with tailwind.config.ts) ───────────────────────────
 export const COLORS = {
-  bg: '#080a0e',
-  surface: '#0e1117',
-  panel: '#121820',
-  border: '#1e2530',
-  amber: '#d97706',
-  amberGlow: '#fbbf24',
-  danger: '#dc2626',
-  caution: '#ca8a04',
-  nominal: '#15803d',
-  // Semantic aliases. Several pages and the globe layers were written against
-  // primary/success/warning; rather than leaving those broken (they render as
-  // `undefined` at runtime, since esbuild does not typecheck), map them onto
-  // the palette above.
-  primary: '#3b82f6',
-  success: '#15803d',
-  warning: '#ca8a04',
-  text: '#d1d5db',
-  textHi: '#f3f4f6',
-  muted: '#4b5563',
-  link: '#3b82f6',
+  bg: '#060A11',
+  surface: '#0B111D',
+  panel: '#0F1726',
+  border: '#1A273D',
+  amber: '#F59E0B',
+  amberGlow: '#FBBF24',
+  danger: '#EF4444',
+  caution: '#F59E0B',
+  nominal: '#10B981',
+  // Semantic aliases.
+  primary: '#00D2FF',
+  primaryHover: '#38BDF8',
+  success: '#10B981',
+  warning: '#F59E0B',
+  text: '#CBD5E1',
+  textHi: '#F8FAFC',
+  muted: '#64748B',
+  mutedHi: '#94A3B8',
+  link: '#00D2FF',
 } as const;
 
 // ── Deck.gl / map fill colors (RGBA arrays) ───────────────────────────────

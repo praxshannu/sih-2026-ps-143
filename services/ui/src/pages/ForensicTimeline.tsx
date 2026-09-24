@@ -52,15 +52,15 @@ export default function ForensicTimeline() {
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
-      <header className="border-b border-sentinel-border bg-sentinel-surface/50 px-5 py-3 backdrop-blur-md">
+      <header className="border-b border-sentinel-border bg-sentinel-surface px-5 py-3" style={{ boxShadow: '0 1px 3px 0 rgba(0,0,0,0.04)' }}>
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <button className="rounded-lg bg-sentinel-bg/50 p-1.5 text-sentinel-muted hover:text-sentinel-text">
+            <button className="rounded bg-sentinel-panel p-1.5 text-sentinel-muted hover:text-sentinel-text-hi border border-sentinel-border transition-colors">
               <ArrowLeft size={16} />
             </button>
-            <Clock size={16} className="text-sentinel-primary" />
+            <Clock size={16} className="text-sentinel-data" />
             <div>
-              <h1 className="font-display text-sm font-bold text-sentinel-text">
+              <h1 className="font-display text-sm font-bold text-sentinel-text-hi">
                 FORENSIC TIMELINE
               </h1>
               <p className="font-mono text-[10px] text-sentinel-muted">
@@ -74,10 +74,10 @@ export default function ForensicTimeline() {
               <button
                 key={sev}
                 onClick={() => setSeverityFilter(severityFilter === sev ? null : sev)}
-                className={`rounded px-2 py-1 text-[9px] font-mono uppercase transition-colors ${
+                className={`rounded px-2 py-1 text-[9px] font-mono uppercase tracking-wider transition-colors ${
                   severityFilter === sev
-                    ? 'bg-sentinel-primary/20 text-sentinel-primary'
-                    : 'text-sentinel-muted hover:text-sentinel-text'
+                    ? 'bg-sentinel-data text-white'
+                    : 'border border-sentinel-border text-sentinel-muted hover:border-sentinel-data hover:text-sentinel-data'
                 }`}
               >
                 {sev}
@@ -87,7 +87,7 @@ export default function ForensicTimeline() {
         </div>
       </header>
 
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+      <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-sentinel-bg">
         <ForensicBar events={filtered} />
 
         <div className="grid grid-cols-1 gap-2 lg:grid-cols-2">
@@ -97,7 +97,7 @@ export default function ForensicTimeline() {
               initial={{ opacity: 0, x: -10 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{ delay: i * 0.03 }}
-              className="glass-panel p-3"
+              className="ops-panel p-3"
             >
               <div className="flex items-start gap-3">
                 <div
